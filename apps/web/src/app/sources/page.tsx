@@ -2,6 +2,7 @@ import { agentWorkspaceDir, listSources } from "@localfinds/db";
 import fs from "node:fs";
 import path from "node:path";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +72,7 @@ export default function SourcesPage() {
             </summary>
             <div className="prose prose-sm prose-stone mt-3 max-w-none border-t border-stone-100 pt-3">
               {note ? (
-                <Markdown>{note}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]}>{note}</Markdown>
               ) : (
                 <p className="text-stone-500">No site note yet.</p>
               )}

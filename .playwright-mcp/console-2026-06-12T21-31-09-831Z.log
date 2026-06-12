@@ -1,0 +1,440 @@
+[     138ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[    3114ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[    3205ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/agents:0
+[    3439ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_react-dom_0kla17-._.js:15305
+[    3515ms] Error: ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component]
+
+
+    at Object.getCompilationErrors (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/lib/dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/next-dev-server.js:720:42)
+    at DevServer.findPageComponents (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/next-dev-server.js:690:43)
+    at async DevServer.renderErrorToResponseImpl (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/base-server.js:1753:26)
+[    3517ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[    3531ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[    3533ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[    3534ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[    3688ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[    3706ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[   20063ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   20105ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   20167ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[   45866ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   46870ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   47875ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   48878ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   49882ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   54887ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   59892ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   64896ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   69899ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   74906ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   79913ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[   84938ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[   86039ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/agents:0
+[   86255ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_react-dom_0kla17-._.js:15305
+[   86338ms] Error: ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component]
+
+
+    at Object.getCompilationErrors (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/lib/dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/next-dev-server.js:720:42)
+    at DevServer.findPageComponents (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/next-dev-server.js:690:43)
+    at async DevServer.renderErrorToResponseImpl (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/base-server.js:1753:26)
+[   86445ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[   86607ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   86803ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   86837ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   86913ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[   98116ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   98192ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   98255ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[   98315ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  120233ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  120255ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  145973ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  146979ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  147983ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  148987ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  149992ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  154999ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  160005ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2343
+[  165027ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  166223ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/agents:0
+[  166501ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_react-dom_0kla17-._.js:15305
+[  166582ms] Error: ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component]
+
+
+    at Object.getCompilationErrors (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/lib/dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/next-dev-server.js:720:42)
+    at DevServer.findPageComponents (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/dev/next-dev-server.js:690:43)
+    at async DevServer.renderErrorToResponseImpl (file:///home/neil/Projects/LocalFinds/node_modules/next/dist/server/base-server.js:1753:26)
+[  166607ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  166839ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  166842ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  166945ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  166996ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  167068ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  171142ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  171230ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  171285ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  171410ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  171492ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  171555ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  171632ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  171682ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  216984ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  216991ms] [ERROR] ./apps/web/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: /home/neil/Projects/LocalFinds/apps/web/src/app/globals.css:1:1: Can't resolve '@tailwindcss/typography' in '/home/neil/Projects/LocalFinds/apps/web/src/app'
+    [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+    [at Object.Once (/home/neil/Projects/LocalFinds/node_modules/@tailwindcss/postcss/dist/index.js:10:6918)]
+    [at LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+
+Import trace:
+  Client Component Browser:
+    ./apps/web/src/app/globals.css [Client Component Browser]
+    ./apps/web/src/app/layout.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1945
+[  217143ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  220721ms] [LOG] [Fast Refresh] done in 1261ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  221395ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  221664ms] [LOG] [Fast Refresh] done in 370ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1gdrd03._.js:1226
+[  222414ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  222620ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  222974ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  223029ms] [LOG] [Fast Refresh] done in 300ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  229182ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  229196ms] [LOG] [Fast Refresh] done in 113ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  240215ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  240318ms] [LOG] [Fast Refresh] done in 204ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  241244ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477
+[  241668ms] [LOG] [Fast Refresh] done in 524ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_1ybzpk2._.js:2477

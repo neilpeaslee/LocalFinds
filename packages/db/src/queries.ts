@@ -81,20 +81,38 @@ export type FeedView = "default" | "starred" | "hidden" | "all";
 export interface FeedFilters {
   view?: FeedView;
   days?: number;
+  tag?: string;
   limit?: number;
+}
+
+// Items stay visible through their expiry date (date-prefix comparison works
+// for both date and datetime ISO strings).
+function notExpired() {
+  const today = new Date().toISOString().slice(0, 10);
+  return sql`(${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})`;
 }
 
 export function getFeed(filters: FeedFilters = {}) {
   const conditions = [];
   const view = filters.view ?? "default";
-  if (view === "default") conditions.push(ne(finds.status, "hidden"));
-  if (view === "starred") conditions.push(eq(finds.status, "starred"));
+  if (view === "default") {
+    conditions.push(ne(finds.status, "hidden"), notExpired());
+  }
+  if (view === "starred") {
+    conditions.push(eq(finds.status, "starred"), notExpired());
+  }
   if (view === "hidden") conditions.push(eq(finds.status, "hidden"));
   if (filters.days) {
     const since = new Date(
       Date.now() - filters.days * 24 * 60 * 60 * 1000,
     ).toISOString();
     conditions.push(gte(finds.discoveredAt, since));
+  }
+  if (filters.tag) {
+    // tags is a JSON string array — exact-element match on the serialized form
+    conditions.push(
+      sql`exists (select 1 from json_each(${finds.tags}) where json_each.value = ${filters.tag})`,
+    );
   }
   return db()
     .select()
@@ -103,6 +121,27 @@ export function getFeed(filters: FeedFilters = {}) {
     .orderBy(desc(finds.discoveredAt))
     .limit(filters.limit ?? 200)
     .all();
+}
+
+// Distinct tags among currently feed-visible items, for the filter bar.
+export function listActiveTags(limit = 30): string[] {
+  const rows = db().all<{ tag: string; n: number }>(
+    sql`select json_each.value as tag, count(*) as n
+        from ${finds}, json_each(${finds.tags})
+        where ${finds.status} != 'hidden' and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${new Date().toISOString().slice(0, 10)})
+        group by tag order by n desc limit ${limit}`,
+  );
+  return rows.map((r) => r.tag);
+}
+
+export function costLastNDays(days = 30): number {
+  const since = new Date(
+    Date.now() - days * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const row = db().get<{ total: number | null }>(
+    sql`select sum(${runs.costUsd}) as total from ${runs} where ${runs.startedAt} >= ${since}`,
+  );
+  return row?.total ?? 0;
 }
 
 // First render of a `new` find flips it to `shown`

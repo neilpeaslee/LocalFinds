@@ -1,1 +1,70 @@
 @import "tailwindcss";
+
+/* Minimal typography for rendered markdown (agent profiles & site notes).
+   Handwritten instead of @tailwindcss/typography — its @plugin resolution
+   breaks under turbopack in npm workspaces. */
+.prose {
+  font-size: 0.875rem;
+  color: var(--color-stone-700);
+}
+.prose h1,
+.prose h2,
+.prose h3 {
+  font-weight: 600;
+  color: var(--color-stone-900);
+  margin: 0.9em 0 0.35em;
+}
+.prose h1 {
+  font-size: 1.05rem;
+}
+.prose h2 {
+  font-size: 0.95rem;
+}
+.prose p {
+  margin: 0.5em 0;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.25em;
+  margin: 0.5em 0;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.15em 0;
+}
+.prose table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.8rem;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--color-stone-200);
+  padding: 0.25em 0.6em;
+  text-align: left;
+}
+.prose code {
+  background: var(--color-stone-100);
+  padding: 0 0.3em;
+  border-radius: 0.25em;
+  font-size: 0.8em;
+}
+.prose a {
+  color: var(--color-blue-700);
+  text-decoration: underline;
+}
+.prose blockquote {
+  border-left: 3px solid var(--color-stone-200);
+  padding-left: 0.75em;
+  color: var(--color-stone-500);
+  margin: 0.5em 0;
+}
+.prose hr {
+  border-color: var(--color-stone-200);
+  margin: 0.9em 0;
+}

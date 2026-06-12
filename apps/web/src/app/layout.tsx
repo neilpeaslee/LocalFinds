@@ -33,6 +33,9 @@ export default function RootLayout({
               <a href="/sources" className="hover:text-stone-900">
                 Sources
               </a>
+              <a href="/agents" className="hover:text-stone-900">
+                Agents
+              </a>
             </nav>
           </div>
         </header>
