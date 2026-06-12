@@ -1,4 +1,35 @@
 import type { Find } from "@localfinds/db";
+import { submitFeedback } from "@/app/actions";
+
+function ActionButton({
+  findId,
+  action,
+  label,
+  title,
+  active = false,
+}: {
+  findId: number;
+  action: string;
+  label: string;
+  title: string;
+  active?: boolean;
+}) {
+  return (
+    <form action={submitFeedback} className="inline">
+      <input type="hidden" name="findId" value={findId} />
+      <input type="hidden" name="action" value={action} />
+      <button
+        type="submit"
+        title={title}
+        className={`rounded px-1.5 py-0.5 text-sm hover:bg-stone-100 ${
+          active ? "bg-amber-50" : ""
+        }`}
+      >
+        {label}
+      </button>
+    </form>
+  );
+}
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -51,6 +82,51 @@ export function FindCard({ find }: { find: Find }) {
           via {find.agent}
           {discovered ? ` · ${discovered}` : ""}
         </span>
+      </div>
+      <div className="mt-2 flex items-center gap-1 border-t border-stone-100 pt-2">
+        <ActionButton
+          findId={find.id}
+          action="thumbs_up"
+          label="👍"
+          title="More like this"
+        />
+        <ActionButton
+          findId={find.id}
+          action="thumbs_down"
+          label="👎"
+          title="Less like this"
+        />
+        {find.status === "starred" ? (
+          <ActionButton
+            findId={find.id}
+            action="unstar"
+            label="★ Starred"
+            title="Remove star"
+            active
+          />
+        ) : (
+          <ActionButton
+            findId={find.id}
+            action="star"
+            label="☆ Star"
+            title="Star this find"
+          />
+        )}
+        {find.status === "hidden" ? (
+          <ActionButton
+            findId={find.id}
+            action="unhide"
+            label="Unhide"
+            title="Restore to feed"
+          />
+        ) : (
+          <ActionButton
+            findId={find.id}
+            action="hide"
+            label="Hide"
+            title="Hide from feed"
+          />
+        )}
       </div>
     </article>
   );

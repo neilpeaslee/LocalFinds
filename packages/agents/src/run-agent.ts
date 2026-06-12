@@ -32,6 +32,18 @@ export interface RunOutcome {
   counters: RunCounters;
 }
 
+// Drop session markers from any parent Claude Code session so the spawned
+// agent CLI doesn't inherit its project context (memory dirs, session ids).
+function sanitizedEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (key.startsWith("CLAUDE_") || key === "CLAUDECODE") continue;
+    env[key] = value;
+  }
+  return env;
+}
+
 function ensureWorkspace(name: string): string {
   const workspace = agentWorkspaceDir(name);
   fs.mkdirSync(path.join(workspace, "notes"), { recursive: true });
@@ -92,6 +104,7 @@ export async function runAgent(
       options: {
         model: "claude-sonnet-4-6",
         cwd: workspace,
+        env: sanitizedEnv(),
         systemPrompt: def.systemPrompt,
         settingSources: [],
         permissionMode: "bypassPermissions",

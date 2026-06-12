@@ -1,0 +1,60 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - heading "LocalFinds— Ann Arbor, MI (TEST CONFIG)" [level=1] [ref=e4]:
+      - text: LocalFinds
+      - generic [ref=e5]: — Ann Arbor, MI (TEST CONFIG)
+  - main [ref=e6]:
+    - generic [ref=e7]:
+      - article [ref=e8]:
+        - heading "Ann Arbor Funhouse opens at Slows Bar BQ — new downtown concert venue" [level=2] [ref=e9]:
+          - link "Ann Arbor Funhouse opens at Slows Bar BQ — new downtown concert venue" [ref=e10] [cursor=pointer]:
+            - /url: https://www.ecurrent.com/biz-buzz/june-2026s-biz-buzz/
+        - paragraph [ref=e11]: A new live-music venue called Ann Arbor Funhouse has opened inside Slows Bar BQ at 207 E. Washington St., with its first performance by Violet Daybed on June 5. It adds a dedicated concert space to the downtown bar scene.
+        - generic [ref=e12]:
+          - generic [ref=e13]: opening
+          - generic [ref=e14]: live music
+          - generic [ref=e15]: concert venue
+          - generic [ref=e16]: downtown ann arbor
+          - generic [ref=e17]: bars
+          - generic [ref=e18]: via scout · Jun 12, 2026
+        - generic [ref=e19]:
+          - button "👍" [ref=e21]
+          - button "👎" [ref=e23]
+          - button "☆ Star" [ref=e25]
+          - button "Hide" [ref=e27]
+      - article [ref=e28]:
+        - heading "Ann Arbor Summer Festival 2026 — Top of the Park (June 12–28)" [level=2] [ref=e29]:
+          - link "Ann Arbor Summer Festival 2026 — Top of the Park (June 12–28)" [ref=e30] [cursor=pointer]:
+            - /url: https://www.annarbor.org/events/summer-festival/
+        - paragraph [ref=e31]: Michigan's biggest free outdoor summer festival returns to Ingalls Mall on the U-M campus, with nightly live music, outdoor movies, and family programming through June 28. Donations of $5/person are encouraged; full accessibility accommodations available.
+        - generic [ref=e32]:
+          - generic [ref=e33]: Jun 11, 2026 – Jun 27, 2026
+          - generic [ref=e34]: events
+          - generic [ref=e35]: live music
+          - generic [ref=e36]: outdoor
+          - generic [ref=e37]: free
+          - generic [ref=e38]: summer festival
+          - generic [ref=e39]: downtown ann arbor
+          - generic [ref=e40]: via scout · Jun 12, 2026
+        - generic [ref=e41]:
+          - button "👍" [ref=e43]
+          - button "👎" [ref=e45]
+          - button "★ Starred" [ref=e77]
+          - button "Hide" [ref=e49]
+      - article [ref=e50]:
+        - heading "Seeded test find — LocalFinds is wired up" [level=2] [ref=e51]:
+          - link "Seeded test find — LocalFinds is wired up" [ref=e52] [cursor=pointer]:
+            - /url: https://example.com/localfinds-seed
+        - paragraph [ref=e53]: "A fake find inserted by `npm run db:seed` to verify the schema and feed render end-to-end. Safe to hide once real finds arrive."
+        - generic [ref=e54]:
+          - generic [ref=e55]: seed
+          - generic [ref=e56]: smoke-test
+          - generic [ref=e57]: via seed · Jun 12, 2026
+        - generic [ref=e58]:
+          - button "👍" [ref=e60]
+          - button "👎" [ref=e62]
+          - button "☆ Star" [ref=e64]
+          - button "Hide" [ref=e66]
+  - button "Open Next.js Dev Tools" [ref=e72] [cursor=pointer]:
+    - img [ref=e73]
+  - alert [ref=e76]
