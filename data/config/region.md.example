@@ -1,0 +1,22 @@
+---
+name: "Example County, ST"
+---
+
+## Geography & coverage
+
+Describe your region the way you'd brief a new researcher: the towns and
+neighborhoods that count as "local", nearby places that do NOT count, and any
+landmarks or shorthand names agents should recognize. This entire file is
+injected verbatim into every agent's prompt.
+
+Example: Coverage is Example County — primarily Springfield and Shelbyville,
+plus the Route 9 corridor. Capital City news only counts when it directly
+affects county residents (transit, taxes, utilities).
+
+## Seed sources (optional)
+
+The source-keeper agent imports these into its registry on first run.
+
+- https://www.example-town.gov/news
+- https://www.example-library.org/events
+- https://www.example-county-paper.com

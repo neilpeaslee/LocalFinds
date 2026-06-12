@@ -1,0 +1,14 @@
+# dependencies / build output
+node_modules/
+.next/
+*.tsbuildinfo
+
+# secrets / local-only config
+.env
+.claude/settings.local.json
+
+# PII boundary: ALL runtime state (db, profiles, notes, logs) stays out of git.
+# Only committed templates (*.example) are allowed through.
+data/**
+!data/**/
+!data/**/*.example

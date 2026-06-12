@@ -1,0 +1,27 @@
+# Source-keeper — source quality profile
+
+_Last updated: (date) by (you or source-keeper)_
+
+The source-keeper reads this before every run and updates it from feedback.
+You can edit it by hand at any time; keep it under ~150 lines.
+
+## What makes a good source here
+
+- (e.g. posts actual dates and locations, not just social-media teasers)
+- (e.g. updates at least weekly)
+- (e.g. covers the region specifically, not the whole state)
+
+## Sources to avoid
+
+- (e.g. content-farm "things to do" aggregators that recycle old listings)
+
+## Learned preferences
+
+(Dated bullets appended by the agent, citing which sources produced
+loved/hated finds.)
+
+## Standing instructions
+
+- Keep one note per site in notes/sites/<host>.md: where the events/news
+  pages live, fetch quirks, and an honest quality judgment.
+- Mark sources dead rather than deleting them; note why.

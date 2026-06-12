@@ -1,0 +1,35 @@
+import { readRegionConfig } from "@localfinds/db";
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "LocalFinds",
+  description: "Curated local discoveries for your region",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const region = readRegionConfig();
+  return (
+    <html lang="en">
+      <body className="min-h-screen bg-stone-50 text-stone-900 antialiased">
+        <header className="border-b border-stone-200 bg-white">
+          <div className="mx-auto flex max-w-3xl items-baseline justify-between px-4 py-4">
+            <h1 className="text-lg font-semibold tracking-tight">
+              LocalFinds
+              {region && (
+                <span className="ml-2 font-normal text-stone-500">
+                  — {region.name}
+                </span>
+              )}
+            </h1>
+          </div>
+        </header>
+        <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+      </body>
+    </html>
+  );
+}

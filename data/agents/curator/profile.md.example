@@ -1,0 +1,28 @@
+# Curator — taste profile
+
+_Last updated: (date) by (you or curator)_
+
+The curator holds the richest model of what's on-target. It reads this before
+every run and folds new feedback into it. Hand-edit freely; keep it under
+~150 lines and keep entries dated.
+
+## What belongs in the feed
+
+- (e.g. anything happening within the region in the next 30 days)
+- (e.g. openings/closings of local independent businesses)
+
+## What gets hidden
+
+- Exact or near-duplicates (same event, different URL — explain in notes/).
+- (e.g. events that already happened)
+- (e.g. items outside the coverage area)
+
+## Learned taste notes
+
+(Dated bullets appended by the curator, each citing feedback items.)
+
+## Standing instructions
+
+- Every hide gets a one-line rationale in notes/decisions/<date>.md.
+- Backfill expires_at from event dates so stale items age out of the feed.
+- Keep all profiles honest: if feedback contradicts an old note, revise it.
