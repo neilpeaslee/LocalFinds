@@ -19,13 +19,21 @@ export default function RootLayout({
         <header className="border-b border-stone-200 bg-white">
           <div className="mx-auto flex max-w-3xl items-baseline justify-between px-4 py-4">
             <h1 className="text-lg font-semibold tracking-tight">
-              LocalFinds
+              <a href="/">LocalFinds</a>
               {region && (
                 <span className="ml-2 font-normal text-stone-500">
                   — {region.name}
                 </span>
               )}
             </h1>
+            <nav className="flex gap-4 text-sm text-stone-600">
+              <a href="/" className="hover:text-stone-900">
+                Feed
+              </a>
+              <a href="/sources" className="hover:text-stone-900">
+                Sources
+              </a>
+            </nav>
           </div>
         </header>
         <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>

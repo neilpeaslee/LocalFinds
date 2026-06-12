@@ -1,0 +1,52 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - heading "LocalFinds— Ann Arbor, MI (TEST CONFIG)" [level=1] [ref=e4]:
+        - link "LocalFinds" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e6]: — Ann Arbor, MI (TEST CONFIG)
+      - navigation [ref=e7]:
+        - link "Feed" [ref=e8] [cursor=pointer]:
+          - /url: /
+        - link "Sources" [ref=e9] [cursor=pointer]:
+          - /url: /sources
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - group [ref=e12]:
+        - generic "Ann Arbor District Library — Events https://aadl.org/events active 0 finds · quality 0.8 · checked 6/12/2026" [ref=e13] [cursor=pointer]:
+          - generic [ref=e14]: Ann Arbor District Library — Events
+          - link "https://aadl.org/events" [active] [ref=e15]:
+            - /url: https://aadl.org/events
+          - generic [ref=e16]: active
+          - generic [ref=e17]: 0 finds · quality 0.8 · checked 6/12/2026
+      - group [ref=e18]:
+        - generic "Ann Arbor Observer — Events at a Glance https://annarborobserver.com/events-at-a-glance/ active 0 finds · quality 0.8 · checked 6/12/2026" [ref=e19] [cursor=pointer]:
+          - generic [ref=e20]: Ann Arbor Observer — Events at a Glance
+          - link "https://annarborobserver.com/events-at-a-glance/" [ref=e21]:
+            - /url: https://annarborobserver.com/events-at-a-glance/
+          - generic [ref=e22]: active
+          - generic [ref=e23]: 0 finds · quality 0.8 · checked 6/12/2026
+      - group [ref=e24]:
+        - generic "City of Ann Arbor — News https://www.a2gov.org/news active 0 finds · quality 0.7 · checked 6/12/2026" [ref=e25] [cursor=pointer]:
+          - generic [ref=e26]: City of Ann Arbor — News
+          - link "https://www.a2gov.org/news" [ref=e27]:
+            - /url: https://www.a2gov.org/news
+          - generic [ref=e28]: active
+          - generic [ref=e29]: 0 finds · quality 0.7 · checked 6/12/2026
+      - group [ref=e30]:
+        - generic "Destination Ann Arbor — Events https://www.annarbor.org/events/ active 0 finds · quality 0.8 · checked 6/12/2026" [ref=e31] [cursor=pointer]:
+          - generic [ref=e32]: Destination Ann Arbor — Events
+          - link "https://www.annarbor.org/events/" [ref=e33]:
+            - /url: https://www.annarbor.org/events/
+          - generic [ref=e34]: active
+          - generic [ref=e35]: 0 finds · quality 0.8 · checked 6/12/2026
+      - group [ref=e36]:
+        - generic "Current Magazine — Biz Buzz https://www.ecurrent.com/biz-buzz/ active 0 finds · quality 0.8 · checked 6/12/2026" [ref=e37] [cursor=pointer]:
+          - generic [ref=e38]: Current Magazine — Biz Buzz
+          - link "https://www.ecurrent.com/biz-buzz/" [ref=e39]:
+            - /url: https://www.ecurrent.com/biz-buzz/
+          - generic [ref=e40]: active
+          - generic [ref=e41]: 0 finds · quality 0.8 · checked 6/12/2026
+  - button "Open Next.js Dev Tools" [ref=e47] [cursor=pointer]:
+    - img [ref=e48]
+  - alert [ref=e51]

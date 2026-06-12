@@ -90,7 +90,7 @@ export async function runAgent(
   let prompt = def.buildTaskPrompt({ region: region.raw, profile });
   if (maxTurns <= 10) {
     prompt +=
-      "\n\nBudget note: this is a quick capped test run. Skip notes upkeep, do at most 2 web searches, save at most 3 finds, then stop and summarize.";
+      "\n\nBudget note: this is a quick capped test run. Still do step 1 (feedback), then a minimal version of your remaining work: at most 2 web searches/fetches and at most 3 saving/updating tool calls, then stop and summarize.";
   }
   if (opts.extraPrompt) prompt += `\n\n${opts.extraPrompt}`;
 
@@ -107,6 +107,9 @@ export async function runAgent(
         env: sanitizedEnv(),
         systemPrompt: def.systemPrompt,
         settingSources: [],
+        // The CLI's auto-memory resolves to the enclosing git repo and would
+        // surface the developer's Claude session memory into agent context.
+        settings: { autoMemoryEnabled: false },
         permissionMode: "bypassPermissions",
         mcpServers: {
           localfinds: buildLocalfindsServer(def.name, counters),

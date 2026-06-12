@@ -1,8 +1,14 @@
 import { loadEnv } from "./env";
 import { runAgent, type AgentDefinition, type RunOptions } from "./run-agent";
+import { curator } from "./agents/curator";
 import { scout } from "./agents/scout";
+import { sourceKeeper } from "./agents/source-keeper";
 
-const registry: Record<string, AgentDefinition> = { scout };
+const registry: Record<string, AgentDefinition> = {
+  scout,
+  "source-keeper": sourceKeeper,
+  curator,
+};
 const rosterOrder = ["scout", "source-keeper", "curator"];
 
 function parseArgs(argv: string[]): { target: string; opts: RunOptions } {
