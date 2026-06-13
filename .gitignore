@@ -3,6 +3,9 @@ node_modules/
 .next/
 *.tsbuildinfo
 
+# browser-automation debug artifacts
+.playwright-mcp/
+
 # secrets / local-only config
 .env
 .claude/settings.local.json
