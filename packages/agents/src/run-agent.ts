@@ -2,6 +2,8 @@ import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   agentWorkspaceDir,
   finishRun,
+  formatCategoryPriorities,
+  readCategoryConfig,
   readRegionConfig,
   startRun,
 } from "@localfinds/db";
@@ -16,7 +18,11 @@ export interface AgentDefinition {
   allowedTools: string[];
   defaultMaxTurns: number;
   systemPrompt: string;
-  buildTaskPrompt(ctx: { region: string; profile: string }): string;
+  buildTaskPrompt(ctx: {
+    region: string;
+    profile: string;
+    categories: string;
+  }): string;
 }
 
 export interface RunOptions {
@@ -87,7 +93,8 @@ export async function runAgent(
   const counters: RunCounters = { added: 0, updated: 0 };
   const maxTurns = opts.maxTurns ?? def.defaultMaxTurns;
 
-  let prompt = def.buildTaskPrompt({ region: region.raw, profile });
+  const categories = formatCategoryPriorities(readCategoryConfig());
+  let prompt = def.buildTaskPrompt({ region: region.raw, profile, categories });
   if (maxTurns <= 10) {
     prompt +=
       "\n\nBudget note: this is a quick capped test run. Still do step 1 (feedback), then a minimal version of your remaining work: at most 2 web searches/fetches and at most 3 saving/updating tool calls, then stop and summarize.";

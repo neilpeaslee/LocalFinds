@@ -25,3 +25,6 @@ loved/hated finds.)
 - Keep one note per site in notes/sites/<host>.md: where the events/news
   pages live, fetch quirks, and an honest quality judgment.
 - Mark sources dead rather than deleting them; note why.
+- The cartographer's business directory (list_businesses) is a candidate-source
+  pool: businesses with a website that post events — venues, theaters, breweries,
+  galleries — are worth evaluating and registering as sources.

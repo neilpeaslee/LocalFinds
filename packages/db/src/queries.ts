@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { db } from "./client";
 import { findKey } from "./dedupe";
-import { feedback, finds, runs, sources } from "./schema";
+import { businesses, feedback, finds, runs, sources } from "./schema";
 
 export interface NewFindInput {
   title: string;
@@ -264,6 +264,119 @@ export function upsertSource(input: UpsertSourceInput): { id: number } {
     .onConflictDoUpdate({ target: sources.url, set })
     .returning({ id: sources.id })
     .get()!;
+}
+
+export interface UpsertBusinessInput {
+  osmId: string;
+  name: string;
+  kind?: string | null;
+  tags?: string[];
+  address?: string | null;
+  town?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  website?: string | null;
+  phone?: string | null;
+  brand?: string | null;
+  status?: "active" | "closed" | "unknown";
+  notesPath?: string | null;
+  addedBy: string;
+}
+
+export interface UpsertBusinessResult {
+  id: number;
+  outcome: "created" | "updated";
+}
+
+// Matched by osmId. Only fields the caller actually supplied are overwritten, so
+// a sparse re-scan never wipes facts a fuller scan captured. lastSeenAt always
+// advances — it's the "still present in OSM" signal for the closure sweep.
+export function upsertBusiness(input: UpsertBusinessInput): UpsertBusinessResult {
+  const now = new Date().toISOString();
+  const existing = db()
+    .select({ id: businesses.id })
+    .from(businesses)
+    .where(eq(businesses.osmId, input.osmId))
+    .get();
+
+  const set: Record<string, unknown> = { lastSeenAt: now };
+  if (input.name !== undefined) set.name = input.name;
+  if (input.kind !== undefined) set.kind = input.kind;
+  if (input.tags !== undefined) set.tags = input.tags;
+  if (input.address !== undefined) set.address = input.address;
+  if (input.town !== undefined) set.town = input.town;
+  if (input.lat !== undefined) set.lat = input.lat;
+  if (input.lng !== undefined) set.lng = input.lng;
+  if (input.website !== undefined) set.website = input.website;
+  if (input.phone !== undefined) set.phone = input.phone;
+  if (input.brand !== undefined) set.brand = input.brand;
+  if (input.status !== undefined) set.status = input.status;
+  if (input.notesPath !== undefined) set.notesPath = input.notesPath;
+
+  const row = db()
+    .insert(businesses)
+    .values({
+      osmId: input.osmId,
+      name: input.name,
+      kind: input.kind ?? null,
+      tags: input.tags ?? [],
+      address: input.address ?? null,
+      town: input.town ?? null,
+      lat: input.lat ?? null,
+      lng: input.lng ?? null,
+      website: input.website ?? null,
+      phone: input.phone ?? null,
+      brand: input.brand ?? null,
+      status: input.status ?? "active",
+      notesPath: input.notesPath ?? null,
+      addedBy: input.addedBy,
+      discoveredAt: now,
+      lastSeenAt: now,
+    })
+    .onConflictDoUpdate({ target: businesses.osmId, set })
+    .returning({ id: businesses.id })
+    .get()!;
+
+  return { id: row.id, outcome: existing ? "updated" : "created" };
+}
+
+export interface BusinessFilters {
+  town?: string;
+  tag?: string;
+  status?: "active" | "closed" | "unknown";
+  q?: string;
+  limit?: number;
+}
+
+export function listBusinesses(filters: BusinessFilters = {}) {
+  const conditions = [];
+  if (filters.town) conditions.push(eq(businesses.town, filters.town));
+  if (filters.status) conditions.push(eq(businesses.status, filters.status));
+  if (filters.tag) {
+    conditions.push(
+      sql`exists (select 1 from json_each(${businesses.tags}) where json_each.value = ${filters.tag})`,
+    );
+  }
+  if (filters.q) {
+    conditions.push(sql`${businesses.name} like ${"%" + filters.q + "%"}`);
+  }
+  return db()
+    .select()
+    .from(businesses)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(businesses.town, businesses.name)
+    .limit(filters.limit ?? 500)
+    .all();
+}
+
+// Distinct towns with business counts, for the directory's town filter.
+export function listBusinessTowns(): { town: string; n: number }[] {
+  return db().all<{ town: string; n: number }>(
+    sql`select ${businesses.town} as town, count(*) as n
+        from ${businesses}
+        where ${businesses.town} is not null
+        group by town order by town`,
+  );
 }
 
 export function startRun(agent: string): number {

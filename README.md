@@ -4,14 +4,15 @@ A single-user web app showing a curated feed of local finds — events, org
 announcements, official notices — for one configurable region, gathered by
 scheduled Claude agents that learn your taste from feed feedback.
 
-- **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), agent
-  profiles + run history (`/agents`).
-- **packages/agents** — three Claude Agent SDK agents, run sequentially:
+- **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), business
+  directory (`/businesses`), agent profiles + run history (`/agents`).
+- **packages/agents** — four Claude Agent SDK agents, run sequentially:
   **scout** (web-searches for new finds), **source-keeper** (maintains the
-  source registry + per-site notes), **curator** (dedupes, prunes, expires,
-  and keeps the taste profile).
+  source registry + per-site notes), **cartographer** (mirrors every business
+  in the region from OpenStreetMap into the directory), **curator** (dedupes,
+  prunes, expires, and keeps the taste profile).
 - **packages/db** — Drizzle + SQLite for exact facts (finds, sources,
-  feedback, runs). Anything fuzzy lives in per-agent markdown under
+  businesses, feedback, runs). Anything fuzzy lives in per-agent markdown under
   `data/agents/<name>/` (profile.md is yours to edit too).
 - **data/** — ALL runtime state and personal config. Gitignored except
   `*.example` templates: keep PII out of git.
@@ -29,11 +30,17 @@ npm run dev                                           # http://localhost:3000
 ## Running agents
 
 ```sh
-npm run agent -- scout --max-turns 8    # cheap capped test run
-npm run agents:all                      # full roster, sequential
-npm test                                # vitest (db package)
-npm run db:studio                       # inspect the database
+npm run agent -- scout --max-turns 8         # cheap capped test run
+npm run agent -- cartographer --max-turns 8  # populate /businesses from OpenStreetMap
+npm run agents:all                           # full roster, sequential
+npm test                                     # vitest (db package)
+npm run db:studio                            # inspect the database
 ```
+
+The cartographer pulls businesses from OpenStreetMap via the Overpass API (no
+API key needed) and walks a (town × business-key) grid using
+`data/agents/cartographer/notes/coverage.md` as its cursor, so coverage builds
+up incrementally across runs.
 
 Schedule with cron once region + API key are real (see the comment in
 `scripts/run-agents.sh`):

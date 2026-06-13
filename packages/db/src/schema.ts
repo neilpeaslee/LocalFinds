@@ -56,6 +56,38 @@ export const feedback = sqliteTable("feedback", {
   createdAt: text("created_at").notNull(),
 });
 
+// A business in the region, mirrored from OpenStreetMap by the cartographer.
+// Exact facts only — deduped by the OSM stable id. The business↔source link is
+// deliberately left fuzzy (a plain website string), for the agents to resolve.
+export const businesses = sqliteTable("businesses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  // "node/123" | "way/456" | "relation/789"
+  osmId: text("osm_id").notNull().unique(),
+  name: text("name").notNull(),
+  // Verbatim OSM primary tag, e.g. "amenity=cafe". Not a controlled taxonomy.
+  kind: text("kind"),
+  tags: text("tags", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
+  address: text("address"),
+  town: text("town"),
+  lat: real("lat"),
+  lng: real("lng"),
+  website: text("website"),
+  phone: text("phone"),
+  // OSM brand tag — present means a national/regional chain (forced to lowest priority).
+  brand: text("brand"),
+  status: text("status", { enum: ["active", "closed", "unknown"] })
+    .notNull()
+    .default("active"),
+  notesPath: text("notes_path"),
+  addedBy: text("added_by").notNull(),
+  discoveredAt: text("discovered_at").notNull(),
+  // Last run Overpass still returned this osmId — cursor for the "maybe closed" sweep.
+  lastSeenAt: text("last_seen_at").notNull(),
+});
+
 export const runs = sqliteTable("runs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   agent: text("agent").notNull(),
@@ -75,5 +107,6 @@ export const runs = sqliteTable("runs", {
 
 export type Find = typeof finds.$inferSelect;
 export type Source = typeof sources.$inferSelect;
+export type Business = typeof businesses.$inferSelect;
 export type Feedback = typeof feedback.$inferSelect;
 export type Run = typeof runs.$inferSelect;

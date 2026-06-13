@@ -11,7 +11,7 @@ import remarkGfm from "remark-gfm";
 
 export const dynamic = "force-dynamic";
 
-const AGENTS = ["scout", "source-keeper", "curator"];
+const AGENTS = ["scout", "source-keeper", "cartographer", "curator"];
 
 function readProfile(agent: string): string | null {
   try {

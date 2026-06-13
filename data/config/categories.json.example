@@ -1,0 +1,32 @@
+{
+  "_comment": "Search-priority tiers for business categories (OSM key=value). Tier 1 = highest priority, 4 = excluded from the directory. Use \"key=*\" to match any value of a key (e.g. craft=*). Anything not listed falls to default_tier. National/regional chains (OSM brand tag) are forced to lowest priority regardless of tier. Edit freely — agents read this each run and the /businesses page reads it per request; no re-scan needed.",
+  "default_tier": 3,
+  "hide_in_directory": { "tier4": true, "chains": true },
+  "tiers": {
+    "1": [
+      "amenity=townhall", "amenity=courthouse", "amenity=school", "amenity=library", "amenity=post_office", "office=government",
+      "leisure=park", "leisure=nature_reserve", "leisure=dog_park", "leisure=garden", "tourism=viewpoint",
+      "tourism=museum", "tourism=gallery", "tourism=artwork", "amenity=theatre", "amenity=cinema", "amenity=arts_centre", "amenity=events_venue", "amenity=community_centre", "amenity=social_centre", "amenity=marketplace",
+      "shop=cannabis"
+    ],
+    "2": [
+      "amenity=fire_station", "amenity=police", "amenity=hospital", "amenity=clinic", "amenity=doctors", "amenity=dentist", "amenity=nursing_home", "amenity=social_facility", "amenity=college", "amenity=university",
+      "shop=books", "shop=gift", "shop=farm", "shop=antiques", "shop=art", "shop=country_store", "shop=variety_store", "shop=general", "shop=second_hand", "shop=charity", "shop=outdoor", "shop=stationery", "shop=hardware", "shop=doityourself",
+      "craft=*",
+      "office=lawyer", "office=estate_agent", "office=accountant", "office=insurance", "office=tax_advisor", "office=company",
+      "leisure=fitness_centre", "leisure=sports_centre",
+      "tourism=attraction", "tourism=information", "tourism=camp_site", "tourism=camp_pitch", "tourism=picnic_site", "tourism=alpine_hut"
+    ],
+    "3": [
+      "amenity=restaurant", "amenity=cafe", "amenity=fast_food", "amenity=ice_cream", "amenity=bar", "amenity=pub",
+      "shop=seafood", "shop=bakery", "shop=confectionery",
+      "leisure=marina", "leisure=golf_course", "leisure=slipway", "leisure=miniature_golf", "amenity=boat_rental", "amenity=boat_storage",
+      "tourism=hotel", "tourism=motel", "tourism=guest_house", "tourism=hostel", "tourism=apartment",
+      "amenity=bank", "amenity=fuel", "amenity=car_wash", "amenity=place_of_worship"
+    ],
+    "4": [
+      "amenity=parking", "amenity=parking_space", "amenity=bench", "amenity=toilets", "amenity=drinking_water", "amenity=bicycle_parking", "amenity=shelter", "amenity=charging_station", "amenity=recycling", "amenity=fountain", "amenity=compressed_air", "amenity=loading_dock", "amenity=sanitary_dump_station", "amenity=weighbridge", "amenity=waste_transfer_station", "amenity=waste_disposal", "amenity=grave_yard",
+      "leisure=pitch", "leisure=playground", "leisure=picnic_table", "leisure=swimming_pool", "leisure=track", "leisure=sports_hall", "leisure=bleachers", "leisure=firepit", "leisure=swimming_area", "leisure=outdoor_seating", "leisure=bandstand", "leisure=fishing"
+    ]
+  }
+}

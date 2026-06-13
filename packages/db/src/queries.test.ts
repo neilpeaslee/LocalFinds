@@ -9,6 +9,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localfinds-test-"));
 process.env.LOCALFINDS_DATA_DIR = tmp;
 
 let q: typeof import("./queries");
+let cfg: typeof import("./config");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -19,6 +20,7 @@ beforeAll(async () => {
     stdio: "ignore",
   });
   q = await import("./queries");
+  cfg = await import("./config");
 }, 60_000);
 
 describe("insertFind dedupe", () => {
@@ -78,6 +80,120 @@ describe("feed expiry filtering", () => {
     const ids = q.getFeed({ tag: "music" }).map((f) => f.id);
     expect(ids).toContain(tagged.id);
     expect(q.getFeed({ tag: "nope" })).toHaveLength(0);
+  });
+});
+
+describe("businesses", () => {
+  it("creates then updates on the same osmId without nulling omitted fields", async () => {
+    const created = q.upsertBusiness({
+      osmId: "node/1",
+      name: "Rock City Coffee",
+      kind: "amenity=cafe",
+      tags: ["cafe", "coffee"],
+      address: "316 Main St, Rockland",
+      town: "Rockland",
+      website: "https://rockcitycoffee.com",
+      phone: "207-555-0100",
+      addedBy: "test",
+    });
+    expect(created.outcome).toBe("created");
+
+    const before = q.listBusinesses({ q: "Rock City" })[0];
+    await sleep(5);
+
+    // A sparse re-scan that only re-confirms name/town must not wipe phone/website.
+    const updated = q.upsertBusiness({
+      osmId: "node/1",
+      name: "Rock City Coffee",
+      town: "Rockland",
+      addedBy: "test",
+    });
+    expect(updated).toEqual({ id: created.id, outcome: "updated" });
+
+    const after = q.listBusinesses({ q: "Rock City" })[0];
+    expect(after.phone).toBe("207-555-0100");
+    expect(after.website).toBe("https://rockcitycoffee.com");
+    expect(after.discoveredAt).toBe(before.discoveredAt);
+    expect(after.lastSeenAt > before.lastSeenAt).toBe(true);
+  });
+
+  it("filters by town, tag, status, and name substring", () => {
+    q.upsertBusiness({
+      osmId: "way/10",
+      name: "Camden Hardware",
+      tags: ["hardware", "doityourself"],
+      town: "Camden",
+      status: "active",
+      addedBy: "test",
+    });
+    q.upsertBusiness({
+      osmId: "way/11",
+      name: "Closed Diner",
+      tags: ["restaurant"],
+      town: "Camden",
+      status: "closed",
+      addedBy: "test",
+    });
+
+    expect(q.listBusinesses({ town: "Camden" }).map((b) => b.osmId).sort()).toEqual([
+      "way/10",
+      "way/11",
+    ]);
+    expect(q.listBusinesses({ tag: "hardware" }).map((b) => b.osmId)).toEqual(["way/10"]);
+    expect(q.listBusinesses({ status: "closed" }).map((b) => b.osmId)).toEqual(["way/11"]);
+    expect(q.listBusinesses({ q: "hardware" }).map((b) => b.osmId)).toEqual(["way/10"]);
+    expect(q.listBusinesses({ town: "Nowhere" })).toHaveLength(0);
+  });
+
+  it("stores and returns the brand (chain signal)", () => {
+    q.upsertBusiness({
+      osmId: "node/200",
+      name: "Hannaford",
+      kind: "shop=supermarket",
+      brand: "Hannaford",
+      town: "Rockland",
+      addedBy: "test",
+    });
+    const b = q.listBusinesses({ q: "Hannaford" })[0];
+    expect(b.brand).toBe("Hannaford");
+  });
+
+  it("lists distinct towns with counts, alphabetically, excluding null towns", () => {
+    q.upsertBusiness({ osmId: "node/100", name: "A", town: "Owls Head", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/101", name: "B", town: "Owls Head", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/102", name: "C", town: "Vinalhaven", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/103", name: "D", addedBy: "test" }); // no town
+
+    const towns = q.listBusinessTowns();
+    expect(towns).toContainEqual({ town: "Owls Head", n: 2 });
+    expect(towns).toContainEqual({ town: "Vinalhaven", n: 1 });
+    expect(towns.some((t) => t.town === null)).toBe(false);
+    const names = towns.map((t) => t.town);
+    expect(names).toEqual([...names].sort());
+  });
+});
+
+describe("category priorities", () => {
+  it("maps categories to tiers, honoring wildcards and the default", () => {
+    const cfgDir = path.join(tmp, "config");
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cfgDir, "categories.json"),
+      JSON.stringify({
+        default_tier: 3,
+        tiers: {
+          "1": ["amenity=townhall"],
+          "2": ["craft=*"],
+          "4": ["amenity=parking"],
+        },
+      }),
+    );
+    const c = cfg.readCategoryConfig();
+    expect(c.tierOf("amenity=townhall")).toBe(1); // exact
+    expect(c.tierOf("craft=boatbuilder")).toBe(2); // wildcard key=*
+    expect(c.tierOf("amenity=parking")).toBe(4); // excluded
+    expect(c.tierOf("shop=anything")).toBe(3); // default
+    expect(c.tierOf(null)).toBe(3); // no kind
   });
 });
 

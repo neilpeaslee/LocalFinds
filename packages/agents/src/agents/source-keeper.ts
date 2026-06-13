@@ -16,6 +16,7 @@ export const sourceKeeper: AgentDefinition = {
     "mcp__localfinds__save_find",
     "mcp__localfinds__list_recent_finds",
     "mcp__localfinds__read_feedback",
+    "mcp__localfinds__list_businesses",
   ],
   systemPrompt: `You are the source-keeper for LocalFinds, a personal local-discoveries feed. You run unattended on a schedule; no one can answer questions mid-run.
 
@@ -43,6 +44,7 @@ ${profile}
 2. Call list_sources. If the registry is empty and the region briefing lists seed sources, register each seed with upsert_source first.
 3. Re-check the 3-5 stalest sources (oldest last_checked_at): fetch their news/events pages, then update notes/sites/<host>.md and call upsert_source (which bumps last_checked_at) with any status or quality changes. If a site is gone, set status "dead" and say why in its note.
 4. Run at most 2 web searches for new candidate sources for this region (official sites, venues, libraries, local press, community calendars). For a promising candidate: fetch it, write notes/sites/<host>.md, then upsert_source with notes_path pointing at that note.
+   - You may also call list_businesses: businesses with a website are candidate sources. Evaluate the most promising ones (venues, theaters, breweries, galleries that post events) and register the good ones with upsert_source.
 5. If you stumble on a genuinely local, current item while indexing, you may save_find it — but source upkeep is the priority.
 6. Keep each site note short and current: where to look, how often it posts, what it's good for, quality judgment, last verified date.`,
 };
