@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 
 // Dates are ISO 8601 strings. Exact, structured facts only — fuzzy judgment
 // (relevance, source quality, soft dedupe) lives in the agents' markdown.
@@ -86,7 +92,12 @@ export const businesses = sqliteTable("businesses", {
   discoveredAt: text("discovered_at").notNull(),
   // Last run Overpass still returned this osmId — cursor for the "maybe closed" sweep.
   lastSeenAt: text("last_seen_at").notNull(),
-});
+}, (t) => [
+  // The directory and the list_businesses tool filter by town/status and order
+  // by (town, name); index those so neither does a full scan + filesort.
+  index("businesses_town_name_idx").on(t.town, t.name),
+  index("businesses_status_idx").on(t.status),
+]);
 
 export const runs = sqliteTable("runs", {
   id: integer("id").primaryKey({ autoIncrement: true }),

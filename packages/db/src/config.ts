@@ -42,31 +42,40 @@ export function categoryConfigPath(): string {
 
 // Reads categories.json, falling back to the .example template, then to a
 // permissive default (everything at default_tier) so the app never breaks.
+// A present-but-malformed file must NOT silently wipe the tier ranking — it
+// falls through to the next candidate (the committed template).
 export function readCategoryConfig(): CategoryConfig {
   const file = categoryConfigPath();
-  let raw = "";
-  for (const candidate of [file, `${file}.example`]) {
-    try {
-      raw = fs.readFileSync(candidate, "utf8");
-      break;
-    } catch {
-      // try next
-    }
-  }
   let parsed: {
     default_tier?: number;
     hide_in_directory?: { tier4?: boolean; chains?: boolean };
     tiers?: Record<string, string[]>;
   } = {};
-  if (raw) {
+  for (const candidate of [file, `${file}.example`]) {
+    let raw: string;
     try {
-      parsed = JSON.parse(raw);
+      raw = fs.readFileSync(candidate, "utf8");
     } catch {
-      parsed = {};
+      continue; // missing file — try the next candidate
+    }
+    try {
+      const json = JSON.parse(raw);
+      if (json && typeof json === "object") {
+        parsed = json;
+        break; // accepted a well-formed candidate
+      }
+    } catch {
+      // malformed JSON — fall through to the next candidate, don't accept it
     }
   }
 
-  const defaultTier = Number(parsed.default_tier ?? 3);
+  // Coerce numbers defensively so a hand-edited string never becomes NaN.
+  const toTier = (value: unknown, fallback: number): number => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const defaultTier = toTier(parsed.default_tier, 3);
   const tiers = parsed.tiers ?? {};
   const hideInDirectory = {
     tier4: parsed.hide_in_directory?.tier4 ?? true,
@@ -77,6 +86,7 @@ export function readCategoryConfig(): CategoryConfig {
   const wild = new Map<string, number>(); // "amenity" -> tier (from "amenity=*")
   for (const [tierStr, cats] of Object.entries(tiers)) {
     const tier = Number(tierStr);
+    if (!Number.isFinite(tier)) continue; // skip a non-numeric tier key
     for (const cat of cats) {
       if (cat.endsWith("=*")) wild.set(cat.slice(0, -2), tier);
       else exact.set(cat, tier);
@@ -99,7 +109,7 @@ export function readCategoryConfig(): CategoryConfig {
 // A readable tier listing for injection into agent prompts.
 export function formatCategoryPriorities(cfg: CategoryConfig): string {
   const lines = Object.keys(cfg.tiers)
-    .sort()
+    .sort((a, b) => Number(a) - Number(b))
     .map((t) => {
       const label = t === "4" ? `Tier ${t} (SKIP — not businesses)` : `Tier ${t}`;
       return `- ${label}: ${cfg.tiers[t].join(", ")}`;

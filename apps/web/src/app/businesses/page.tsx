@@ -1,12 +1,10 @@
 import {
-  agentWorkspaceDir,
-  listBusinesses,
-  listBusinessTowns,
-  readCategoryConfig,
   type Business,
+  listBusinessTowns,
+  listBusinessesRanked,
+  readAgentNote,
+  readCategoryConfig,
 } from "@localfinds/db";
-import fs from "node:fs";
-import path from "node:path";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -36,16 +34,9 @@ type Filters = {
   chains?: string;
 };
 
-function readBusinessNote(notesPath: string | null): string | null {
-  if (!notesPath) return null;
-  const workspace = agentWorkspaceDir("cartographer");
-  const resolved = path.resolve(workspace, notesPath);
-  if (!resolved.startsWith(workspace + path.sep)) return null;
-  try {
-    return fs.readFileSync(resolved, "utf8");
-  } catch {
-    return null;
-  }
+// Next.js delivers string[] for a repeated query key (?q=a&q=b); take the first.
+function first(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function hrefWith(current: Filters, patch: Filters): string {
@@ -66,37 +57,38 @@ function pill(active: boolean): string {
 export default async function BusinessesPage({
   searchParams,
 }: {
-  searchParams: Promise<Filters>;
+  searchParams: Promise<Filters & Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const town = params.town || undefined;
-  const status = STATUSES.includes(params.status as (typeof STATUSES)[number])
-    ? (params.status as Business["status"])
+  const town = first(params.town) || undefined;
+  const statusRaw = first(params.status);
+  const status = STATUSES.includes(statusRaw as (typeof STATUSES)[number])
+    ? (statusRaw as Business["status"])
     : undefined;
-  const tag = params.tag || undefined;
-  const q = params.q || undefined;
-  const current: Filters = {
+  const tag = first(params.tag) || undefined;
+  const q = first(params.q) || undefined;
+  const tier4 = first(params.tier4);
+  const chains = first(params.chains);
+  const current: Filters = { town, status, tag, q, tier4, chains };
+
+  const cfg = readCategoryConfig();
+  const showTier4 = tier4 === "1" || !cfg.hideInDirectory.tier4;
+  const showChains = chains === "1" || !cfg.hideInDirectory.chains;
+
+  // The query layer owns tier/chain ranking, visibility, sorting, and counts.
+  const { rows, total, tier4Count, chainCount } = listBusinessesRanked({
     town,
     status,
     tag,
     q,
-    tier4: params.tier4,
-    chains: params.chains,
-  };
-
-  const cfg = readCategoryConfig();
-  const showTier4 = params.tier4 === "1" || !cfg.hideInDirectory.tier4;
-  const showChains = params.chains === "1" || !cfg.hideInDirectory.chains;
-
-  const all = listBusinesses({ town, status, tag, q, limit: 5000 }).map((b) => ({
-    b,
-    tier: cfg.tierOf(b.kind),
-    isChain: Boolean(b.brand),
-  }));
+    limit: 5000,
+    includeTier4: showTier4,
+    includeChains: showChains,
+  });
   const towns = listBusinessTowns();
   const hasFilters = Boolean(town || status || tag || q);
 
-  if (towns.length === 0 && !hasFilters) {
+  if (total === 0 && !hasFilters) {
     return (
       <p className="py-12 text-center text-sm text-stone-500">
         No businesses yet. The cartographer agent populates this from
@@ -109,18 +101,6 @@ export default async function BusinessesPage({
     );
   }
 
-  const hiddenTier4 = all.filter((x) => x.tier === 4).length;
-  const hiddenChains = all.filter((x) => x.isChain).length;
-
-  const visible = all
-    .filter((x) => (showTier4 || x.tier !== 4) && (showChains || !x.isChain))
-    .sort(
-      (a, z) =>
-        Number(a.isChain) - Number(z.isChain) ||
-        a.tier - z.tier ||
-        a.b.name.localeCompare(z.b.name),
-    );
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-white p-3">
@@ -128,8 +108,8 @@ export default async function BusinessesPage({
           {town && <input type="hidden" name="town" value={town} />}
           {status && <input type="hidden" name="status" value={status} />}
           {tag && <input type="hidden" name="tag" value={tag} />}
-          {params.tier4 && <input type="hidden" name="tier4" value={params.tier4} />}
-          {params.chains && <input type="hidden" name="chains" value={params.chains} />}
+          {tier4 && <input type="hidden" name="tier4" value={tier4} />}
+          {chains && <input type="hidden" name="chains" value={chains} />}
           <input
             type="search"
             name="q"
@@ -175,23 +155,23 @@ export default async function BusinessesPage({
           </div>
         )}
 
-        {(hiddenChains > 0 || hiddenTier4 > 0) && (
+        {(chainCount > 0 || tier4Count > 0) && (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs font-medium text-stone-500">Show</span>
-            {hiddenChains > 0 && (
+            {chainCount > 0 && (
               <a
                 href={hrefWith(current, { chains: showChains ? undefined : "1" })}
                 className={pill(showChains)}
               >
-                chains ({hiddenChains})
+                chains ({chainCount})
               </a>
             )}
-            {hiddenTier4 > 0 && (
+            {tier4Count > 0 && (
               <a
                 href={hrefWith(current, { tier4: showTier4 ? undefined : "1" })}
                 className={pill(showTier4)}
               >
-                excluded categories ({hiddenTier4})
+                excluded categories ({tier4Count})
               </a>
             )}
           </div>
@@ -208,18 +188,18 @@ export default async function BusinessesPage({
       </div>
 
       <p className="text-xs text-stone-500">
-        {visible.length} {visible.length === 1 ? "business" : "businesses"}
+        {rows.length} {rows.length === 1 ? "business" : "businesses"}
         {hasFilters ? " matching filters" : ""}, ranked by search priority
       </p>
 
-      {visible.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="py-8 text-center text-sm text-stone-500">
           No businesses match these filters.
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-          {visible.map(({ b, tier, isChain }) => {
-            const note = readBusinessNote(b.notesPath);
+          {rows.map(({ business: b, tier, isChain }) => {
+            const note = readAgentNote("cartographer", b.notesPath);
             return (
               <details
                 key={b.id}
@@ -267,16 +247,14 @@ export default async function BusinessesPage({
                       </a>
                     )}
                     {b.phone && <span>{b.phone}</span>}
-                    {b.lat != null && b.lng != null && (
-                      <a
-                        href={`https://www.openstreetmap.org/${b.osmId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
-                        {b.osmId}
-                      </a>
-                    )}
+                    <a
+                      href={`https://www.openstreetmap.org/${b.osmId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {b.osmId}
+                    </a>
                   </div>
                   {b.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">

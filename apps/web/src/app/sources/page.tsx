@@ -1,22 +1,8 @@
-import { agentWorkspaceDir, listSources } from "@localfinds/db";
-import fs from "node:fs";
-import path from "node:path";
+import { listSources, readAgentNote } from "@localfinds/db";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export const dynamic = "force-dynamic";
-
-function readSiteNote(notesPath: string | null): string | null {
-  if (!notesPath) return null;
-  const workspace = agentWorkspaceDir("source-keeper");
-  const resolved = path.resolve(workspace, notesPath);
-  if (!resolved.startsWith(workspace + path.sep)) return null;
-  try {
-    return fs.readFileSync(resolved, "utf8");
-  } catch {
-    return null;
-  }
-}
 
 const STATUS_STYLE: Record<string, string> = {
   active: "bg-green-100 text-green-800",
@@ -39,7 +25,7 @@ export default function SourcesPage() {
   return (
     <div className="flex flex-col gap-2">
       {sources.map((source) => {
-        const note = readSiteNote(source.notesPath);
+        const note = readAgentNote("source-keeper", source.notesPath);
         return (
           <details
             key={source.id}

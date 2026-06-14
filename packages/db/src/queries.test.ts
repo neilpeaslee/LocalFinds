@@ -245,3 +245,116 @@ describe("feedback cursor", () => {
     ).toBe(true);
   });
 });
+
+describe("category config fallback", () => {
+  const cfgDir = path.join(tmp, "config");
+  const live = path.join(cfgDir, "categories.json");
+  const example = path.join(cfgDir, "categories.json.example");
+
+  it("falls back to the .example template when categories.json is present but malformed", () => {
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(live, "{ not valid json,, ");
+    fs.writeFileSync(
+      example,
+      JSON.stringify({ default_tier: 3, tiers: { "1": ["amenity=library"] } }),
+    );
+
+    const c = cfg.readCategoryConfig();
+    // The real tier from the template must survive, not collapse to default.
+    expect(c.tierOf("amenity=library")).toBe(1);
+
+    fs.rmSync(live);
+    fs.rmSync(example);
+  });
+
+  it("coerces a non-numeric default_tier to a finite number instead of NaN", () => {
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(live, JSON.stringify({ default_tier: "oops", tiers: {} }));
+
+    const c = cfg.readCategoryConfig();
+    expect(Number.isFinite(c.tierOf("shop=whatever"))).toBe(true);
+
+    fs.rmSync(live);
+  });
+});
+
+describe("listBusinesses name search escaping", () => {
+  it("treats % and _ in the query as literal characters, not SQL wildcards", () => {
+    q.upsertBusiness({ osmId: "node/900", name: "50% Off Outlet", town: "Esc", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/901", name: "5000 Club", town: "Esc", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/902", name: "a_b shop", town: "Esc", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/903", name: "axb shop", town: "Esc", addedBy: "test" });
+
+    // '%' is literal: matches "50% Off Outlet", NOT "5000 Club"
+    expect(q.listBusinesses({ q: "50%" }).map((b) => b.osmId)).toEqual(["node/900"]);
+    // '_' is literal: matches "a_b shop", NOT "axb shop"
+    expect(q.listBusinesses({ q: "a_b" }).map((b) => b.osmId)).toEqual(["node/902"]);
+  });
+});
+
+describe("readAgentNote", () => {
+  it("reads a note inside the workspace but refuses paths that escape it", async () => {
+    const { readAgentNote } = await import("./paths");
+    const dir = path.join(tmp, "agents", "cartographer", "notes");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "rockland.md"), "# Rockland note");
+
+    expect(readAgentNote("cartographer", "notes/rockland.md")).toBe("# Rockland note");
+    expect(readAgentNote("cartographer", "../../../etc/passwd")).toBeNull();
+    expect(readAgentNote("cartographer", null)).toBeNull();
+  });
+});
+
+describe("listBusinessesRanked", () => {
+  it("annotates tier + isChain, hides tier4/chains by default, and ranks chains last", () => {
+    const cfgDir = path.join(tmp, "config");
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cfgDir, "categories.json"),
+      JSON.stringify({
+        default_tier: 3,
+        hide_in_directory: { tier4: true, chains: true },
+        tiers: {
+          "1": ["amenity=library"],
+          "2": ["shop=hardware"],
+          "4": ["amenity=parking"],
+        },
+      }),
+    );
+    q.upsertBusiness({ osmId: "node/r1", name: "Library", kind: "amenity=library", town: "Rank", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/r2", name: "Hardware", kind: "shop=hardware", town: "Rank", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/r3", name: "Parking Lot", kind: "amenity=parking", town: "Rank", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/r4", name: "Chain Store", kind: "shop=hardware", brand: "BigCo", town: "Rank", addedBy: "test" });
+
+    const def = q.listBusinessesRanked({ town: "Rank" });
+    const byId = Object.fromEntries(def.rows.map((r) => [r.business.osmId, r]));
+    expect(byId["node/r1"].tier).toBe(1);
+    // default visibility: tier4 (parking) and chains hidden
+    expect(def.rows.map((r) => r.business.osmId)).toEqual(["node/r1", "node/r2"]);
+    expect(def.total).toBe(4);
+    expect(def.tier4Count).toBe(1);
+    expect(def.chainCount).toBe(1);
+
+    // agent-style: Tier 1-2 only, no chains
+    const t12 = q.listBusinessesRanked({ town: "Rank", maxTier: 2, includeChains: false });
+    expect(t12.rows.map((r) => r.business.osmId)).toEqual(["node/r1", "node/r2"]);
+
+    // show everything: non-chains first (by tier), chain last
+    const full = q.listBusinessesRanked({
+      town: "Rank",
+      includeTier4: true,
+      includeChains: true,
+    });
+    expect(full.rows.map((r) => r.business.osmId)).toEqual([
+      "node/r1",
+      "node/r2",
+      "node/r3",
+      "node/r4",
+    ]);
+    const fullById = Object.fromEntries(
+      full.rows.map((r) => [r.business.osmId, r]),
+    );
+    expect(fullById["node/r4"].isChain).toBe(true);
+    expect(fullById["node/r3"].tier).toBe(4);
+  });
+});

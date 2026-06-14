@@ -1,7 +1,28 @@
 import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "./client";
+import { readCategoryConfig } from "./config";
 import { findKey } from "./dedupe";
-import { businesses, feedback, finds, runs, sources } from "./schema";
+import {
+  type Business,
+  businesses,
+  feedback,
+  finds,
+  runs,
+  sources,
+} from "./schema";
+
+// Exact-element match against a JSON text-array column (tags). Shared by the
+// finds feed and the businesses directory so the json_each idiom lives once.
+function jsonArrayHas(column: AnySQLiteColumn, value: string) {
+  return sql`exists (select 1 from json_each(${column}) where json_each.value = ${value})`;
+}
+
+// Escape LIKE metacharacters so a user's search text is matched literally
+// (e.g. "50%" must not become a wildcard). Pair with `escape '\'` in the query.
+function likeContains(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+}
 
 export interface NewFindInput {
   title: string;
@@ -110,9 +131,7 @@ export function getFeed(filters: FeedFilters = {}) {
   }
   if (filters.tag) {
     // tags is a JSON string array — exact-element match on the serialized form
-    conditions.push(
-      sql`exists (select 1 from json_each(${finds.tags}) where json_each.value = ${filters.tag})`,
-    );
+    conditions.push(jsonArrayHas(finds.tags, filters.tag));
   }
   return db()
     .select()
@@ -353,12 +372,12 @@ export function listBusinesses(filters: BusinessFilters = {}) {
   if (filters.town) conditions.push(eq(businesses.town, filters.town));
   if (filters.status) conditions.push(eq(businesses.status, filters.status));
   if (filters.tag) {
-    conditions.push(
-      sql`exists (select 1 from json_each(${businesses.tags}) where json_each.value = ${filters.tag})`,
-    );
+    conditions.push(jsonArrayHas(businesses.tags, filters.tag));
   }
   if (filters.q) {
-    conditions.push(sql`${businesses.name} like ${"%" + filters.q + "%"}`);
+    conditions.push(
+      sql`${businesses.name} like ${likeContains(filters.q)} escape '\\'`,
+    );
   }
   return db()
     .select()
@@ -367,6 +386,72 @@ export function listBusinesses(filters: BusinessFilters = {}) {
     .orderBy(businesses.town, businesses.name)
     .limit(filters.limit ?? 500)
     .all();
+}
+
+export interface RankedBusiness {
+  business: Business;
+  /** Search-priority tier (1 = highest) from categories.json. */
+  tier: number;
+  /** OSM brand present = national/regional chain. */
+  isChain: boolean;
+}
+
+export interface RankedBusinessFilters extends BusinessFilters {
+  /** Drop rows whose tier is worse (numerically greater) than this. */
+  maxTier?: number;
+  /** Include Tier-4 ("not a business") rows. Defaults to the config's hide rule. */
+  includeTier4?: boolean;
+  /** Include chains. Defaults to the config's hide rule. */
+  includeChains?: boolean;
+}
+
+export interface RankedBusinessList {
+  rows: RankedBusiness[];
+  /** Total rows matching the DB filters, before tier/chain visibility. */
+  total: number;
+  tier4Count: number;
+  chainCount: number;
+}
+
+// Annotate each business with its search-priority tier + chain flag, apply the
+// tier4/chain visibility rules, and sort chains-last then by tier then name.
+// One place owns "rank/exclude by search priority" — the /businesses page and
+// the agents' list_businesses tool both use it instead of re-deriving it.
+export function listBusinessesRanked(
+  filters: RankedBusinessFilters = {},
+): RankedBusinessList {
+  const cfg = readCategoryConfig();
+  const showTier4 = filters.includeTier4 ?? !cfg.hideInDirectory.tier4;
+  const showChains = filters.includeChains ?? !cfg.hideInDirectory.chains;
+
+  const annotated: RankedBusiness[] = listBusinesses(filters).map((business) => ({
+    business,
+    tier: cfg.tierOf(business.kind),
+    isChain: Boolean(business.brand),
+  }));
+
+  let tier4Count = 0;
+  let chainCount = 0;
+  for (const a of annotated) {
+    if (a.tier === 4) tier4Count++;
+    if (a.isChain) chainCount++;
+  }
+
+  const rows = annotated
+    .filter(
+      (a) =>
+        (showTier4 || a.tier !== 4) &&
+        (showChains || !a.isChain) &&
+        (filters.maxTier == null || a.tier <= filters.maxTier),
+    )
+    .sort(
+      (a, z) =>
+        Number(a.isChain) - Number(z.isChain) ||
+        a.tier - z.tier ||
+        a.business.name.localeCompare(z.business.name),
+    );
+
+  return { rows, total: annotated.length, tier4Count, chainCount };
 }
 
 // Distinct towns with business counts, for the directory's town filter.
