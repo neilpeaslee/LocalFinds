@@ -103,9 +103,10 @@ export async function runAgent(
   }
   if (opts.extraPrompt) prompt += `\n\n${opts.extraPrompt}`;
 
+  const MODEL = "claude-sonnet-4-6";
   const runId = startRun(def.name);
   const log = openRunLog(def.name, runId);
-  log.write({ kind: "run_start", agent: def.name, runId, model: "claude-sonnet-4-6", maxTurns });
+  log.write({ kind: "run_start", agent: def.name, runId, model: MODEL, maxTurns });
   console.log(`[${def.name}] run ${runId} starting (maxTurns=${maxTurns})`);
 
   let result: SDKResultMessage | undefined;
@@ -113,7 +114,7 @@ export async function runAgent(
     for await (const message of query({
       prompt,
       options: {
-        model: "claude-sonnet-4-6",
+        model: MODEL,
         cwd: workspace,
         env: sanitizedEnv(),
         systemPrompt: def.systemPrompt,
