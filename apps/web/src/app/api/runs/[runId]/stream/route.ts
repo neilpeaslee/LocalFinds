@@ -47,13 +47,17 @@ export async function GET(
         if (size > offset) {
           const fd = fs.openSync(file, "r");
           const buf = Buffer.alloc(size - offset);
-          fs.readSync(fd, buf, 0, buf.length, offset);
-          fs.closeSync(fd);
+          try {
+            fs.readSync(fd, buf, 0, buf.length, offset);
+          } finally {
+            fs.closeSync(fd);
+          }
           offset = size;
 
           const { lines, rest } = splitLines(buffer, buf.toString("utf8"));
           buffer = rest;
           for (const line of lines) {
+            if (closed) return;
             controller.enqueue(encoder.encode(`data: ${line}\n\n`));
             try {
               if ((JSON.parse(line) as { kind?: string }).kind === "run_end") {
