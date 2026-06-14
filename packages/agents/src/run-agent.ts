@@ -3,6 +3,8 @@ import {
   agentWorkspaceDir,
   finishRun,
   formatCategoryPriorities,
+  openRunLog,
+  projectMessage,
   readCategoryConfig,
   readRegionConfig,
   startRun,
@@ -102,6 +104,8 @@ export async function runAgent(
   if (opts.extraPrompt) prompt += `\n\n${opts.extraPrompt}`;
 
   const runId = startRun(def.name);
+  const log = openRunLog(def.name, runId);
+  log.write({ kind: "run_start", agent: def.name, runId, model: "claude-sonnet-4-6", maxTurns });
   console.log(`[${def.name}] run ${runId} starting (maxTurns=${maxTurns})`);
 
   let result: SDKResultMessage | undefined;
@@ -136,9 +140,13 @@ export async function runAgent(
       },
     })) {
       logMessage(message as never);
+      for (const ev of projectMessage(message)) log.write(ev);
       if (message.type === "result") result = message;
     }
 
+    const status = result?.subtype === "success" ? "success" : "error";
+    log.write({ kind: "run_end", status });
+    log.close();
     finishRun(runId, {
       status: result?.subtype === "success" ? "success" : "error",
       itemsAdded: counters.added,
@@ -153,6 +161,9 @@ export async function runAgent(
   } catch (err) {
     // The SDK yields the error result message (e.g. error_max_turns), then
     // throws when the CLI process exits non-zero — keep the captured stats.
+    log.write({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    log.write({ kind: "run_end", status: "error" });
+    log.close();
     finishRun(runId, {
       status: "error",
       itemsAdded: counters.added,
