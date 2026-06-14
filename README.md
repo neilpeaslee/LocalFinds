@@ -57,6 +57,10 @@ Budget guardrails: per-agent `maxTurns`, `maxBudgetUsd` ($1/run default),
 prompt-level search caps. Per-run cost is logged to the `runs` table and
 totaled on `/agents`.
 
+Watch a run live — or read any past run's full transcript — on `/agents`: each
+run streams a structured event log to `data/agents/<agent>/runs/<id>.jsonl`,
+surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
+
 ## Resetting test data
 
 The repo was verified against a stand-in region (Ann Arbor). To start fresh
