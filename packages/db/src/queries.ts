@@ -494,3 +494,7 @@ export function finishRun(id: number, patch: FinishRunPatch): void {
 export function listRuns(limit = 50) {
   return db().select().from(runs).orderBy(desc(runs.startedAt)).limit(limit).all();
 }
+
+export function getRun(id: number) {
+  return db().select().from(runs).where(eq(runs.id, id)).get();
+}

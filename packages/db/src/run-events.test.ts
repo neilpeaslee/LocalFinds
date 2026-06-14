@@ -1,6 +1,10 @@
+import os from "node:os";
+import fsx from "node:fs";
+import pathx from "node:path";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  openRunLog,
   parseEvents,
   projectMessage,
   readRunEvents,
@@ -136,5 +140,27 @@ describe("parseEvents", () => {
 describe("readRunEvents", () => {
   it("returns [] when the log file does not exist", () => {
     expect(readRunEvents("no-such-agent", 99999)).toEqual([]);
+  });
+});
+
+describe("openRunLog", () => {
+  it("appends stamped events that readRunEvents can read back in order", () => {
+    const tmp = fsx.mkdtempSync(pathx.join(os.tmpdir(), "lf-runlog-"));
+    process.env.LOCALFINDS_DATA_DIR = tmp; // paths.ts honors this override
+    try {
+      const log = openRunLog("scout", 99);
+      log.write({ kind: "run_start", agent: "scout", runId: 99, model: "claude-sonnet-4-6", maxTurns: 8 });
+      log.write({ kind: "assistant_text", text: "hi" });
+      log.write({ kind: "run_end", status: "success" });
+      log.close();
+
+      const events = readRunEvents("scout", 99);
+      expect(events.map((e) => e.kind)).toEqual(["run_start", "assistant_text", "run_end"]);
+      expect(events.map((e) => e.seq)).toEqual([0, 1, 2]);
+      expect(typeof events[0].t).toBe("string");
+    } finally {
+      delete process.env.LOCALFINDS_DATA_DIR;
+      fsx.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

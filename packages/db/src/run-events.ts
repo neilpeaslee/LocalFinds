@@ -118,3 +118,24 @@ export function readRunEvents(agent: string, runId: number): StoredRunEvent[] {
     return [];
   }
 }
+
+export interface RunLogWriter {
+  write(event: RunEvent): void;
+  close(): void;
+}
+
+// Append-only JSONL writer. Stamps each event with a per-run sequence number
+// and an ISO timestamp. appendFileSync per event keeps it crash-safe and avoids
+// any buffer the SSE tailer would miss.
+export function openRunLog(agent: string, runId: number): RunLogWriter {
+  const file = runLogPath(agent, runId);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  let seq = 0;
+  return {
+    write(event: RunEvent) {
+      const stored = { seq: seq++, t: new Date().toISOString(), ...event } as StoredRunEvent;
+      fs.appendFileSync(file, JSON.stringify(stored) + "\n");
+    },
+    close() {},
+  };
+}
