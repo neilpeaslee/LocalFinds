@@ -15,7 +15,7 @@ import { revalidatePath } from "next/cache";
 // returning. The loop breaks as soon as the row appears, so this only caps the
 // wait when a run is slow to start (`npx tsx` cold start + SDK init was ~10s in
 // testing) — generous margin here costs nothing in the normal case but ensures
-// the re-rendered page shows the running state and mounts the auto-refresher.
+// the re-rendered page shows the running state and mounts the live transcript.
 const START_TIMEOUT_MS = 20_000;
 const POLL_MS = 250;
 
@@ -52,7 +52,7 @@ export async function triggerRun(target: string): Promise<void> {
   fs.closeSync(logFd);
 
   // Wait until the child's `running` row appears so the re-rendered page shows
-  // it (and the auto-refresher takes over from there).
+  // it (and the live transcript panel takes over from there).
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (runInProgress(listRuns(20), Date.now())) break;
