@@ -11,7 +11,8 @@ import fs from "node:fs";
 import path from "node:path";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AutoRefresh } from "./AutoRefresh";
+import Link from "next/link";
+import { RunTranscript } from "@/components/RunTranscript";
 import { triggerRun } from "./actions";
 import { duration } from "@/lib/run-utils";
 
@@ -51,7 +52,12 @@ function RunRow({ run, now }: { run: Run; now: number }) {
   return (
     <tr className="border-t border-stone-100 text-xs">
       <td className="py-1 pr-3 whitespace-nowrap">
-        {new Date(run.startedAt).toLocaleString()}
+        <Link
+          href={`/agents/runs/${run.id}`}
+          className="text-stone-700 hover:underline"
+        >
+          {new Date(run.startedAt).toLocaleString()}
+        </Link>
       </td>
       <td className="pr-3">
         {stale ? (
@@ -88,10 +94,28 @@ export default function AgentsPage() {
   const cost30 = costLastNDays(30);
   const now = Date.now();
   const inProgress = runInProgress(allRuns, now);
+  const activeRun = allRuns.find(
+    (r) => r.status === "running" && !isRunStale(r, now),
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <AutoRefresh active={inProgress} />
+      {activeRun && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-amber-800">
+              {activeRun.agent} running…
+            </h2>
+            <Link
+              href={`/agents/runs/${activeRun.id}`}
+              className="text-xs text-stone-500 hover:underline"
+            >
+              open run →
+            </Link>
+          </div>
+          <RunTranscript runId={activeRun.id} live />
+        </section>
+      )}
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-stone-600">
           Agent spend, last 30 days:{" "}
