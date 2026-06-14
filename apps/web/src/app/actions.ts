@@ -30,5 +30,7 @@ export async function submitFeedback(formData: FormData): Promise<void> {
   recordFeedback(findId, action);
   const status = STATUS_EFFECT[action];
   if (status) updateFindStatus(findId, status);
+  // The full feed lives at /feed; the dashboard's compact list mirrors it.
+  revalidatePath("/feed");
   revalidatePath("/");
 }

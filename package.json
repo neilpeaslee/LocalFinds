@@ -12,6 +12,7 @@
     "test": "npm -w @localfinds/db run test",
     "db:push": "npm -w @localfinds/db run push",
     "db:seed": "npm -w @localfinds/db run seed",
-    "db:studio": "npm -w @localfinds/db run studio"
+    "db:studio": "npm -w @localfinds/db run studio",
+    "boundaries:fetch": "node scripts/fetch-town-boundaries.mjs"
   }
 }

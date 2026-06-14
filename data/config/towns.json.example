@@ -1,0 +1,24 @@
+{
+  "_comment": "Coverage-area boxes for the region dashboard map — one entry per community. Covers all of Knox County, ME plus nearby Waldoboro (Lincoln County). bbox order is Overpass-compatible [south, west, north, east] = [minLat, minLng, maxLat, maxLng]; these were taken from each OSM admin_level=8 boundary's extent. `county` (+ optional `query`) help scripts/fetch-town-boundaries.mjs resolve the right place. Set `primary: true` on the home town. Read per request by the dashboard. Re-run `npm run boundaries:fetch` after editing.",
+  "towns": [
+    { "name": "Rockland",        "county": "Knox County",    "bbox": [44.0819, -69.1853, 44.1726, -69.0695], "primary": true },
+    { "name": "Camden",          "county": "Knox County",    "bbox": [44.1742, -69.1654, 44.2595, -69.0047] },
+    { "name": "Thomaston",       "county": "Knox County",    "bbox": [44.0625, -69.2191, 44.1278, -69.1289] },
+    { "name": "Rockport",        "county": "Knox County",    "bbox": [44.1070, -69.1966, 44.2227, -69.0182] },
+    { "name": "Waldoboro",       "county": "Lincoln County", "bbox": [44.0000, -69.4900, 44.2100, -69.2800] },
+    { "name": "Warren",          "county": "Knox County",    "bbox": [44.0548, -69.3215, 44.1910, -69.1605] },
+    { "name": "Union",           "county": "Knox County",    "bbox": [44.1729, -69.3738, 44.2946, -69.1854] },
+    { "name": "Saint George",    "county": "Knox County",    "bbox": [43.7780, -69.3942, 44.0394, -69.1050] },
+    { "name": "Owls Head",       "county": "Knox County",    "bbox": [44.0122, -69.1334, 44.1065, -68.9937] },
+    { "name": "South Thomaston", "county": "Knox County",    "bbox": [43.9825, -69.1970, 44.0823, -69.0827] },
+    { "name": "Friendship",      "county": "Knox County",    "bbox": [43.8580, -69.3982, 44.0590, -69.2767] },
+    { "name": "Cushing",         "county": "Knox County",    "bbox": [43.9252, -69.3239, 44.0659, -69.1848] },
+    { "name": "Hope",            "county": "Knox County",    "bbox": [44.1992, -69.2555, 44.3046, -69.1216] },
+    { "name": "Appleton",        "county": "Knox County",    "bbox": [44.2420, -69.3466, 44.3647, -69.1876] },
+    { "name": "Washington",      "county": "Knox County",    "bbox": [44.2054, -69.4513, 44.3431, -69.3237] },
+    { "name": "Vinalhaven",      "county": "Knox County",    "bbox": [43.8324, -68.9870, 44.1346, -68.6638] },
+    { "name": "North Haven",     "county": "Knox County",    "bbox": [44.0897, -69.0700, 44.2099, -68.7356] },
+    { "name": "Isle au Haut",    "county": "Knox County",    "bbox": [43.9480, -68.7410, 44.1308, -68.4846] },
+    { "name": "Matinicus Isle",  "county": "Knox County",    "query": "Matinicus Isle Plantation", "bbox": [43.7324, -69.0247, 43.9393, -68.7489] }
+  ]
+}

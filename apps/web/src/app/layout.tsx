@@ -27,7 +27,7 @@ export default function RootLayout({
               )}
             </h1>
             <nav className="flex gap-4 text-sm text-stone-600">
-              <a href="/" className="hover:text-stone-900">
+              <a href="/feed" className="hover:text-stone-900">
                 Feed
               </a>
               <a href="/sources" className="hover:text-stone-900">

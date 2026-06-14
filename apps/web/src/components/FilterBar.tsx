@@ -12,7 +12,7 @@ function href(params: FeedParams): string {
   if (params.days) qs.set("days", String(params.days));
   if (params.tag) qs.set("tag", params.tag);
   const s = qs.toString();
-  return s ? `/?${s}` : "/";
+  return s ? `/feed?${s}` : "/feed";
 }
 
 function Chip({

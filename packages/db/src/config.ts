@@ -106,6 +106,115 @@ export function readCategoryConfig(): CategoryConfig {
   return { defaultTier, hideInDirectory, tiers, tierOf };
 }
 
+// --- Town coverage boxes (data/config/towns.json) ---
+
+export interface TownBox {
+  name: string;
+  /** Overpass bbox order: [south, west, north, east] = [minLat, minLng, maxLat, maxLng]. */
+  bbox: [number, number, number, number];
+  /** The home town, highlighted on the map. */
+  primary?: boolean;
+}
+
+export interface TownsConfig {
+  towns: TownBox[];
+}
+
+export function townsConfigPath(): string {
+  return path.join(dataDir(), "config", "towns.json");
+}
+
+function isValidTownBox(t: unknown): t is TownBox {
+  const box = t as TownBox;
+  return (
+    !!box &&
+    typeof box.name === "string" &&
+    Array.isArray(box.bbox) &&
+    box.bbox.length === 4 &&
+    box.bbox.every((n) => typeof n === "number" && Number.isFinite(n))
+  );
+}
+
+// Reads towns.json, falling back to the committed .example, then to an empty
+// list so the dashboard map never breaks. A present-but-malformed file falls
+// through to the next candidate rather than silently wiping the coverage boxes.
+export function readTownsConfig(): TownsConfig {
+  const file = townsConfigPath();
+  for (const candidate of [file, `${file}.example`]) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(candidate, "utf8");
+    } catch {
+      continue; // missing file — try the next candidate
+    }
+    try {
+      const json = JSON.parse(raw);
+      const towns = Array.isArray(json?.towns)
+        ? (json.towns as unknown[]).filter(isValidTownBox)
+        : [];
+      return { towns }; // accepted a well-formed candidate
+    } catch {
+      // malformed JSON — fall through to the next candidate, don't accept it
+    }
+  }
+  return { towns: [] };
+}
+
+// --- Town boundary polygons (data/config/town-boundaries.json) ---
+//
+// Real municipal outlines (GeoJSON) for the dashboard map's coverage layer,
+// produced by scripts/fetch-town-boundaries.mjs. Geometry is GeoJSON order
+// ([lng, lat]); the map swaps to Leaflet's [lat, lng] when drawing.
+
+export interface TownBoundaryFeature {
+  type: "Feature";
+  properties: { name: string; primary?: boolean; osm?: string };
+  geometry: {
+    type: "Polygon" | "MultiPolygon";
+    // Polygon: ring[]; MultiPolygon: polygon[] of ring[]. Rings are [lng, lat].
+    coordinates: number[][][] | number[][][][];
+  };
+}
+
+export interface TownBoundaries {
+  type: "FeatureCollection";
+  features: TownBoundaryFeature[];
+}
+
+export function townBoundariesPath(): string {
+  return path.join(dataDir(), "config", "town-boundaries.json");
+}
+
+// Reads town-boundaries.json, falling back to the committed .example, then to an
+// empty collection. The map degrades to bbox rectangles for any town without a
+// polygon, so a missing/malformed file never breaks the dashboard.
+export function readTownBoundaries(): TownBoundaries {
+  const file = townBoundariesPath();
+  for (const candidate of [file, `${file}.example`]) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(candidate, "utf8");
+    } catch {
+      continue; // missing file — try the next candidate
+    }
+    try {
+      const json = JSON.parse(raw);
+      const features = Array.isArray(json?.features)
+        ? (json.features as TownBoundaryFeature[]).filter(
+            (f) =>
+              f?.geometry &&
+              Array.isArray(f.geometry.coordinates) &&
+              typeof f.properties?.name === "string",
+          )
+        : [];
+      return { type: "FeatureCollection", features };
+    } catch {
+      // malformed JSON — fall through to the next candidate
+    }
+  }
+  return { type: "FeatureCollection", features: [] };
+}
+
 // A readable tier listing for injection into agent prompts.
 export function formatCategoryPriorities(cfg: CategoryConfig): string {
   const lines = Object.keys(cfg.tiers)
