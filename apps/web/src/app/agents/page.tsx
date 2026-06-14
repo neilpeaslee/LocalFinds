@@ -1,17 +1,20 @@
 import {
+  ROSTER,
   agentWorkspaceDir,
   costLastNDays,
+  isRunStale,
   listRuns,
+  runInProgress,
   type Run,
 } from "@localfinds/db";
 import fs from "node:fs";
 import path from "node:path";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AutoRefresh } from "./AutoRefresh";
+import { triggerRun } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-const AGENTS = ["scout", "source-keeper", "cartographer", "curator"];
 
 function readProfile(agent: string): string | null {
   try {
@@ -30,24 +33,47 @@ function duration(run: Run): string {
   return `${Math.round(ms / 1000)}s`;
 }
 
-function RunRow({ run }: { run: Run }) {
+function RunButton({ target, label, disabled }: {
+  target: string;
+  label: string;
+  disabled: boolean;
+}) {
+  return (
+    <form action={triggerRun.bind(null, target)}>
+      <button
+        type="submit"
+        disabled={disabled}
+        className="rounded border border-stone-300 px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {label}
+      </button>
+    </form>
+  );
+}
+
+function RunRow({ run, now }: { run: Run; now: number }) {
+  const stale = isRunStale(run, now);
   return (
     <tr className="border-t border-stone-100 text-xs">
       <td className="py-1 pr-3 whitespace-nowrap">
         {new Date(run.startedAt).toLocaleString()}
       </td>
       <td className="pr-3">
-        <span
-          className={
-            run.status === "success"
-              ? "text-green-700"
-              : run.status === "running"
-                ? "text-amber-700"
-                : "text-red-700"
-          }
-        >
-          {run.status}
-        </span>
+        {stale ? (
+          <span className="text-red-700">running — likely crashed</span>
+        ) : (
+          <span
+            className={
+              run.status === "success"
+                ? "text-green-700"
+                : run.status === "running"
+                  ? "text-amber-700"
+                  : "text-red-700"
+            }
+          >
+            {run.status}
+          </span>
+        )}
         {run.error && <span className="text-stone-400"> ({run.error})</span>}
       </td>
       <td className="pr-3 text-right">{duration(run)}</td>
@@ -65,14 +91,25 @@ function RunRow({ run }: { run: Run }) {
 export default function AgentsPage() {
   const allRuns = listRuns(200);
   const cost30 = costLastNDays(30);
+  const now = Date.now();
+  const inProgress = runInProgress(allRuns, now);
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-sm text-stone-600">
-        Agent spend, last 30 days:{" "}
-        <span className="font-semibold">${cost30.toFixed(2)}</span>
-      </p>
-      {AGENTS.map((agent) => {
+      <AutoRefresh active={inProgress} />
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-stone-600">
+          Agent spend, last 30 days:{" "}
+          <span className="font-semibold">${cost30.toFixed(2)}</span>
+        </p>
+        <div className="flex items-center gap-3">
+          {inProgress && (
+            <span className="text-xs text-amber-700">run in progress…</span>
+          )}
+          <RunButton target="all" label="Run all" disabled={inProgress} />
+        </div>
+      </div>
+      {ROSTER.map((agent) => {
         const profile = readProfile(agent);
         const runs = allRuns.filter((r) => r.agent === agent).slice(0, 10);
         return (
@@ -80,7 +117,10 @@ export default function AgentsPage() {
             key={agent}
             className="rounded-lg border border-stone-200 bg-white p-4"
           >
-            <h2 className="font-semibold">{agent}</h2>
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-semibold">{agent}</h2>
+              <RunButton target={agent} label="Run" disabled={inProgress} />
+            </div>
             <details className="mt-2">
               <summary className="cursor-pointer text-sm text-stone-600">
                 Interest profile (data/agents/{agent}/profile.md — hand-editable)
@@ -109,7 +149,7 @@ export default function AgentsPage() {
                 </thead>
                 <tbody>
                   {runs.map((run) => (
-                    <RunRow key={run.id} run={run} />
+                    <RunRow key={run.id} run={run} now={now} />
                   ))}
                 </tbody>
               </table>
