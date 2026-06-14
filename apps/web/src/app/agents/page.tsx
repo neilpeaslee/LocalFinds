@@ -13,6 +13,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AutoRefresh } from "./AutoRefresh";
 import { triggerRun } from "./actions";
+import { duration } from "@/lib/run-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,6 @@ function readProfile(agent: string): string | null {
   } catch {
     return null;
   }
-}
-
-function duration(run: Run): string {
-  if (!run.finishedAt) return "—";
-  const ms = +new Date(run.finishedAt) - +new Date(run.startedAt);
-  return `${Math.round(ms / 1000)}s`;
 }
 
 function RunButton({ target, label, disabled }: {

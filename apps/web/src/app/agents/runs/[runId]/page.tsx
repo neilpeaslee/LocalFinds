@@ -1,14 +1,8 @@
-import { getRun, isRunStale, readRunEvents, type Run } from "@localfinds/db";
+import { getRun, isRunStale, readRunEvents } from "@localfinds/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RunTranscript } from "@/components/RunTranscript";
-
-export const dynamic = "force-dynamic";
-
-function duration(run: Run): string {
-  if (!run.finishedAt) return "—";
-  return `${Math.round((+new Date(run.finishedAt) - +new Date(run.startedAt)) / 1000)}s`;
-}
+import { duration } from "@/lib/run-utils";
 
 export default async function RunDetailPage({
   params,
@@ -47,7 +41,7 @@ export default async function RunDetailPage({
               }
             >
               {stale ? "running — likely crashed" : run.status}
-              {run.error ? ` (${run.error})` : ""}
+              {run.error && <span className="text-stone-400"> ({run.error})</span>}
             </dd>
           </div>
           <div>
