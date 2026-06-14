@@ -3,6 +3,10 @@
 // per-run detail page. Bulky transcripts stay under gitignored data/ (PII
 // boundary); exact run stats stay in the `runs` table.
 
+import fs from "node:fs";
+import path from "node:path";
+import { agentWorkspaceDir } from "./paths";
+
 export type RunEvent =
   | { kind: "run_start"; agent: string; runId: number; model: string; maxTurns: number }
   | { kind: "assistant_text"; text: string }
@@ -71,4 +75,40 @@ export function projectMessage(message: any): RunEvent[] {
   }
 
   return [];
+}
+
+export function runLogPath(agent: string, runId: number): string {
+  return path.join(agentWorkspaceDir(agent), "runs", `${runId}.jsonl`);
+}
+
+// Turn a newly-read chunk into complete lines, carrying any trailing partial
+// line forward in `rest`. Strips a trailing \r so CRLF is tolerated; drops
+// blank lines.
+export function splitLines(buffer: string, chunk: string): { lines: string[]; rest: string } {
+  const parts = (buffer + chunk).split("\n");
+  const rest = parts.pop() ?? "";
+  const lines = parts.map((l) => l.replace(/\r$/, "")).filter((l) => l.length > 0);
+  return { lines, rest };
+}
+
+export function parseEvents(text: string): StoredRunEvent[] {
+  const out: StoredRunEvent[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      out.push(JSON.parse(trimmed) as StoredRunEvent);
+    } catch {
+      // tolerate a trailing partial line from an in-flight write
+    }
+  }
+  return out;
+}
+
+export function readRunEvents(agent: string, runId: number): StoredRunEvent[] {
+  try {
+    return parseEvents(fs.readFileSync(runLogPath(agent, runId), "utf8"));
+  } catch {
+    return [];
+  }
 }
