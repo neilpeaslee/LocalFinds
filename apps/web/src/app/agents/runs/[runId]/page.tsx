@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { RunTranscript } from "@/components/RunTranscript";
 import { duration } from "@/lib/run-utils";
 
+export const dynamic = "force-dynamic";
+
 export default async function RunDetailPage({
   params,
 }: {
