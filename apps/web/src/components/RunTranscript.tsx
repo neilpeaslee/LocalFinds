@@ -12,7 +12,7 @@ function brief(ev: StoredRunEvent): { icon: string; text: string; error?: boolea
     case "run_start":
       return { icon: "▶", text: `run started · ${ev.model} · maxTurns ${ev.maxTurns}` };
     case "assistant_text":
-      return { icon: "•", text: ev.text.trim().slice(0, 200) };
+      return { icon: "•", text: ev.text.replace(/\s+/g, " ").trim().slice(0, 200) };
     case "tool_use":
       return { icon: "→", text: `${ev.name} ${JSON.stringify(ev.input ?? {}).slice(0, 120)}` };
     case "tool_result":
@@ -24,7 +24,7 @@ function brief(ev: StoredRunEvent): { icon: string; text: string; error?: boolea
         error: ev.subtype !== "success",
       };
     case "error":
-      return { icon: "✕", text: ev.message.slice(0, 200), error: true };
+      return { icon: "✕", text: ev.message.replace(/\s+/g, " ").trim().slice(0, 200), error: true };
     case "run_end":
       return { icon: "■", text: `run ${ev.status}`, error: ev.status === "error" };
   }
