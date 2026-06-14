@@ -1,7 +1,12 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { parseEvents, readRunEvents, runLogPath, splitLines } from "./run-events";
-import { projectMessage } from "./run-events";
+import { describe, expect, it, vi } from "vitest";
+import {
+  parseEvents,
+  projectMessage,
+  readRunEvents,
+  runLogPath,
+  splitLines,
+} from "./run-events";
 
 describe("projectMessage", () => {
   it("emits text and tool_use events from an assistant message, in order", () => {
@@ -115,5 +120,21 @@ describe("parseEvents", () => {
     expect(parseEvents(text)).toEqual([
       { seq: 0, t: "x", kind: "run_end", status: "success" },
     ]);
+  });
+
+  it("skips an interior corrupt line (with a warning) but keeps good events", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const text =
+      '{"seq":0,"t":"x","kind":"run_end","status":"success"}\nBADLINE\n{"seq":2,"t":"z","kind":"assistant_text","text":"ok"}';
+    const events = parseEvents(text);
+    expect(events.map((e) => e.seq)).toEqual([0, 2]);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("readRunEvents", () => {
+  it("returns [] when the log file does not exist", () => {
+    expect(readRunEvents("no-such-agent", 99999)).toEqual([]);
   });
 });

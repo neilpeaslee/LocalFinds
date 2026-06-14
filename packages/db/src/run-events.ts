@@ -92,14 +92,20 @@ export function splitLines(buffer: string, chunk: string): { lines: string[]; re
 }
 
 export function parseEvents(text: string): StoredRunEvent[] {
+  const lines = text.split("\n");
   const out: StoredRunEvent[] = [];
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
     if (!trimmed) continue;
     try {
       out.push(JSON.parse(trimmed) as StoredRunEvent);
     } catch {
-      // tolerate a trailing partial line from an in-flight write
+      // The last non-empty line can be a legitimate partial from an in-flight
+      // write — skip it silently. An unparseable interior line is real
+      // corruption; skip it but warn so it isn't invisible in production.
+      if (i < lines.length - 1) {
+        console.warn(`run-events: skipping unparseable log line ${i + 1}`);
+      }
     }
   }
   return out;
