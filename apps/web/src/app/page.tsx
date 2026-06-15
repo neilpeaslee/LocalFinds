@@ -1,6 +1,8 @@
 import {
+  countBusinesses,
   getFeed,
-  listBusinesses,
+  listMapPins,
+  readMapCategories,
   readRegionConfig,
   readTownBoundaries,
   readTownsConfig,
@@ -36,24 +38,20 @@ export default function DashboardPage() {
   const { towns } = readTownsConfig();
   const boundaries = readTownBoundaries();
 
-  const allBusinesses = listBusinesses();
-  const pins = allBusinesses
-    .filter((b) => b.lat != null && b.lng != null)
-    .map((b) => ({
-      id: b.id,
-      name: b.name,
-      kind: b.kind,
-      lat: b.lat as number,
-      lng: b.lng as number,
-      town: b.town,
-    }));
+  const pins = listMapPins();
+  const mapThemes = readMapCategories().themes.map((t) => ({
+    key: t.key,
+    label: t.label,
+    color: t.color,
+  }));
+  const businessCount = countBusinesses();
 
   const finds = getFeed({ view: "default" });
   const recent = finds.slice(0, COMPACT_FINDS);
 
   return (
     <div className="flex flex-col gap-6">
-      <RegionMapClient towns={towns} boundaries={boundaries} businesses={pins} />
+      <RegionMapClient towns={towns} boundaries={boundaries} businesses={pins} themes={mapThemes} />
 
       <section>
         <h1 className="text-xl font-semibold tracking-tight">
@@ -68,7 +66,7 @@ export default function DashboardPage() {
         )}
         <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-600">
           <Stat label="towns covered" value={towns.length} />
-          <Stat label="businesses catalogued" value={allBusinesses.length} />
+          <Stat label="businesses catalogued" value={businessCount} />
           <Stat label="current finds" value={finds.length} />
         </dl>
       </section>
