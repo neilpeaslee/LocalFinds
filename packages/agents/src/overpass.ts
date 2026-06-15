@@ -83,6 +83,59 @@ export type OverpassResult =
   | { ok: true; elements: OverpassElement[] }
   | { ok: false; error: string; status?: number };
 
+// An MCP tool result: text content, optionally flagged as a failed call. A type
+// alias (not an interface) so it keeps the implicit index signature the SDK's
+// tool-handler return type requires.
+export type ToolTextResult = {
+  content: { type: "text"; text: string }[];
+  isError?: true;
+};
+
+const OVERPASS_FAIL_HINT =
+  "Query too large or Overpass is busy. Narrow to one business key and a single town/bbox, then retry.";
+
+// Project a runOverpass result into the overpass_query tool's response. A failed
+// query returns isError:true so it surfaces as a real tool error in the run log
+// and the run's warning count — instead of being indistinguishable from a
+// successful empty result — while still carrying the retry hint the agent acts
+// on. A success is capped to `limit` named elements and flags truncation.
+export function formatOverpassResult(
+  result: OverpassResult,
+  limit?: number,
+): ToolTextResult {
+  if (!result.ok) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: result.error,
+            status: result.status,
+            hint: OVERPASS_FAIL_HINT,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+  const cap = Math.min(Math.max(limit ?? 80, 1), 150);
+  const named = result.elements.map(projectElement).filter((e) => e.name);
+  const elements = named.slice(0, cap);
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          matched: named.length,
+          returned: elements.length,
+          truncated: named.length > cap,
+          elements,
+        }),
+      },
+    ],
+  };
+}
+
 type FetchLike = typeof fetch;
 
 export async function runOverpass(

@@ -12,8 +12,8 @@ import {
 } from "@localfinds/db";
 import { z } from "zod";
 import {
+  formatOverpassResult,
   isValidOsmId,
-  projectElement,
   runOverpass,
   wrapOverpassQL,
 } from "./overpass";
@@ -247,27 +247,11 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             .optional()
             .describe("Max named elements to return, default 80, capped at 150"),
         },
-        async (args) => {
-          const result = await runOverpass(wrapOverpassQL(args.statement));
-          if (!result.ok) {
-            return asText({
-              error: result.error,
-              status: result.status,
-              hint: "Query too large or Overpass is busy. Narrow to one business key and a single town/bbox, then retry.",
-            });
-          }
-          const cap = Math.min(Math.max(args.limit ?? 80, 1), 150);
-          const named = result.elements
-            .map(projectElement)
-            .filter((e) => e.name);
-          const elements = named.slice(0, cap);
-          return asText({
-            matched: named.length,
-            returned: elements.length,
-            truncated: named.length > cap,
-            elements,
-          });
-        },
+        async (args) =>
+          formatOverpassResult(
+            await runOverpass(wrapOverpassQL(args.statement)),
+            args.limit,
+          ),
       ),
       tool(
         "upsert_business",

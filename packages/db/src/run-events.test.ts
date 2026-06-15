@@ -4,6 +4,7 @@ import pathx from "node:path";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  countRunWarnings,
   openRunLog,
   parseEvents,
   projectMessage,
@@ -83,6 +84,24 @@ describe("projectMessage", () => {
     expect(projectMessage({ type: "system", subtype: "init" })).toEqual([]);
     expect(projectMessage(null)).toEqual([]);
     expect(projectMessage({ type: "user", message: {} })).toEqual([]);
+  });
+});
+
+describe("countRunWarnings", () => {
+  it("counts only tool-results the SDK flagged as errors", () => {
+    const events = [
+      { kind: "run_start" },
+      { kind: "tool_result", isError: false },
+      { kind: "tool_result", isError: true },
+      { kind: "assistant_text" },
+      { kind: "tool_result", isError: true },
+    ];
+    expect(countRunWarnings(events)).toBe(2);
+  });
+
+  it("is zero with no errored tool-results or no events", () => {
+    expect(countRunWarnings([{ kind: "tool_result", isError: false }])).toBe(0);
+    expect(countRunWarnings([])).toBe(0);
   });
 });
 

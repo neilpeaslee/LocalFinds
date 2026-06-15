@@ -76,6 +76,14 @@ function RunRow({ run, now }: { run: Run; now: number }) {
           </span>
         )}
         {run.error && <span className="text-stone-400"> ({run.error})</span>}
+        {run.warnings > 0 && (
+          <span
+            className="ml-1 text-amber-600"
+            title={`${run.warnings} non-fatal tool failure(s) during this run`}
+          >
+            ⚠ {run.warnings}
+          </span>
+        )}
       </td>
       <td className="pr-3 text-right">{duration(run)}</td>
       <td className="pr-3 text-right">{run.numTurns ?? "—"}</td>

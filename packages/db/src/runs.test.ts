@@ -19,6 +19,7 @@ function makeRun(partial: Partial<Run>): Run {
     status: "running",
     itemsAdded: 0,
     itemsUpdated: 0,
+    warnings: 0,
     numTurns: null,
     costUsd: null,
     usageJson: null,

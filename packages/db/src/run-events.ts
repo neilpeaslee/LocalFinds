@@ -85,6 +85,16 @@ export function projectMessage(message: any): RunEvent[] {
   return [];
 }
 
+// Count tool-results the SDK flagged as errors — non-fatal failures (e.g. an
+// aborted Overpass query) that would otherwise be invisible inside a run that
+// still finishes "success". Surfaced as the run's warning count.
+export function countRunWarnings(
+  events: readonly { kind: string; isError?: boolean }[],
+): number {
+  return events.filter((e) => e.kind === "tool_result" && e.isError === true)
+    .length;
+}
+
 export function runLogPath(agent: string, runId: number): string {
   return path.join(agentWorkspaceDir(agent), "runs", `${runId}.jsonl`);
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isValidOsmId, runOverpass, wrapOverpassQL } from "./overpass";
+import {
+  formatOverpassResult,
+  isValidOsmId,
+  runOverpass,
+  wrapOverpassQL,
+} from "./overpass";
 
 describe("wrapOverpassQL", () => {
   it("owns the settings header and out statement, stripping the agent's", () => {
@@ -32,6 +37,53 @@ describe("isValidOsmId", () => {
     expect(isValidOsmId("cafe Rockland")).toBe(false);
     expect(isValidOsmId("node/")).toBe(false);
     expect(isValidOsmId("https://x/node/1")).toBe(false);
+  });
+});
+
+describe("formatOverpassResult", () => {
+  it("flags a failed query as a tool error carrying the retry hint", () => {
+    const out = formatOverpassResult({
+      ok: false,
+      error: "Overpass HTTP 504",
+      status: 504,
+    });
+    expect(out.isError).toBe(true);
+    const text = out.content[0].text;
+    expect(text).toContain("Overpass HTTP 504");
+    // the agent-facing hint must survive so it can still narrow + retry
+    expect(text.toLowerCase()).toContain("narrow");
+  });
+
+  it("does not flag a successful query and returns only named, projected elements", () => {
+    const out = formatOverpassResult({
+      ok: true,
+      elements: [
+        { type: "node", id: 1, lat: 44, lon: -69, tags: { name: "Cafe", amenity: "cafe" } },
+        { type: "node", id: 2, lat: 44, lon: -69, tags: { amenity: "bench" } }, // unnamed → dropped
+      ],
+    });
+    expect(out.isError).toBeUndefined();
+    const data = JSON.parse(out.content[0].text);
+    expect(data.matched).toBe(1);
+    expect(data.returned).toBe(1);
+    expect(data.truncated).toBe(false);
+    expect(data.elements[0].name).toBe("Cafe");
+  });
+
+  it("caps to the limit and reports truncation", () => {
+    const elements = Array.from({ length: 5 }, (_, i) => ({
+      type: "node" as const,
+      id: i,
+      lat: 44,
+      lon: -69,
+      tags: { name: `Park ${i}`, leisure: "park" },
+    }));
+    const data = JSON.parse(
+      formatOverpassResult({ ok: true, elements }, 2).content[0].text,
+    );
+    expect(data.matched).toBe(5);
+    expect(data.returned).toBe(2);
+    expect(data.truncated).toBe(true);
   });
 });
 

@@ -112,6 +112,9 @@ export const runs = sqliteTable("runs", {
     .default("running"),
   itemsAdded: integer("items_added").notNull().default(0),
   itemsUpdated: integer("items_updated").notNull().default(0),
+  // Non-fatal tool failures during the run (e.g. an aborted Overpass query) —
+  // counted from the run log so a "success" run still surfaces its hiccups.
+  warnings: integer("warnings").notNull().default(0),
   numTurns: integer("num_turns"),
   costUsd: real("cost_usd"),
   usageJson: text("usage_json"),

@@ -1,4 +1,9 @@
-import { getRun, isRunStale, readRunEvents } from "@localfinds/db";
+import {
+  countRunWarnings,
+  getRun,
+  isRunStale,
+  readRunEvents,
+} from "@localfinds/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RunTranscript } from "@/components/RunTranscript";
@@ -17,6 +22,9 @@ export default async function RunDetailPage({
   if (!run) notFound();
 
   const events = readRunEvents(run.agent, runId);
+  // Compute from the log rather than the stored column so historical and live
+  // runs both reflect their non-fatal tool failures accurately.
+  const warnings = countRunWarnings(events);
   const stale = isRunStale(run, Date.now());
   const live = run.status === "running" && !stale;
 
@@ -67,6 +75,12 @@ export default async function RunDetailPage({
           <div>
             <dt className="text-stone-400">cost</dt>
             <dd>{run.costUsd != null ? `$${run.costUsd.toFixed(3)}` : "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-stone-400">warnings</dt>
+            <dd className={warnings > 0 ? "text-amber-600" : undefined}>
+              {warnings > 0 ? `⚠ ${warnings}` : "0"}
+            </dd>
           </div>
         </dl>
       </div>

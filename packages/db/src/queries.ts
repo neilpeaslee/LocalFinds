@@ -549,6 +549,7 @@ export interface FinishRunPatch {
   status: "success" | "error";
   itemsAdded?: number;
   itemsUpdated?: number;
+  warnings?: number;
   numTurns?: number;
   costUsd?: number;
   usageJson?: string;

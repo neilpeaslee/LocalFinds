@@ -1,6 +1,7 @@
 import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   agentWorkspaceDir,
+  countRunWarnings,
   dedupeBusinesses,
   finishRun,
   formatCategoryPriorities,
@@ -135,6 +136,7 @@ export async function runAgent(
   );
 
   let result: SDKResultMessage | undefined;
+  let warnings = 0;
   try {
     for await (const message of query({
       prompt,
@@ -167,7 +169,9 @@ export async function runAgent(
       },
     })) {
       logMessage(message as never);
-      for (const ev of projectMessage(message)) log.write(ev);
+      const events = projectMessage(message);
+      for (const ev of events) log.write(ev);
+      warnings += countRunWarnings(events);
       if (message.type === "result") result = message;
     }
 
@@ -178,6 +182,7 @@ export async function runAgent(
       status: result?.subtype === "success" ? "success" : "error",
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,
+      warnings,
       numTurns: result?.num_turns,
       costUsd: result?.total_cost_usd,
       usageJson: result ? JSON.stringify(result.modelUsage) : undefined,
@@ -208,6 +213,7 @@ export async function runAgent(
       status: "error",
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,
+      warnings,
       numTurns: result?.num_turns,
       costUsd: result?.total_cost_usd,
       usageJson: result ? JSON.stringify(result.modelUsage) : undefined,
