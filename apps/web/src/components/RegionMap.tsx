@@ -1,8 +1,9 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+import type { MapPin } from "@localfinds/db";
 import type { LatLngBoundsExpression, LatLngTuple } from "leaflet";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CircleMarker,
   MapContainer,
@@ -11,25 +12,20 @@ import {
   TileLayer,
   Tooltip,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
+import Supercluster from "supercluster";
+import {
+  selectPins,
+  tiersForZoom,
+  type MapFilters,
+  type Viewport,
+} from "@/lib/map-selection";
 
 export interface TownBoxProp {
   name: string;
-  /** [south, west, north, east] = [minLat, minLng, maxLat, maxLng]. */
   bbox: [number, number, number, number];
   primary?: boolean;
-}
-
-export interface BusinessPin {
-  /** DB row id — the stable React key. OSM can hold two elements (distinct
-   * osm_id) for one real business at identical name+coords, so name/lat/lng is
-   * not unique enough to key on. */
-  id: number;
-  name: string;
-  kind: string | null;
-  lat: number;
-  lng: number;
-  town: string | null;
 }
 
 export interface BoundaryFeature {
@@ -37,42 +33,34 @@ export interface BoundaryFeature {
   properties: { name: string; primary?: boolean; osm?: string };
   geometry: {
     type: "Polygon" | "MultiPolygon";
-    // Polygon: ring[]; MultiPolygon: polygon[] of ring[]. Rings are [lng, lat].
     coordinates: number[][][] | number[][][][];
   };
+}
+
+export interface MapThemeProp {
+  key: string;
+  label: string;
+  color: string;
 }
 
 export interface RegionMapProps {
   towns: TownBoxProp[];
   boundaries: { features: BoundaryFeature[] };
-  businesses: BusinessPin[];
+  businesses: MapPin[];
+  /** Theme key -> color/label, from readMapCategories (plus "other"). */
+  themes: MapThemeProp[];
 }
 
 type Ring = LatLngTuple[];
+type Vp = Viewport & { zoom: number };
 
-// Once the map has fitted the coverage bounds, zoom in one extra level (keeping
-// the region centered) so the area fills the frame — a bit spills off the edges.
-function ZoomInOne({ active }: { active: boolean }) {
-  const map = useMap();
-  const done = useRef(false);
-  useEffect(() => {
-    if (done.current || !active) return;
-    done.current = true;
-    map.setZoom(map.getZoom() + 1);
-  }, [map, active]);
-  return null;
-}
-
-// Rockland, ME — used only when there's no coverage data at all to frame.
 const DEFAULT_CENTER: LatLngTuple = [44.1, -69.11];
-const MASK_COLOR = "#1c1917"; // stone-900
-const PRIMARY_COLOR = "#b45309"; // amber-700
-const TOWN_COLOR = "#44403c"; // stone-700
-const PIN_STROKE = "#0369a1"; // sky-700
-const PIN_FILL = "#0ea5e9"; // sky-500
+const MASK_COLOR = "#1c1917";
+const PRIMARY_COLOR = "#b45309";
+const TOWN_COLOR = "#44403c";
+const CLUSTER_FILL = "#64748b"; // slate-500
+const CLUSTER_STROKE = "#475569"; // slate-600
 
-// The outer ring(s) of a feature, as Leaflet [lat, lng] tuples. (MultiPolygons
-// and inner holes are rare for town boundaries; we keep each part's outer ring.)
 function featureOuterRings(f: BoundaryFeature): Ring[] {
   const polys: number[][][][] =
     f.geometry.type === "Polygon"
@@ -84,7 +72,6 @@ function featureOuterRings(f: BoundaryFeature): Ring[] {
     .map((ring) => ring.map(([lng, lat]) => [lat, lng] as LatLngTuple));
 }
 
-// The four corners of a town bbox as a Leaflet ring (for towns with no polygon).
 function bboxRing([s, w, n, e]: TownBoxProp["bbox"]): Ring {
   return [
     [s, w],
@@ -94,28 +81,90 @@ function bboxRing([s, w, n, e]: TownBoxProp["bbox"]): Ring {
   ];
 }
 
-export default function RegionMap({
-  towns,
-  boundaries,
-  businesses,
-}: RegionMapProps) {
-  const [showPins, setShowPins] = useState(true);
+// Once the map has fitted the coverage bounds, zoom in one extra level.
+function ZoomInOne({ active }: { active: boolean }) {
+  const map = useMap();
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (done || !active) return;
+    setDone(true);
+    map.setZoom(map.getZoom() + 1);
+  }, [map, active, done]);
+  return null;
+}
+
+// Emits the current viewport (bounds + pixel size + zoom) on load and after any
+// pan/zoom, so the parent can recompute which pins to show.
+function ViewportTracker({ onChange }: { onChange: (v: Vp) => void }) {
+  const map = useMap();
+  const emit = useCallback(() => {
+    const b = map.getBounds();
+    const s = map.getSize();
+    onChange({
+      south: b.getSouth(),
+      west: b.getWest(),
+      north: b.getNorth(),
+      east: b.getEast(),
+      widthPx: s.x,
+      heightPx: s.y,
+      zoom: map.getZoom(),
+    });
+  }, [map, onChange]);
+  useMapEvents({ moveend: emit, zoomend: emit, load: emit });
+  useEffect(() => {
+    emit();
+  }, [emit]);
+  return null;
+}
+
+export default function RegionMap({ towns, boundaries, businesses, themes }: RegionMapProps) {
+  const [vp, setVp] = useState<Vp | null>(null);
+
+  const colorOf = useMemo(() => {
+    const m = new Map(themes.map((t) => [t.key, t.color]));
+    return (key: string) => m.get(key) ?? CLUSTER_FILL;
+  }, [themes]);
+
+  const availableTiers = useMemo(
+    () => [...new Set(businesses.map((b) => b.tier))].sort((a, z) => a - z),
+    [businesses],
+  );
+
+  // Phase 1 default filters: all themes on, tiers driven by zoom, no closed/chains.
+  const { shown, overflow } = useMemo(() => {
+    if (!vp) return { shown: [] as MapPin[], overflow: [] as MapPin[] };
+    const filters: MapFilters = {
+      themes: new Set([...themes.map((t) => t.key), "other"]),
+      subtypes: new Map(),
+      tags: [],
+      tiers: tiersForZoom(vp.zoom, availableTiers),
+      showClosed: false,
+      showChains: false,
+      query: "",
+    };
+    return selectPins(businesses, filters, vp);
+  }, [vp, businesses, themes, availableTiers]);
+
+  const clusters = useMemo(() => {
+    if (!vp) return [];
+    const index = new Supercluster({ radius: 60, maxZoom: 20 });
+    index.load(
+      overflow.map((p) => ({
+        type: "Feature" as const,
+        properties: { id: p.id },
+        geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
+      })),
+    );
+    return index.getClusters([vp.west, vp.south, vp.east, vp.north], Math.round(vp.zoom));
+  }, [overflow, vp]);
 
   const haveBoundary = new Set(boundaries.features.map((f) => f.properties.name));
-  // Towns we must draw from their bbox because no real polygon was fetched.
   const fallbackTowns = towns.filter((t) => !haveBoundary.has(t.name));
-
-  // Every coverage ring (real polygons + bbox fallbacks) — the mask's holes and
-  // the source for framing the map.
   const coverageRings: Ring[] = [
     ...boundaries.features.flatMap(featureOuterRings),
     ...fallbackTowns.map((t) => bboxRing(t.bbox)),
   ];
-
   const bounds = computeBounds(coverageRings, businesses);
-
-  // World rectangle with every coverage ring punched out as a hole: fill dims
-  // everything outside the covered towns, leaving them "lit".
   const maskPositions: Ring[] = [
     [
       [85, -180],
@@ -137,6 +186,7 @@ export default function RegionMap({
         className="h-full w-full overflow-hidden rounded-lg border border-stone-200"
       >
         <ZoomInOne active={Boolean(bounds)} />
+        <ViewportTracker onChange={setVp} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -180,7 +230,7 @@ export default function RegionMap({
               pathOptions={{
                 color: t.primary ? PRIMARY_COLOR : TOWN_COLOR,
                 weight: t.primary ? 2.5 : 1.5,
-                dashArray: "4 3", // dashed = approximate box, not a real boundary
+                dashArray: "4 3",
                 fill: false,
               }}
             >
@@ -191,28 +241,54 @@ export default function RegionMap({
           );
         })}
 
-        {showPins &&
-          businesses.map((b) => (
+        {clusters.map((c) => {
+          const [lng, lat] = c.geometry.coordinates;
+          const props = c.properties as { cluster?: boolean; point_count?: number; id?: number };
+          if (!props.cluster) {
+            return (
+              <CircleMarker
+                key={`pt-${props.id}`}
+                center={[lat, lng]}
+                radius={3}
+                pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.7, weight: 1 }}
+              />
+            );
+          }
+          const count = props.point_count ?? 0;
+          const radius = Math.min(24, 11 + Math.log2(count + 1) * 2.5);
+          return (
+            <CircleMarker
+              key={`cl-${c.id}`}
+              center={[lat, lng]}
+              radius={radius}
+              pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.85, weight: 2 }}
+            >
+              <Tooltip direction="center" permanent opacity={1}>
+                {count}
+              </Tooltip>
+            </CircleMarker>
+          );
+        })}
+
+        {shown.map((b) => {
+          const color = colorOf(b.theme);
+          return (
             <CircleMarker
               key={b.id}
               center={[b.lat, b.lng]}
-              radius={4}
-              pathOptions={{
-                color: PIN_STROKE,
-                fillColor: PIN_FILL,
-                fillOpacity: 0.9,
-                weight: 1,
-              }}
+              radius={5}
+              pathOptions={{ color, fillColor: color, fillOpacity: 0.9, weight: 1 }}
             >
               <Tooltip>
                 <span className="font-medium">{b.name}</span>
-                {b.kind ? ` · ${b.kind}` : ""}
+                {b.subtype ? ` · ${b.subtype}` : b.kind ? ` · ${b.kind}` : ""}
               </Tooltip>
             </CircleMarker>
-          ))}
+          );
+        })}
       </MapContainer>
 
-      <div className="absolute top-3 right-3 z-[1000] rounded-md border border-stone-200 bg-white/95 p-2 text-xs text-stone-700 shadow-sm">
+      <div className="absolute top-3 right-3 z-[1000] max-w-[10rem] rounded-md border border-stone-200 bg-white/95 p-2 text-xs text-stone-700 shadow-sm">
         <div className="mb-1 flex items-center gap-1.5">
           <span
             className="inline-block h-3 w-3 rounded-sm border-2"
@@ -220,34 +296,32 @@ export default function RegionMap({
           />
           <span>Coverage area</span>
         </div>
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={showPins}
-            onChange={(e) => setShowPins(e.target.checked)}
-            className="accent-sky-600"
-          />
+        {themes.map((t) => (
+          <div key={t.key} className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: t.color }}
+            />
+            <span>{t.label}</span>
+          </div>
+        ))}
+        <div className="mt-1 flex items-center gap-1.5">
           <span
-            className="inline-block h-3 w-3 rounded-full border"
-            style={{ backgroundColor: PIN_FILL, borderColor: PIN_STROKE }}
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: CLUSTER_FILL }}
           />
-          <span>Businesses ({businesses.length})</span>
-        </label>
+          <span>more (zoom in)</span>
+        </div>
       </div>
     </div>
   );
 }
 
-// Frame the map on the coverage rings (falling back to business pins).
-function computeBounds(
-  rings: Ring[],
-  businesses: BusinessPin[],
-): LatLngBoundsExpression | undefined {
+function computeBounds(rings: Ring[], businesses: MapPin[]): LatLngBoundsExpression | undefined {
   let south = Infinity;
   let west = Infinity;
   let north = -Infinity;
   let east = -Infinity;
-
   for (const ring of rings) {
     for (const [lat, lng] of ring) {
       south = Math.min(south, lat);
@@ -264,7 +338,6 @@ function computeBounds(
       east = Math.max(east, b.lng);
     }
   }
-
   if (!Number.isFinite(south)) return undefined;
   return [
     [south, west],
