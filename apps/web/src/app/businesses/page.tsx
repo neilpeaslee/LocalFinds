@@ -7,6 +7,7 @@ import {
 } from "@localfinds/db";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { PAGE_SIZES, pageWindow, parsePageSize } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ type Filters = {
   q?: string;
   tier4?: string;
   chains?: string;
+  size?: string;
+  page?: string;
 };
 
 // Next.js delivers string[] for a repeated query key (?q=a&q=b); take the first.
@@ -69,22 +72,39 @@ export default async function BusinessesPage({
   const q = first(params.q) || undefined;
   const tier4 = first(params.tier4);
   const chains = first(params.chains);
-  const current: Filters = { town, status, tag, q, tier4, chains };
+  const size = parsePageSize(first(params.size));
+  const pageReq = Math.max(1, Number.parseInt(first(params.page) ?? "", 10) || 1);
+  // `size` rides along on filter/pager links; the default (50) stays implicit to
+  // keep URLs clean. `page` is deliberately NOT in `current`, so every filter and
+  // size link drops it (resetting to page 1); only the numbered pager re-adds it.
+  const current: Filters = {
+    town,
+    status,
+    tag,
+    q,
+    tier4,
+    chains,
+    size: size === 50 ? undefined : String(size),
+  };
 
   const cfg = readCategoryConfig();
   const showTier4 = tier4 === "1" || !cfg.hideInDirectory.tier4;
   const showChains = chains === "1" || !cfg.hideInDirectory.chains;
 
   // The query layer owns tier/chain ranking, visibility, sorting, and counts.
-  const { rows, total, tier4Count, chainCount } = listBusinessesRanked({
-    town,
-    status,
-    tag,
-    q,
-    limit: 5000,
-    includeTier4: showTier4,
-    includeChains: showChains,
-  });
+  const { rows, total, matched, page, pageCount, tier4Count, chainCount } =
+    listBusinessesRanked({
+      town,
+      status,
+      tag,
+      q,
+      limit: 5000,
+      includeTier4: showTier4,
+      includeChains: showChains,
+      page: pageReq,
+      pageSize: size === "all" ? undefined : size,
+    });
+  const start = size === "all" ? 0 : (page - 1) * size;
   const towns = listBusinessTowns();
   const hasFilters = Boolean(town || status || tag || q);
 
@@ -110,6 +130,7 @@ export default async function BusinessesPage({
           {tag && <input type="hidden" name="tag" value={tag} />}
           {tier4 && <input type="hidden" name="tier4" value={tier4} />}
           {chains && <input type="hidden" name="chains" value={chains} />}
+          {current.size && <input type="hidden" name="size" value={current.size} />}
           <input
             type="search"
             name="q"
@@ -177,6 +198,19 @@ export default async function BusinessesPage({
           </div>
         )}
 
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs font-medium text-stone-500">Per page</span>
+          {PAGE_SIZES.map((s) => (
+            <a
+              key={s}
+              href={hrefWith(current, { size: s === 50 ? undefined : String(s) })}
+              className={pill(size === s)}
+            >
+              {s === "all" ? "All" : s}
+            </a>
+          ))}
+        </div>
+
         {tag && (
           <div className="text-xs text-stone-500">
             Tag: <span className="font-medium">{tag}</span>{" "}
@@ -188,11 +222,13 @@ export default async function BusinessesPage({
       </div>
 
       <p className="text-xs text-stone-500">
-        {rows.length} {rows.length === 1 ? "business" : "businesses"}
+        {size === "all" || matched === 0
+          ? `${matched} ${matched === 1 ? "business" : "businesses"}`
+          : `Showing ${start + 1}–${start + rows.length} of ${matched} businesses`}
         {hasFilters ? " matching filters" : ""}, ranked by search priority
       </p>
 
-      {rows.length === 0 ? (
+      {matched === 0 ? (
         <p className="py-8 text-center text-sm text-stone-500">
           No businesses match these filters.
         </p>
@@ -279,6 +315,40 @@ export default async function BusinessesPage({
             );
           })}
         </div>
+      )}
+
+      {size !== "all" && pageCount > 1 && (
+        <nav className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
+          {page > 1 ? (
+            <a href={hrefWith(current, { page: String(page - 1) })} className={pill(false)}>
+              ‹
+            </a>
+          ) : (
+            <span className={`${pill(false)} opacity-40`}>‹</span>
+          )}
+          {pageWindow(page, pageCount).map((p, i) =>
+            p === "ellipsis" ? (
+              <span key={`ellipsis-${i}`} className="px-1 text-xs text-stone-400">
+                …
+              </span>
+            ) : p === page ? (
+              <span key={p} className={pill(true)} aria-current="page">
+                {p}
+              </span>
+            ) : (
+              <a key={p} href={hrefWith(current, { page: String(p) })} className={pill(false)}>
+                {p}
+              </a>
+            ),
+          )}
+          {page < pageCount ? (
+            <a href={hrefWith(current, { page: String(page + 1) })} className={pill(false)}>
+              ›
+            </a>
+          ) : (
+            <span className={`${pill(false)} opacity-40`}>›</span>
+          )}
+        </nav>
       )}
     </div>
   );
