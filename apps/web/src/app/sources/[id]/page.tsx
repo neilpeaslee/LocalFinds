@@ -29,7 +29,8 @@ export default async function SourceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: idParam } = await params;
-  const id = Number.parseInt(idParam, 10);
+  // Number() (not parseInt) so "1abc" becomes NaN and 404s instead of parsing to 1.
+  const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
   const source = getSourceById(id);
@@ -63,7 +64,7 @@ export default async function SourceDetailPage({
             rel="noopener noreferrer"
             className="text-xs text-blue-700 hover:underline"
           >
-            {source.url} ↗
+            {source.url} <span aria-hidden>↗</span>
           </a>
           <span
             className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[source.status] ?? ""}`}
