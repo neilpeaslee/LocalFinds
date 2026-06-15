@@ -358,3 +358,46 @@ describe("listBusinessesRanked", () => {
     expect(fullById["node/r3"].tier).toBe(4);
   });
 });
+
+describe("dedupeBusinesses", () => {
+  it("collapses same-name same-coord OSM elements into one canonical row", () => {
+    const a = q.upsertBusiness({
+      osmId: "way/900001",
+      name: "Dedup Test Cafe",
+      lat: 44.2,
+      lng: -69.2,
+      website: "https://dedup-a.example.com",
+      addedBy: "test",
+    });
+    const b = q.upsertBusiness({
+      osmId: "way/900002",
+      name: "Dedup Test Cafe",
+      lat: 44.2,
+      lng: -69.2,
+      phone: "207-555-0101",
+      addedBy: "test",
+    });
+    expect(a.outcome).toBe("created");
+    expect(b.outcome).toBe("created");
+
+    const summary = q.dedupeBusinesses();
+    expect(summary.groups).toBeGreaterThanOrEqual(1);
+
+    // Default view hides the duplicate and keeps one canonical row.
+    const visible = q.listBusinesses({ q: "Dedup Test Cafe" });
+    expect(visible).toHaveLength(1);
+    const canonical = visible[0];
+    expect(canonical.osmId).toBe("way/900001"); // older row wins the richness tie
+    expect(canonical.website).toBe("https://dedup-a.example.com");
+    expect(canonical.phone).toBe("207-555-0101"); // merged up from the duplicate
+
+    // includeDuplicates shows both; the loser points at the canonical osm_id.
+    const all = q.listBusinesses({
+      q: "Dedup Test Cafe",
+      includeDuplicates: true,
+    });
+    expect(all).toHaveLength(2);
+    const dup = all.find((r) => r.osmId === "way/900002");
+    expect(dup?.duplicateOf).toBe("way/900001");
+  });
+});

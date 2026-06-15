@@ -1,7 +1,12 @@
-import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "./client";
 import { readCategoryConfig } from "./config";
+import {
+  chooseCanonical,
+  groupBusinessDuplicates,
+  mergeFacts,
+} from "./business-dedupe";
 import { findKey } from "./dedupe";
 import {
   type Business,
@@ -365,10 +370,13 @@ export interface BusinessFilters {
   status?: "active" | "closed" | "unknown";
   q?: string;
   limit?: number;
+  /** Include rows marked as duplicates of another business. Default false. */
+  includeDuplicates?: boolean;
 }
 
 export function listBusinesses(filters: BusinessFilters = {}) {
   const conditions = [];
+  if (!filters.includeDuplicates) conditions.push(isNull(businesses.duplicateOf));
   if (filters.town) conditions.push(eq(businesses.town, filters.town));
   if (filters.status) conditions.push(eq(businesses.status, filters.status));
   if (filters.tag) {
@@ -386,6 +394,44 @@ export function listBusinesses(filters: BusinessFilters = {}) {
     .orderBy(businesses.town, businesses.name)
     .limit(filters.limit ?? 500)
     .all();
+}
+
+// Collapse OSM elements that describe the same real business (same normalized
+// name, within ~50m) into one canonical row. Reads only unmarked rows, so it is
+// idempotent; merges the duplicates' missing facts onto the canonical, then
+// points each loser's duplicate_of at the canonical osm_id. Run after a
+// cartographer scan and as a one-time cleanup.
+export function dedupeBusinesses(): { groups: number; marked: number } {
+  const rows = db()
+    .select()
+    .from(businesses)
+    .where(isNull(businesses.duplicateOf))
+    .all();
+
+  const groups = groupBusinessDuplicates(rows);
+  let marked = 0;
+
+  db().transaction((tx) => {
+    for (const group of groups) {
+      const canonical = chooseCanonical(group);
+      const others = group.filter((r) => r.id !== canonical.id);
+
+      const fill = mergeFacts(canonical, others);
+      if (Object.keys(fill).length > 0) {
+        tx.update(businesses).set(fill).where(eq(businesses.id, canonical.id)).run();
+      }
+
+      for (const dup of others) {
+        tx.update(businesses)
+          .set({ duplicateOf: canonical.osmId })
+          .where(eq(businesses.id, dup.id))
+          .run();
+        marked++;
+      }
+    }
+  });
+
+  return { groups: groups.length, marked };
 }
 
 export interface RankedBusiness {
