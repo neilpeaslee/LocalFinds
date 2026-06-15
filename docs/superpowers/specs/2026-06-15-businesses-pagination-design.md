@@ -2,6 +2,29 @@
 
 _Date: 2026-06-15_
 
+> ## ⚠️ Flagged for rebuild review — pagination strategy (B1 vs B2)
+>
+> This spec implements **B1**: `listBusinessesRanked` loads the **entire filtered
+> set** into server memory on every `/businesses` request to rank it (tier comes
+> from `categories.json`, not SQL) and to count chains/excluded, then returns a
+> single page. **Cost scales with the total number of matching businesses, not
+> with page size.**
+>
+> - **Why it's fine now:** local in-process SQLite, one user, hundreds–low-thousands
+>   of rows. The full-set scan + in-memory sort is negligible.
+> - **Why it won't scale:** a larger region (more businesses) or the planned
+>   multi-user / real-time rebuild (many concurrent requests) turns this
+>   per-request full scan into the bottleneck. Pagination here limits *payload*,
+>   not *server work*.
+> - **The scalable form (B2):** generate a tier `CASE` from `categories.json` so
+>   SQL does `ORDER BY … LIMIT/OFFSET` and the counts become SQL aggregates — the
+>   DB returns only the page. Deferred deliberately to avoid coupling SQL to the
+>   category-config shape before the rebuild settles the data model.
+> - **Revisit trigger:** at the rebuild, or sooner if a single region's business
+>   count or concurrent traffic makes the per-request scan noticeable.
+>
+> See the project's rebuild/framework direction for where this gets reconsidered.
+
 ## Problem
 
 `/businesses` (`apps/web/src/app/businesses/page.tsx`) renders **every** matching
@@ -26,8 +49,10 @@ with filtering behaving exactly as it does today.
   `ORDER BY`, and the pill counts need the whole filtered set. So the query loads
   the filtered set, ranks/counts it in memory as today, then slices to the page.
   This keeps ranking and counts exactly correct; only the *returned* rows are
-  limited. (Rejected the heavier alternative of generating a tier `CASE` to push
-  `ORDER BY … LIMIT/OFFSET` into SQL — unneeded at this data size.)
+  limited. (Rejected the heavier alternative "B2" of generating a tier `CASE` to
+  push `ORDER BY … LIMIT/OFFSET` into SQL — unneeded at this data size.)
+  **⚠️ This is the growth-sensitive decision flagged for rebuild review — see the
+  callout at the top of this doc.**
 - **Pagination params are optional and default to "no paging."** Omitting them
   returns the full set, so the other caller — the agents' `list_businesses` tool
   (`packages/agents/src/mcp-tools.ts`), which reads `{ rows, total }` and passes
