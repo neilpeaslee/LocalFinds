@@ -6,6 +6,9 @@ node_modules/
 # browser-automation debug artifacts
 .playwright-mcp/
 
+# brainstorming visual-companion working files
+.superpowers/
+
 # secrets / local-only config
 .env
 .claude/settings.local.json
