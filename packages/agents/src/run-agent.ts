@@ -19,6 +19,30 @@ import { makePathGuard } from "./path-guard";
 /** Default model for agents that don't pin their own. */
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
+/**
+ * Tell the agent where its workspace actually lives, as an absolute path. The
+ * file tools require absolute paths but nothing else hands the agent its
+ * absolute location, so on the first file access it guesses a root-anchored
+ * path (e.g. `/notes/coverage.md`, `/workspace/notes/...`) that the path-guard
+ * denies — wasting a turn every run until the denial message leaks the real
+ * root and the agent retries (see runs 14 and 20). Handing it the prefix up
+ * front removes that round-trip. Appended to every agent's system prompt;
+ * stable per agent, so it stays cacheable.
+ */
+export function workspaceSystemNote(workspaceDir: string): string {
+  return [
+    "Your workspace is this absolute directory:",
+    workspaceDir,
+    "",
+    "Read/Write/Edit/Glob/Grep require absolute paths, and you may only touch " +
+      "files under that directory. Always build paths from it — your profile is " +
+      `${workspaceDir}/profile.md and your notes live in ${workspaceDir}/notes/ ` +
+      `(e.g. ${workspaceDir}/notes/coverage.md). Do NOT use root-anchored paths ` +
+      "like /notes/... or /workspace/... — they resolve outside your workspace " +
+      "and will be denied.",
+  ].join("\n");
+}
+
 /** Reasoning effort (thinking depth). Lower = less thinking → cheaper & faster. */
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -145,7 +169,7 @@ export async function runAgent(
         effort: def.effort,
         cwd: workspace,
         env: sanitizedEnv(),
-        systemPrompt: def.systemPrompt,
+        systemPrompt: `${def.systemPrompt}\n\n${workspaceSystemNote(workspace)}`,
         settingSources: [],
         // The CLI's auto-memory resolves to the enclosing git repo and would
         // surface the developer's Claude session memory into agent context.
