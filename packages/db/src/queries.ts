@@ -11,6 +11,8 @@ import {
 import { findKey } from "./dedupe";
 import {
   type Business,
+  type Find,
+  type Source,
   businesses,
   feedback,
   finds,
@@ -256,6 +258,20 @@ export function readFeedbackForAgent(agent: string, limit = 200) {
 
 export function listSources() {
   return db().select().from(sources).orderBy(sources.url).all();
+}
+
+export function getSourceById(id: number): Source | undefined {
+  return db().select().from(sources).where(eq(sources.id, id)).get();
+}
+
+export function listFindsBySource(sourceId: number, limit = 10): Find[] {
+  return db()
+    .select()
+    .from(finds)
+    .where(eq(finds.sourceId, sourceId))
+    .orderBy(desc(finds.discoveredAt))
+    .limit(limit)
+    .all();
 }
 
 export interface UpsertSourceInput {
