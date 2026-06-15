@@ -39,11 +39,11 @@ export default function DashboardPage() {
   const boundaries = readTownBoundaries();
 
   const pins = listMapPins();
-  const mapThemes = readMapCategories().themes.map((t) => ({
-    key: t.key,
-    label: t.label,
-    color: t.color,
-  }));
+  const mapCfg = readMapCategories();
+  const mapThemes = [
+    ...mapCfg.themes.map((t) => ({ key: t.key, label: t.label, color: t.color })),
+    { key: mapCfg.otherKey, label: mapCfg.otherLabel, color: mapCfg.otherColor },
+  ];
   const businessCount = countBusinesses();
 
   const finds = getFeed({ view: "default" });

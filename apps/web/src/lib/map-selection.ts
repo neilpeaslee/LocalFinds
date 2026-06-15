@@ -49,6 +49,7 @@ export function budgetForViewport(widthPx: number, heightPx: number): number {
   return Math.max(MIN_BUDGET, Math.min(MAX_BUDGET, Math.round(area / PX_PER_PIN)));
 }
 
+// Assumes a non-antimeridian-crossing viewport (west <= east) — true for a single region.
 function inBounds(p: MapPin, v: Viewport): boolean {
   return p.lat >= v.south && p.lat <= v.north && p.lng >= v.west && p.lng <= v.east;
 }

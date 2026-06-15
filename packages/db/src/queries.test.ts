@@ -428,6 +428,17 @@ describe("listMapPins / countBusinesses", () => {
     expect(pins).toBeGreaterThanOrEqual(2); // "Has Coords" + "Chain" from the previous test
     expect(total).toBeGreaterThan(pins);    // "No Coords" is counted but not pinned
   });
+
+  it("returns all rows with no cap (regression: the old 500-row limit dropped towns)", () => {
+    for (let i = 0; i < 600; i++) {
+      q.upsertBusiness({
+        osmId: `node/7${i}`, name: `Bulk ${i}`, kind: "amenity=cafe", town: "Bulkville",
+        lat: 44 + i / 100000, lng: -69 - i / 100000, addedBy: "test",
+      });
+    }
+    const bulk = q.listMapPins().filter((p) => p.town === "Bulkville");
+    expect(bulk.length).toBe(600); // capped at 500 under the old listBusinesses() path
+  });
 });
 
 describe("listBusinessesRanked pagination", () => {
