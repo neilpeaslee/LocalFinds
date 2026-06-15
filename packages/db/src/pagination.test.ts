@@ -25,4 +25,16 @@ describe("resolvePage", () => {
   it("treats an empty set as a single empty page", () => {
     expect(resolvePage(0, 1, 4)).toEqual({ page: 1, pageCount: 1, start: 0, end: 0 });
   });
+
+  it("treats pageSize of 1 as one item per page", () => {
+    expect(resolvePage(3, 2, 1)).toEqual({ page: 2, pageCount: 3, start: 1, end: 2 });
+  });
+
+  it("coerces a non-positive pageSize to 1", () => {
+    expect(resolvePage(3, 1, 0)).toEqual({ page: 1, pageCount: 3, start: 0, end: 1 });
+  });
+
+  it("coerces a NaN page to the first page", () => {
+    expect(resolvePage(10, Number.NaN, 4)).toEqual({ page: 1, pageCount: 3, start: 0, end: 4 });
+  });
 });
