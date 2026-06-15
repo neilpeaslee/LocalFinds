@@ -17,7 +17,6 @@ import {
 import Supercluster from "supercluster";
 import {
   selectVisible,
-  tiersForZoom,
   type MapFilters,
   type Viewport,
 } from "@/lib/map-selection";
@@ -153,20 +152,29 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
     [businesses],
   );
 
-  // Phase 1 default filters: all themes on, tiers driven by zoom, no closed/chains.
+  // Phase 1 default filters: all themes on, no closed/chains. Include every
+  // business tier (1–3) at all zooms so clustering conserves — every in-view
+  // business is either a pin or counted in a cluster, so zooming never makes a
+  // pin vanish without a cluster count rising. Tier 4 ("not a business") stays
+  // hidden, matching the /businesses default. Clustering (not tier) controls
+  // density; lower tiers reveal by declustering as you zoom in.
+  const businessTiers = useMemo(
+    () => new Set(availableTiers.filter((t) => t !== 4)),
+    [availableTiers],
+  );
   const candidates = useMemo(() => {
     if (!vp) return [] as MapPin[];
     const filters: MapFilters = {
       themes: new Set([...themes.map((t) => t.key), "other"]),
       subtypes: new Map(),
       tags: [],
-      tiers: tiersForZoom(vp.zoom, availableTiers),
+      tiers: businessTiers,
       showClosed: false,
       showChains: false,
       query: "",
     };
     return selectVisible(businesses, filters, vp);
-  }, [vp, businesses, themes, availableTiers]);
+  }, [vp, businesses, themes, businessTiers]);
 
   // Cluster the WHOLE candidate set: supercluster merges nearby points, so an
   // isolated point comes back as a singleton (rendered as a themed pin) and any
