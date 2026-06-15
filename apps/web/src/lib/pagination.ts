@@ -6,7 +6,7 @@ export type PageSize = 25 | 50 | 100 | "all";
 
 export const PAGE_SIZES: PageSize[] = [25, 50, 100, "all"];
 
-export const DEFAULT_PAGE_SIZE = 50;
+export const DEFAULT_PAGE_SIZE: PageSize = 50;
 
 // Parse a raw ?size= value. Unknown/missing -> the default (50).
 export function parsePageSize(raw: string | undefined): PageSize {
@@ -31,7 +31,12 @@ export function pageWindow(
   const out: (number | "ellipsis")[] = [];
   let prev = 0;
   for (const p of ordered) {
-    if (p - prev > 1) out.push("ellipsis");
+    if (p - prev === 2) {
+      // Exactly one page hidden — show it rather than a wasteful ellipsis.
+      out.push(prev + 1);
+    } else if (p - prev > 2) {
+      out.push("ellipsis");
+    }
     out.push(p);
     prev = p;
   }

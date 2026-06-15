@@ -37,4 +37,9 @@ describe("pageWindow", () => {
   it("returns a single page for one or zero pages", () => {
     expect(pageWindow(1, 1)).toEqual([1]);
   });
+
+  it("fills a single-page gap instead of showing an ellipsis", () => {
+    expect(pageWindow(1, 4)).toEqual([1, 2, 3, 4]);
+    expect(pageWindow(4, 4)).toEqual([1, 2, 3, 4]);
+  });
 });
