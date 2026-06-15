@@ -61,6 +61,10 @@ describe("filterSources", () => {
     expect(filterSources(sources, { q: "example", status: "active" }).map((s) => s.id)).toEqual([1]);
   });
 
+  it("treats a whitespace-only q as no filter", () => {
+    expect(filterSources(sources, { q: "   " }).length).toBe(2);
+  });
+
   it("returns all sources for an empty query", () => {
     expect(filterSources(sources, {}).length).toBe(2);
   });
