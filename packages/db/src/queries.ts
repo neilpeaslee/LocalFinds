@@ -400,7 +400,9 @@ export function listBusinesses(filters: BusinessFilters = {}) {
 // name, within ~50m) into one canonical row. Reads only unmarked rows, so it is
 // idempotent; merges the duplicates' missing facts onto the canonical, then
 // points each loser's duplicate_of at the canonical osm_id. Run after a
-// cartographer scan and as a one-time cleanup.
+// cartographer scan and as a one-time cleanup. Facts are merged onto the
+// canonical once, at collapse time; a later re-scan of an already-marked
+// duplicate does not re-merge its newly-changed facts.
 export function dedupeBusinesses(): { groups: number; marked: number } {
   const rows = db()
     .select()
@@ -501,11 +503,13 @@ export function listBusinessesRanked(
 }
 
 // Distinct towns with business counts, for the directory's town filter.
+// Excludes duplicate-marked rows so the pill counts match the deduped listing.
 export function listBusinessTowns(): { town: string; n: number }[] {
   return db().all<{ town: string; n: number }>(
     sql`select ${businesses.town} as town, count(*) as n
         from ${businesses}
         where ${businesses.town} is not null
+          and ${businesses.duplicateOf} is null
         group by town order by town`,
   );
 }
