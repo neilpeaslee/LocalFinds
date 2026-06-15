@@ -432,6 +432,7 @@ describe("listBusinessesRanked pagination", () => {
       "Pager D",
       "Pager E",
     ]);
+    expect(all.total).toBe(5);
     expect(all.matched).toBe(5);
     expect(all.page).toBe(1);
     expect(all.pageCount).toBe(1);
