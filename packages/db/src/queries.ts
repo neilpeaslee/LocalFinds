@@ -371,6 +371,8 @@ export interface BusinessFilters {
   status?: "active" | "closed" | "unknown";
   q?: string;
   limit?: number;
+  /** Only rows with a non-empty website (i.e. candidate sources). */
+  hasWebsite?: boolean;
   /** Include rows marked as duplicates of another business. Default false. */
   includeDuplicates?: boolean;
 }
@@ -387,6 +389,9 @@ export function listBusinesses(filters: BusinessFilters = {}) {
     conditions.push(
       sql`${businesses.name} like ${likeContains(filters.q)} escape '\\'`,
     );
+  }
+  if (filters.hasWebsite) {
+    conditions.push(sql`${businesses.website} is not null and ${businesses.website} != ''`);
   }
   return db()
     .select()

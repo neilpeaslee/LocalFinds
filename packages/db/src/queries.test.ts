@@ -158,6 +158,39 @@ describe("businesses", () => {
     expect(b.brand).toBe("Hannaford");
   });
 
+  it("filters to rows with a non-empty website when hasWebsite is set", () => {
+    q.upsertBusiness({
+      osmId: "node/w1",
+      name: "Has Website",
+      town: "WebFilter",
+      website: "https://has-site.example.com",
+      addedBy: "test",
+    });
+    q.upsertBusiness({
+      osmId: "node/w2",
+      name: "No Website",
+      town: "WebFilter",
+      addedBy: "test",
+    });
+    q.upsertBusiness({
+      osmId: "node/w3",
+      name: "Empty Website",
+      town: "WebFilter",
+      website: "",
+      addedBy: "test",
+    });
+
+    // Without the filter, all three are returned.
+    expect(
+      q.listBusinesses({ town: "WebFilter" }).map((b) => b.osmId).sort(),
+    ).toEqual(["node/w1", "node/w2", "node/w3"]);
+
+    // With it, only the row that actually has a website (null and "" excluded).
+    expect(
+      q.listBusinesses({ town: "WebFilter", hasWebsite: true }).map((b) => b.osmId),
+    ).toEqual(["node/w1"]);
+  });
+
   it("lists distinct towns with counts, alphabetically, excluding null towns", () => {
     q.upsertBusiness({ osmId: "node/100", name: "A", town: "Owls Head", addedBy: "test" });
     q.upsertBusiness({ osmId: "node/101", name: "B", town: "Owls Head", addedBy: "test" });

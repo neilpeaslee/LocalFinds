@@ -295,7 +295,7 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
       ),
       tool(
         "list_businesses",
-        "List businesses already in the directory — to dedupe your coverage, or to use them as monitoring targets / candidate sources. Each row includes `tier` (1 = highest search priority) and `isChain`. Filter by town, tag, status, name substring, `max_tier` (e.g. 2 = Tier 1-2 only), or `exclude_chains`.",
+        "List businesses already in the directory — to dedupe your coverage, or to use them as monitoring targets / candidate sources. Each row includes `tier` (1 = highest search priority) and `isChain`. Filter by town, tag, status, name substring, `max_tier` (e.g. 2 = Tier 1-2 only), `exclude_chains`, or `has_website` (only businesses with a website — the candidate sources).",
         {
           town: z.string().optional(),
           tag: z.string().optional(),
@@ -309,6 +309,10 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             .boolean()
             .optional()
             .describe("Drop national/regional chains (OSM brand)."),
+          has_website: z
+            .boolean()
+            .optional()
+            .describe("Only businesses that have a website — the candidate sources."),
           limit: z.number().optional().describe("Default 500"),
         },
         async (args) => {
@@ -317,6 +321,7 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             tag: args.tag,
             status: args.status,
             q: args.q,
+            hasWebsite: args.has_website,
             limit: args.limit,
             maxTier: args.max_tier,
             includeTier4: true, // maxTier governs; otherwise return the full set
@@ -325,8 +330,20 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
           return asText({
             total,
             returned: rows.length,
+            // Trim to the fields an agent needs to judge a directory row (dedupe
+            // by town/name, or weigh it as a candidate source) — dropping coords,
+            // phone, and timestamps keeps a tier-wide list from blowing the token
+            // budget. The full record is available via the /businesses page.
             businesses: rows.map((r) => ({
-              ...r.business,
+              id: r.business.id,
+              osmId: r.business.osmId,
+              name: r.business.name,
+              kind: r.business.kind,
+              tags: r.business.tags,
+              town: r.business.town,
+              address: r.business.address,
+              website: r.business.website,
+              status: r.business.status,
               tier: r.tier,
               isChain: r.isChain,
             })),
