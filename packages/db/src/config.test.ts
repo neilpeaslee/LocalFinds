@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readTownBoundaries, readTownsConfig } from "./config";
+import { readMapCategories, readTownBoundaries, readTownsConfig } from "./config";
 
 // config.ts reads files under dataDir(), which honors LOCALFINDS_DATA_DIR — so
 // point it at a throwaway dir per test and drop config files into config/.
@@ -65,6 +65,61 @@ describe("readTownsConfig", () => {
     expect(readTownsConfig().towns).toEqual([
       { name: "Thomaston", bbox: [44.05, -69.22, 44.1, -69.14] },
     ]);
+  });
+});
+
+describe("readMapCategories / themeOf", () => {
+  const cfgJson = JSON.stringify({
+    themes: [
+      { key: "outdoors", label: "Outdoors & Rec", color: "#10b981",
+        subtypes: { "leisure=park": "Park", "leisure=dog_park": "Dog Park" } },
+      { key: "retail", label: "Shops & Retail", color: "#8b5cf6", subtypes: { "shop=*": "Shop" } },
+      { key: "cannabis", label: "Cannabis", color: "#65a30d", subtypes: { "shop=cannabis": "Dispensary" } },
+    ],
+    otherKey: "other", otherLabel: "Other", otherColor: "#64748b",
+  });
+
+  it("resolves an exact kind to its theme + sub-type", () => {
+    writeConfig("map-categories.json", cfgJson);
+    const r = readMapCategories().themeOf("leisure=dog_park");
+    expect(r).toEqual({ key: "outdoors", label: "Outdoors & Rec", color: "#10b981",
+      subtype: "Dog Park", subtypeKey: "leisure=dog_park" });
+  });
+
+  it("resolves a wildcard kind, keeping the wildcard as the sub-type key", () => {
+    writeConfig("map-categories.json", cfgJson);
+    const r = readMapCategories().themeOf("shop=bakery");
+    expect(r).toMatchObject({ key: "retail", subtype: "Shop", subtypeKey: "shop=*" });
+  });
+
+  it("prefers an exact match over a wildcard (shop=cannabis -> cannabis, not retail)", () => {
+    writeConfig("map-categories.json", cfgJson);
+    expect(readMapCategories().themeOf("shop=cannabis").key).toBe("cannabis");
+  });
+
+  it("falls back to the Other theme for an unmapped or null kind", () => {
+    writeConfig("map-categories.json", cfgJson);
+    const cfg = readMapCategories();
+    expect(cfg.themeOf("highway=residential")).toEqual({ key: "other", label: "Other",
+      color: "#64748b", subtype: null, subtypeKey: null });
+    expect(cfg.themeOf(null).key).toBe("other");
+  });
+
+  it("falls back to the .example when the real file is absent", () => {
+    writeConfig("map-categories.json.example", cfgJson);
+    expect(readMapCategories().themeOf("leisure=park").key).toBe("outdoors");
+  });
+
+  it("falls through to the .example when map-categories.json is malformed JSON", () => {
+    writeConfig("map-categories.json", "{ bad json");
+    writeConfig("map-categories.json.example", cfgJson);
+    expect(readMapCategories().themeOf("leisure=park").key).toBe("outdoors");
+  });
+
+  it("uses a safe default (everything -> Other) when no file is present", () => {
+    const cfg = readMapCategories();
+    expect(cfg.themes).toEqual([]);
+    expect(cfg.themeOf("amenity=cafe").key).toBe("other");
   });
 });
 

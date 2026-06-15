@@ -215,6 +215,115 @@ export function readTownBoundaries(): TownBoundaries {
   return { type: "FeatureCollection", features: [] };
 }
 
+// --- Map theme config (data/config/map-categories.json) ---
+//
+// Colors + groups OSM `kind`s into display themes for the region map's legend
+// and pin colors. Render-time only (like categories.json tiers) — NOT a schema
+// column, honoring "no content taxonomy in the DB".
+
+export interface MapTheme {
+  key: string;
+  label: string;
+  color: string;
+  /** OSM "key=value" -> friendly sub-type label. "key=*" is a wildcard. */
+  subtypes: Record<string, string>;
+}
+
+export interface ThemeMatch {
+  key: string;
+  label: string;
+  color: string;
+  /** Friendly sub-type label, or null when unmatched. */
+  subtype: string | null;
+  /** The config key matched (e.g. "shop=*" or "leisure=park"); null = Other. */
+  subtypeKey: string | null;
+}
+
+export interface MapCategoryConfig {
+  themes: MapTheme[];
+  otherKey: string;
+  otherLabel: string;
+  otherColor: string;
+  /** Resolve an OSM kind to its theme + sub-type (exact, then key=* wildcard, then Other). */
+  themeOf(kind: string | null | undefined): ThemeMatch;
+}
+
+export function mapCategoriesPath(): string {
+  return path.join(dataDir(), "config", "map-categories.json");
+}
+
+// Reads map-categories.json, falling back to the .example template, then to a
+// permissive default (empty themes → everything resolves to "Other") so the map
+// never breaks. A present-but-malformed file falls through to the next candidate.
+export function readMapCategories(): MapCategoryConfig {
+  const file = mapCategoriesPath();
+  let parsed: {
+    themes?: MapTheme[];
+    otherKey?: string;
+    otherLabel?: string;
+    otherColor?: string;
+  } = {};
+  for (const candidate of [file, `${file}.example`]) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(candidate, "utf8");
+    } catch {
+      continue; // missing — try the next candidate
+    }
+    try {
+      const json = JSON.parse(raw);
+      if (json && typeof json === "object") {
+        parsed = json;
+        break; // accepted a well-formed candidate
+      }
+    } catch {
+      // malformed JSON — fall through to the next candidate
+    }
+  }
+
+  const themes = Array.isArray(parsed.themes) ? parsed.themes : [];
+  const otherKey = parsed.otherKey ?? "other";
+  const otherLabel = parsed.otherLabel ?? "Other";
+  const otherColor = parsed.otherColor ?? "#64748b";
+
+  // Build exact + wildcard lookups once. If the same key appears in two themes,
+  // the first theme listed in the array wins.
+  const exact = new Map<string, { theme: MapTheme; label: string }>();
+  const wild = new Map<string, { theme: MapTheme; label: string }>(); // "shop" -> ...
+  for (const theme of themes) {
+    for (const [k, label] of Object.entries(theme.subtypes ?? {})) {
+      if (k.endsWith("=*")) {
+        const key = k.slice(0, -2);
+        if (!wild.has(key)) wild.set(key, { theme, label });
+      } else if (!exact.has(k)) {
+        exact.set(k, { theme, label });
+      }
+    }
+  }
+
+  const other: ThemeMatch = {
+    key: otherKey, label: otherLabel, color: otherColor, subtype: null, subtypeKey: null,
+  };
+
+  const themeOf = (kind: string | null | undefined): ThemeMatch => {
+    if (!kind) return other;
+    const e = exact.get(kind);
+    if (e) {
+      return { key: e.theme.key, label: e.theme.label, color: e.theme.color,
+        subtype: e.label, subtypeKey: kind };
+    }
+    const osmKey = kind.split("=")[0];
+    const w = wild.get(osmKey);
+    if (w) {
+      return { key: w.theme.key, label: w.theme.label, color: w.theme.color,
+        subtype: w.label, subtypeKey: `${osmKey}=*` };
+    }
+    return other;
+  };
+
+  return { themes, otherKey, otherLabel, otherColor, themeOf };
+}
+
 // A readable tier listing for injection into agent prompts.
 export function formatCategoryPriorities(cfg: CategoryConfig): string {
   const lines = Object.keys(cfg.tiers)

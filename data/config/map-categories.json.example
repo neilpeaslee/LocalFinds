@@ -1,0 +1,21 @@
+{
+  "themes": [
+    { "key": "outdoors", "label": "Outdoors & Rec", "color": "#10b981",
+      "subtypes": { "leisure=park": "Park", "leisure=dog_park": "Dog Park", "leisure=nature_reserve": "Nature Reserve", "leisure=slipway": "Slipway" } },
+    { "key": "arts", "label": "Arts & Culture", "color": "#ec4899",
+      "subtypes": { "tourism=museum": "Museum", "tourism=gallery": "Gallery", "tourism=artwork": "Public Art", "amenity=arts_centre": "Arts Centre" } },
+    { "key": "food", "label": "Food & Drink", "color": "#f59e0b",
+      "subtypes": { "amenity=cafe": "Café", "amenity=restaurant": "Restaurant", "amenity=bar": "Bar", "amenity=pub": "Pub" } },
+    { "key": "retail", "label": "Shops & Retail", "color": "#8b5cf6",
+      "subtypes": { "shop=*": "Shop" } },
+    { "key": "civic", "label": "Civic & Services", "color": "#3b82f6",
+      "subtypes": { "amenity=townhall": "Town Office", "amenity=school": "School", "amenity=library": "Library", "amenity=fire_station": "Fire Station" } },
+    { "key": "lodging", "label": "Lodging & Travel", "color": "#14b8a6",
+      "subtypes": { "tourism=hotel": "Hotel", "tourism=guest_house": "Guest House" } },
+    { "key": "cannabis", "label": "Cannabis", "color": "#65a30d",
+      "subtypes": { "shop=cannabis": "Dispensary" } }
+  ],
+  "otherKey": "other",
+  "otherLabel": "Other",
+  "otherColor": "#64748b"
+}
