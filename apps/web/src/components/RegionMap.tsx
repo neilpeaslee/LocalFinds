@@ -61,6 +61,18 @@ const TOWN_COLOR = "#44403c";
 const CLUSTER_FILL = "#64748b"; // slate-500
 const CLUSTER_STROKE = "#475569"; // slate-600
 
+// Multiply a #rrggbb (or #rgb) color toward black for a pin's darker border.
+function darken(hex: string, factor = 0.6): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = Number.parseInt(full, 16);
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(((n >> 16) & 255) * factor);
+  const g = clamp(((n >> 8) & 255) * factor);
+  const b = clamp((n & 255) * factor);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
 function featureOuterRings(f: BoundaryFeature): Ring[] {
   const polys: number[][][][] =
     f.geometry.type === "Polygon"
@@ -296,7 +308,13 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
                 key={`pin-${props.id}`}
                 center={[lat, lng]}
                 radius={5}
-                pathOptions={{ color, fillColor: color, fillOpacity: 0.9, weight: 1, className: "lf-pin" }}
+                pathOptions={{
+                  color: darken(color), // darker outer border for definition
+                  fillColor: color,
+                  fillOpacity: 0.8, // body slightly opaque
+                  weight: 2,
+                  className: "lf-pin",
+                }}
               >
                 <Tooltip>
                   <span className="font-medium">{props.name}</span>
