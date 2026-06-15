@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "./client";
 import { readCategoryConfig } from "./config";
+import { resolvePage } from "./pagination";
 import {
   chooseCanonical,
   groupBusinessDuplicates,
@@ -451,12 +452,23 @@ export interface RankedBusinessFilters extends BusinessFilters {
   includeTier4?: boolean;
   /** Include chains. Defaults to the config's hide rule. */
   includeChains?: boolean;
+  /** 1-indexed page (default 1). Ignored unless `pageSize` is set. */
+  page?: number;
+  /** Positive page size. Omit (or <= 0) to return the full ranked set. */
+  pageSize?: number;
 }
 
 export interface RankedBusinessList {
+  /** The current page of ranked rows (or the full set when not paging). */
   rows: RankedBusiness[];
   /** Total rows matching the DB filters, before tier/chain visibility. */
   total: number;
+  /** Rows after tier4/chain visibility — the set being paged. */
+  matched: number;
+  /** Clamped current page (1 when not paging). */
+  page: number;
+  /** Total pages (1 when not paging, or when `matched` is 0). */
+  pageCount: number;
   tier4Count: number;
   chainCount: number;
 }
@@ -485,7 +497,7 @@ export function listBusinessesRanked(
     if (a.isChain) chainCount++;
   }
 
-  const rows = annotated
+  const visible = annotated
     .filter(
       (a) =>
         (showTier4 || a.tier !== 4) &&
@@ -499,7 +511,18 @@ export function listBusinessesRanked(
         a.business.name.localeCompare(z.business.name),
     );
 
-  return { rows, total: annotated.length, tier4Count, chainCount };
+  const matched = visible.length;
+  let rows = visible;
+  let page = 1;
+  let pageCount = 1;
+  if (filters.pageSize && filters.pageSize > 0) {
+    const win = resolvePage(matched, filters.page ?? 1, filters.pageSize);
+    page = win.page;
+    pageCount = win.pageCount;
+    rows = visible.slice(win.start, win.end);
+  }
+
+  return { rows, total: annotated.length, matched, page, pageCount, tier4Count, chainCount };
 }
 
 // Distinct towns with business counts, for the directory's town filter.

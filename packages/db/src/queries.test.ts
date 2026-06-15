@@ -401,3 +401,51 @@ describe("dedupeBusinesses", () => {
     expect(dup?.duplicateOf).toBe("way/900001");
   });
 });
+
+describe("listBusinessesRanked pagination", () => {
+  it("returns only the requested page plus matched/pageCount, full set when unpaged", () => {
+    const cfgDir = path.join(tmp, "config");
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cfgDir, "categories.json"),
+      JSON.stringify({
+        default_tier: 3,
+        hide_in_directory: { tier4: false, chains: false },
+        tiers: {},
+      }),
+    );
+    for (const n of ["A", "B", "C", "D", "E"]) {
+      q.upsertBusiness({
+        osmId: `node/pg-${n}`,
+        name: `Pager ${n}`,
+        town: "Pager",
+        addedBy: "test",
+      });
+    }
+
+    // Unpaged (no pageSize): the full sorted set, page/pageCount default to 1.
+    const all = q.listBusinessesRanked({ town: "Pager" });
+    expect(all.rows.map((r) => r.business.name)).toEqual([
+      "Pager A",
+      "Pager B",
+      "Pager C",
+      "Pager D",
+      "Pager E",
+    ]);
+    expect(all.matched).toBe(5);
+    expect(all.page).toBe(1);
+    expect(all.pageCount).toBe(1);
+
+    // Page 2 of size 2 -> third + fourth rows; matched/pageCount span the full set.
+    const p2 = q.listBusinessesRanked({ town: "Pager", page: 2, pageSize: 2 });
+    expect(p2.rows.map((r) => r.business.name)).toEqual(["Pager C", "Pager D"]);
+    expect(p2.matched).toBe(5);
+    expect(p2.pageCount).toBe(3);
+    expect(p2.page).toBe(2);
+
+    // Out-of-range page clamps to the last (partial) page.
+    const last = q.listBusinessesRanked({ town: "Pager", page: 99, pageSize: 2 });
+    expect(last.page).toBe(3);
+    expect(last.rows.map((r) => r.business.name)).toEqual(["Pager E"]);
+  });
+});
