@@ -320,11 +320,17 @@ export default async function BusinessesPage({
       {size !== "all" && pageCount > 1 && (
         <nav className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
           {page > 1 ? (
-            <a href={hrefWith(current, { page: String(page - 1) })} className={pill(false)}>
+            <a
+              href={hrefWith(current, { page: String(page - 1) })}
+              className={pill(false)}
+              aria-label="Previous page"
+            >
               ‹
             </a>
           ) : (
-            <span className={`${pill(false)} opacity-40`}>‹</span>
+            <span className={`${pill(false)} opacity-40`} aria-hidden="true">
+              ‹
+            </span>
           )}
           {pageWindow(page, pageCount).map((p, i) =>
             p === "ellipsis" ? (
@@ -342,11 +348,17 @@ export default async function BusinessesPage({
             ),
           )}
           {page < pageCount ? (
-            <a href={hrefWith(current, { page: String(page + 1) })} className={pill(false)}>
+            <a
+              href={hrefWith(current, { page: String(page + 1) })}
+              className={pill(false)}
+              aria-label="Next page"
+            >
               ›
             </a>
           ) : (
-            <span className={`${pill(false)} opacity-40`}>›</span>
+            <span className={`${pill(false)} opacity-40`} aria-hidden="true">
+              ›
+            </span>
           )}
         </nav>
       )}
