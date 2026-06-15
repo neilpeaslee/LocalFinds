@@ -21,6 +21,10 @@ export interface TownBoxProp {
 }
 
 export interface BusinessPin {
+  /** DB row id — the stable React key. OSM can hold two elements (distinct
+   * osm_id) for one real business at identical name+coords, so name/lat/lng is
+   * not unique enough to key on. */
+  id: number;
   name: string;
   kind: string | null;
   lat: number;
@@ -190,7 +194,7 @@ export default function RegionMap({
         {showPins &&
           businesses.map((b) => (
             <CircleMarker
-              key={`${b.name}:${b.lat}:${b.lng}`}
+              key={b.id}
               center={[b.lat, b.lng]}
               radius={4}
               pathOptions={{

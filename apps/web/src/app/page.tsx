@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const pins = allBusinesses
     .filter((b) => b.lat != null && b.lng != null)
     .map((b) => ({
+      id: b.id,
       name: b.name,
       kind: b.kind,
       lat: b.lat as number,
