@@ -30,7 +30,7 @@ export const finds = sqliteTable("finds", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   url: text("url"),
-  // sha256 of normalized url, or of normalized title when url-less
+  // sha256 of normalized url + title, or of normalized title when url-less
   urlHash: text("url_hash").notNull().unique(),
   summary: text("summary"),
   eventStart: text("event_start"),

@@ -42,12 +42,12 @@ describe("normalizeTitle", () => {
 });
 
 describe("findKey", () => {
-  it("treats url variants as the same find", () => {
+  it("treats url variants of the same event as one find", () => {
     const a = findKey({
       url: "https://www.example.com/events/?utm_source=mail",
-      title: "A",
+      title: "Spring Concert",
     });
-    const b = findKey({ url: "http://example.com/events", title: "B" });
+    const b = findKey({ url: "http://example.com/events", title: "Spring Concert" });
     expect(a).toBe(b);
   });
 
@@ -55,6 +55,20 @@ describe("findKey", () => {
     expect(findKey({ url: "https://example.com/a", title: "T" })).not.toBe(
       findKey({ url: "https://example.com/b", title: "T" }),
     );
+  });
+
+  it("distinguishes different events sharing one listing URL", () => {
+    // Venue calendar pages host many events at a single URL; keying on the URL
+    // alone collapses them into one find (scout run #25, ids 31 vs 35).
+    const ecologyWalk = findKey({
+      url: "https://merryspring.org/calendar/",
+      title: "Free Family Fridays: Summer Ecology Walk",
+    });
+    const roseDay = findKey({
+      url: "https://merryspring.org/calendar/",
+      title: "Merryspring Rose Day: Lecture & Garden Walk",
+    });
+    expect(ecologyWalk).not.toBe(roseDay);
   });
 
   it("falls back to normalized title when url is missing", () => {

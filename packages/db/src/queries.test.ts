@@ -33,11 +33,27 @@ describe("insertFind dedupe", () => {
     expect(first.outcome).toBe("created");
 
     const second = q.insertFind({
-      title: "Concert at the park (reworded)",
+      title: "Concert at the park",
       url: "http://example.com/concert",
       agent: "test",
     });
     expect(second).toEqual({ outcome: "duplicate", id: first.id });
+  });
+
+  it("keeps distinct events that share one listing URL", () => {
+    const ecologyWalk = q.insertFind({
+      title: "Free Family Fridays: Summer Ecology Walk",
+      url: "https://merryspring.org/calendar/",
+      agent: "test",
+    });
+    const roseDay = q.insertFind({
+      title: "Merryspring Rose Day: Lecture & Garden Walk",
+      url: "https://merryspring.org/calendar/",
+      agent: "test",
+    });
+    expect(ecologyWalk.outcome).toBe("created");
+    expect(roseDay.outcome).toBe("created");
+    expect(roseDay.id).not.toBe(ecologyWalk.id);
   });
 });
 

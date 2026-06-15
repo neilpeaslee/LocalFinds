@@ -27,8 +27,13 @@ export function normalizeTitle(title: string): string {
 }
 
 export function findKey(input: { url?: string | null; title: string }): string {
+  // Key on url + title together, not url alone: venue calendar/listing pages
+  // host many distinct events at a single URL, and url-only keying collapses
+  // them into one find (scout run #25 lost the source link off 11 of 12 saves
+  // working around this). Title is still normalized, so utm/www/scheme URL
+  // variants of the same titled event remain a single find.
   const basis = input.url
-    ? `url:${normalizeUrl(input.url)}`
+    ? `url:${normalizeUrl(input.url)}|title:${normalizeTitle(input.title)}`
     : `title:${normalizeTitle(input.title)}`;
   return createHash("sha256").update(basis).digest("hex");
 }
