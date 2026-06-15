@@ -271,9 +271,9 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
               key={`cl-${c.id}`}
               center={[lat, lng]}
               radius={radius}
-              pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.85, weight: 2 }}
+              pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.55, weight: 2 }}
             >
-              <Tooltip direction="center" permanent opacity={1}>
+              <Tooltip direction="center" permanent opacity={1} className="cluster-count">
                 {count}
               </Tooltip>
             </CircleMarker>

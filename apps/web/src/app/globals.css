@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+/* Region map: permanent cluster-count labels. Strip Leaflet's default tooltip
+   box (white bg/border/shadow/arrow) so only a high-contrast number shows — the
+   box otherwise sits in the tooltip pane on top of, and obscures, the cluster
+   bubble and the real pins. The number stays above everything (tooltip pane);
+   the semi-opaque cluster fill sits below the pins. */
+.leaflet-tooltip.cluster-count {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+}
+.leaflet-tooltip.cluster-count::before {
+  display: none; /* no directional arrow */
+}
+
 /* Minimal typography for rendered markdown (agent profiles & site notes).
    Handwritten instead of @tailwindcss/typography — its @plugin resolution
    breaks under turbopack in npm workspaces. */
