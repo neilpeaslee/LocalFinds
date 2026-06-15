@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "./client";
-import { readCategoryConfig } from "./config";
+import { readCategoryConfig, readMapCategories } from "./config";
 import { resolvePage } from "./pagination";
 import {
   chooseCanonical,
@@ -523,6 +523,72 @@ export function listBusinessesRanked(
   }
 
   return { rows, total: annotated.length, matched, page, pageCount, tier4Count, chainCount };
+}
+
+export interface MapPin {
+  id: number;
+  name: string;
+  kind: string | null;
+  lat: number;
+  lng: number;
+  town: string | null;
+  status: "active" | "closed" | "unknown";
+  isChain: boolean;
+  /** Search-priority tier from categories.json. */
+  tier: number;
+  /** Theme key from map-categories.json ("other" fallback). */
+  theme: string;
+  /** Friendly sub-type label, or null. */
+  subtype: string | null;
+  /** Config key the kind matched (e.g. "shop=*"), for sub-type filtering. Null = Other. */
+  subtypeKey: string | null;
+  tags: string[];
+}
+
+// Every coordinate-bearing, non-duplicate business, annotated for the region map.
+// No row limit — the single source for the dashboard map and the /map page.
+export function listMapPins(): MapPin[] {
+  const cfg = readCategoryConfig();
+  const mapCfg = readMapCategories();
+  const rows = db()
+    .select()
+    .from(businesses)
+    .where(
+      and(
+        isNull(businesses.duplicateOf),
+        isNotNull(businesses.lat),
+        isNotNull(businesses.lng),
+      ),
+    )
+    .all();
+  return rows.map((b) => {
+    const t = mapCfg.themeOf(b.kind);
+    return {
+      id: b.id,
+      name: b.name,
+      kind: b.kind,
+      lat: b.lat as number,
+      lng: b.lng as number,
+      town: b.town,
+      status: b.status,
+      isChain: Boolean(b.brand),
+      tier: cfg.tierOf(b.kind),
+      theme: t.key,
+      subtype: t.subtype,
+      subtypeKey: t.subtypeKey,
+      tags: b.tags,
+    };
+  });
+}
+
+// Total catalogued businesses (non-duplicate), incl. coordinate-less rows pins omit.
+export function countBusinesses(): number {
+  const row = db()
+    .select({ n: sql<number>`count(*)` })
+    .from(businesses)
+    .where(isNull(businesses.duplicateOf))
+    .get();
+  return row?.n ?? 0;
 }
 
 // Distinct towns with business counts, for the directory's town filter.

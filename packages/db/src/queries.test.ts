@@ -402,6 +402,34 @@ describe("dedupeBusinesses", () => {
   });
 });
 
+describe("listMapPins / countBusinesses", () => {
+  it("returns only coordinate-bearing, non-duplicate rows, annotated", () => {
+    q.upsertBusiness({ osmId: "node/9001", name: "Has Coords", kind: "amenity=cafe",
+      town: "Rockland", lat: 44.1, lng: -69.11, addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/9002", name: "No Coords", kind: "amenity=cafe",
+      town: "Rockland", addedBy: "test" }); // lat/lng null -> excluded from pins
+    q.upsertBusiness({ osmId: "node/9003", name: "Chain", kind: "shop=supermarket",
+      town: "Rockland", lat: 44.2, lng: -69.2, brand: "Hannaford", addedBy: "test" });
+
+    const pins = q.listMapPins();
+    const byName = Object.fromEntries(pins.map((p) => [p.name, p]));
+    expect(byName["No Coords"]).toBeUndefined();        // no coords -> not a pin
+    expect(byName["Has Coords"]).toMatchObject({
+      kind: "amenity=cafe", lat: 44.1, lng: -69.11, isChain: false,
+      theme: "other", subtype: null, subtypeKey: null,
+    });
+    expect(typeof byName["Has Coords"].tier).toBe("number");
+    expect(byName["Chain"].isChain).toBe(true);          // brand present
+  });
+
+  it("countBusinesses counts non-duplicate rows including coordinate-less ones", () => {
+    const total = q.countBusinesses();
+    const pins = q.listMapPins().length;
+    expect(pins).toBeGreaterThanOrEqual(2); // "Has Coords" + "Chain" from the previous test
+    expect(total).toBeGreaterThan(pins);    // "No Coords" is counted but not pinned
+  });
+});
+
 describe("listBusinessesRanked pagination", () => {
   it("returns only the requested page plus matched/pageCount, full set when unpaged", () => {
     const cfgDir = path.join(tmp, "config");
