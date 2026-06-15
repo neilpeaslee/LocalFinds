@@ -27,6 +27,34 @@ function asText(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
 }
 
+export interface SourceUpsertArgs {
+  url: string;
+  name?: string;
+  status?: "active" | "paused" | "dead";
+  quality_score?: number;
+  notes_path?: string;
+}
+
+// Upsert a source and tally it against the run counters. Mirrors
+// upsertOneBusiness: a brand-new URL is `added`, an existing one is `updated`.
+export function recordSourceUpsert(
+  args: SourceUpsertArgs,
+  agent: string,
+  counters: RunCounters,
+) {
+  const result = upsertSource({
+    url: args.url,
+    name: args.name,
+    status: args.status,
+    qualityScore: args.quality_score,
+    notesPath: args.notes_path,
+    addedBy: agent,
+  });
+  if (result.outcome === "created") counters.added++;
+  else counters.updated++;
+  return result;
+}
+
 const findStatus = z.enum(["new", "shown", "hidden", "starred"]);
 
 // Shared shape for one business row — used by both upsert_business (a single
@@ -222,18 +250,7 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             .optional()
             .describe("Workspace-relative path to your site note, e.g. notes/sites/example.org.md"),
         },
-        async (args) => {
-          const result = upsertSource({
-            url: args.url,
-            name: args.name,
-            status: args.status,
-            qualityScore: args.quality_score,
-            notesPath: args.notes_path,
-            addedBy: agent,
-          });
-          counters.updated++;
-          return asText(result);
-        },
+        async (args) => asText(recordSourceUpsert(args, agent, counters)),
       ),
       tool(
         "overpass_query",

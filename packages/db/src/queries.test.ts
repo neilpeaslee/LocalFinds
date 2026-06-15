@@ -206,6 +206,24 @@ describe("businesses", () => {
   });
 });
 
+describe("upsertSource", () => {
+  it("reports created for a new URL and updated for an existing one", () => {
+    const first = q.upsertSource({
+      url: "https://src-outcome.example.com",
+      name: "Source",
+      addedBy: "test",
+    });
+    expect(first.outcome).toBe("created");
+
+    const second = q.upsertSource({
+      url: "https://src-outcome.example.com",
+      name: "Source renamed",
+      addedBy: "test",
+    });
+    expect(second).toEqual({ id: first.id, outcome: "updated" });
+  });
+});
+
 describe("category priorities", () => {
   it("maps categories to tiers, honoring wildcards and the default", () => {
     const cfgDir = path.join(tmp, "config");

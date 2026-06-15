@@ -267,14 +267,27 @@ export interface UpsertSourceInput {
   addedBy: string;
 }
 
-export function upsertSource(input: UpsertSourceInput): { id: number } {
+export interface UpsertSourceResult {
+  id: number;
+  outcome: "created" | "updated";
+}
+
+export function upsertSource(input: UpsertSourceInput): UpsertSourceResult {
   const now = new Date().toISOString();
+  // Look up existence before the upsert so we can report created vs updated —
+  // the run summary counts a brand-new source as "added", a re-check as "updated".
+  const existing = db()
+    .select({ id: sources.id })
+    .from(sources)
+    .where(eq(sources.url, input.url))
+    .get();
+
   const set: Record<string, unknown> = { lastCheckedAt: now };
   if (input.name !== undefined) set.name = input.name;
   if (input.status !== undefined) set.status = input.status;
   if (input.qualityScore !== undefined) set.qualityScore = input.qualityScore;
   if (input.notesPath !== undefined) set.notesPath = input.notesPath;
-  return db()
+  const row = db()
     .insert(sources)
     .values({
       url: input.url,
@@ -289,6 +302,8 @@ export function upsertSource(input: UpsertSourceInput): { id: number } {
     .onConflictDoUpdate({ target: sources.url, set })
     .returning({ id: sources.id })
     .get()!;
+
+  return { id: row.id, outcome: existing ? "updated" : "created" };
 }
 
 export interface UpsertBusinessInput {
