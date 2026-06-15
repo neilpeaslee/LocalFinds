@@ -27,6 +27,11 @@ function asText(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
 }
 
+// Reused on every agent-authored display field. Models tend to HTML-escape
+// ampersands ("Programs &amp; Events"); the value is stored and shown verbatim,
+// so it must be plain text.
+const PLAIN_TEXT = "Plain text — write a literal & (do not HTML-escape to &amp;).";
+
 export interface SourceUpsertArgs {
   url: string;
   name?: string;
@@ -64,7 +69,7 @@ const businessShape = {
   osm_id: z
     .string()
     .describe('OSM stable id, e.g. "node/123" / "way/456" / "relation/789"'),
-  name: z.string(),
+  name: z.string().describe(PLAIN_TEXT),
   kind: z
     .string()
     .optional()
@@ -138,12 +143,12 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
         "save_find",
         "Save a local find to the feed. Call this once per genuinely local, current item you verified at a real page. Returns 'duplicate' if the (normalized) URL was already saved.",
         {
-          title: z.string().describe("Headline for the feed card"),
+          title: z.string().describe(`Headline for the feed card. ${PLAIN_TEXT}`),
           url: z.string().optional().describe("Canonical page URL"),
           summary: z
             .string()
             .optional()
-            .describe("1-2 sentence summary of why this is interesting"),
+            .describe(`1-2 sentence summary of why this is interesting. ${PLAIN_TEXT}`),
           event_start: z
             .string()
             .optional()
@@ -239,7 +244,7 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
         "Register a new source or update an existing one (matched by URL). Also bumps last_checked_at.",
         {
           url: z.string(),
-          name: z.string().optional(),
+          name: z.string().optional().describe(PLAIN_TEXT),
           status: z.enum(["active", "paused", "dead"]).optional(),
           quality_score: z
             .number()
