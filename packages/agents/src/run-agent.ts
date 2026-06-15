@@ -14,12 +14,26 @@ import path from "node:path";
 import { buildLocalfindsServer, type RunCounters } from "./mcp-tools";
 import { makePathGuard } from "./path-guard";
 
+/** Default model for agents that don't pin their own. */
+export const DEFAULT_MODEL = "claude-sonnet-4-6";
+
+/** Reasoning effort (thinking depth). Lower = less thinking → cheaper & faster. */
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface AgentDefinition {
   name: string;
   /** Tool names this agent may use (built-ins + mcp__localfinds__* subset). */
   allowedTools: string[];
   defaultMaxTurns: number;
   systemPrompt: string;
+  /** Model id for this agent. Defaults to {@link DEFAULT_MODEL}. */
+  model?: string;
+  /**
+   * Reasoning effort (thinking depth) for this agent. Lower means the model
+   * thinks less — cheaper and faster, good for mechanical/ETL work. Omit for the
+   * model default (high). Sonnet 4.6 supports low | medium | high | max.
+   */
+  effort?: ReasoningEffort;
   buildTaskPrompt(ctx: {
     region: string;
     profile: string;
@@ -103,18 +117,29 @@ export async function runAgent(
   }
   if (opts.extraPrompt) prompt += `\n\n${opts.extraPrompt}`;
 
-  const MODEL = "claude-sonnet-4-6";
+  const model = def.model ?? DEFAULT_MODEL;
   const runId = startRun(def.name);
   const log = openRunLog(def.name, runId);
-  log.write({ kind: "run_start", agent: def.name, runId, model: MODEL, maxTurns });
-  console.log(`[${def.name}] run ${runId} starting (maxTurns=${maxTurns})`);
+  log.write({
+    kind: "run_start",
+    agent: def.name,
+    runId,
+    model,
+    maxTurns,
+    effort: def.effort,
+  });
+  console.log(
+    `[${def.name}] run ${runId} starting ` +
+      `(model=${model}, effort=${def.effort ?? "default"}, maxTurns=${maxTurns})`,
+  );
 
   let result: SDKResultMessage | undefined;
   try {
     for await (const message of query({
       prompt,
       options: {
-        model: MODEL,
+        model,
+        effort: def.effort,
         cwd: workspace,
         env: sanitizedEnv(),
         systemPrompt: def.systemPrompt,

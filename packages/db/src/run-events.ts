@@ -8,7 +8,15 @@ import path from "node:path";
 import { agentWorkspaceDir } from "./paths";
 
 export type RunEvent =
-  | { kind: "run_start"; agent: string; runId: number; model: string; maxTurns: number }
+  | {
+      kind: "run_start";
+      agent: string;
+      runId: number;
+      model: string;
+      maxTurns: number;
+      /** Reasoning effort, when the agent pins one; omitted = model default. */
+      effort?: string;
+    }
   | { kind: "assistant_text"; text: string }
   | { kind: "tool_use"; id: string; name: string; input: unknown }
   | { kind: "tool_result"; toolUseId: string; content: unknown; isError: boolean }
