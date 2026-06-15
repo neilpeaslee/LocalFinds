@@ -145,35 +145,43 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
     return selectPins(businesses, filters, vp);
   }, [vp, businesses, themes, availableTiers]);
 
+  // `overflow` already depends on `vp`; both memos recompute together each render,
+  // so the cluster set is always built from the current viewport's overflow.
   const clusters = useMemo(() => {
     if (!vp) return [];
     const index = new Supercluster({ radius: 60, maxZoom: 20 });
     index.load(
       overflow.map((p) => ({
         type: "Feature" as const,
-        properties: { id: p.id },
+        properties: { id: p.id, name: p.name },
         geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
       })),
     );
     return index.getClusters([vp.west, vp.south, vp.east, vp.north], Math.round(vp.zoom));
   }, [overflow, vp]);
 
-  const haveBoundary = new Set(boundaries.features.map((f) => f.properties.name));
-  const fallbackTowns = towns.filter((t) => !haveBoundary.has(t.name));
-  const coverageRings: Ring[] = [
-    ...boundaries.features.flatMap(featureOuterRings),
-    ...fallbackTowns.map((t) => bboxRing(t.bbox)),
-  ];
-  const bounds = computeBounds(coverageRings, businesses);
-  const maskPositions: Ring[] = [
-    [
-      [85, -180],
-      [85, 180],
-      [-85, 180],
-      [-85, -180],
-    ],
-    ...coverageRings,
-  ];
+  const { fallbackTowns, coverageRings, bounds, maskPositions } = useMemo(() => {
+    const haveBoundary = new Set(boundaries.features.map((f) => f.properties.name));
+    const fallback = towns.filter((t) => !haveBoundary.has(t.name));
+    const rings: Ring[] = [
+      ...boundaries.features.flatMap(featureOuterRings),
+      ...fallback.map((t) => bboxRing(t.bbox)),
+    ];
+    return {
+      fallbackTowns: fallback,
+      coverageRings: rings,
+      bounds: computeBounds(rings, businesses),
+      maskPositions: [
+        [
+          [85, -180],
+          [85, 180],
+          [-85, 180],
+          [-85, -180],
+        ] as Ring,
+        ...rings,
+      ],
+    };
+  }, [towns, boundaries, businesses]);
 
   return (
     <div className="relative h-72 w-full sm:h-96">
@@ -243,7 +251,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
 
         {clusters.map((c) => {
           const [lng, lat] = c.geometry.coordinates;
-          const props = c.properties as { cluster?: boolean; point_count?: number; id?: number };
+          const props = c.properties as { cluster?: boolean; point_count?: number; id?: number; name?: string };
           if (!props.cluster) {
             return (
               <CircleMarker
@@ -251,7 +259,9 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
                 center={[lat, lng]}
                 radius={3}
                 pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.7, weight: 1 }}
-              />
+              >
+                <Tooltip>{props.name}</Tooltip>
+              </CircleMarker>
             );
           }
           const count = props.point_count ?? 0;
