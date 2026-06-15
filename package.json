@@ -9,7 +9,7 @@
     "dev": "npm -w @localfinds/web run dev",
     "agent": "npm -w @localfinds/agents run agent --",
     "agents:all": "npm -w @localfinds/agents run all",
-    "test": "npm -w @localfinds/db run test",
+    "test": "npm -w @localfinds/db run test && npm -w @localfinds/web run test",
     "db:push": "npm -w @localfinds/db run push",
     "db:seed": "npm -w @localfinds/db run seed",
     "db:studio": "npm -w @localfinds/db run studio",
