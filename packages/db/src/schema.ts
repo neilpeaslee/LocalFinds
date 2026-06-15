@@ -92,6 +92,9 @@ export const businesses = sqliteTable("businesses", {
   discoveredAt: text("discovered_at").notNull(),
   // Last run Overpass still returned this osmId — cursor for the "maybe closed" sweep.
   lastSeenAt: text("last_seen_at").notNull(),
+  // Non-null = this row is a hidden duplicate of that canonical osm_id, set by
+  // the cartographer's post-run dedupe sweep. Null = canonical or unique.
+  duplicateOf: text("duplicate_of"),
 }, (t) => [
   // The directory and the list_businesses tool filter by town/status and order
   // by (town, name); index those so neither does a full scan + filesort.
