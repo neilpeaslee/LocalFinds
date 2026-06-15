@@ -162,7 +162,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
   // bubble — it would have merged in — and overlapping groups combine into one.
   const clusters = useMemo(() => {
     if (!vp) return null;
-    const index = new Supercluster({ radius: 70, maxZoom: 20, minPoints: 3 });
+    const index = new Supercluster({ radius: 60, maxZoom: 20, minPoints: 4 });
     index.load(
       candidates.map((p) => ({
         type: "Feature" as const,
