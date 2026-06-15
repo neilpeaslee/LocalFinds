@@ -572,19 +572,14 @@ describe("getSourceById / listFindsBySource", () => {
 
   it("lists a source's finds newest-first, capped by limit", async () => {
     const url = "https://t1-news.example.org";
-    q.upsertSource({ url, name: "T1 News", addedBy: "test" });
+    const { id: sourceId } = q.upsertSource({ url, name: "T1 News", addedBy: "test" });
 
     const older = q.insertFind({ title: "T1 older", url: `${url}/a`, agent: "test", sourceUrl: url });
     await sleep(5);
     const newer = q.insertFind({ title: "T1 newer", url: `${url}/b`, agent: "test", sourceUrl: url });
 
-    const sourceId = q.getSourceById(
-      // resolve the id we just created/updated
-      q.listSources().find((s) => s.url === url)!.id,
-    )!.id;
-
-    const finds = q.listFindsBySource(sourceId);
-    expect(finds.map((f) => f.id)).toEqual([newer.id, older.id]);
+    const rows = q.listFindsBySource(sourceId);
+    expect(rows.map((f) => f.id)).toEqual([newer.id, older.id]);
 
     const capped = q.listFindsBySource(sourceId, 1);
     expect(capped.map((f) => f.id)).toEqual([newer.id]);
