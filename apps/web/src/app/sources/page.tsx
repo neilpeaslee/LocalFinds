@@ -162,7 +162,11 @@ export default async function SourcesPage({
                 {COLUMNS.map((col) => {
                   if (!col.sortable) {
                     return (
-                      <th key={col.key} className={`px-3 py-2 font-medium ${col.align}`}>
+                      <th
+                        key={col.key}
+                        scope="col"
+                        className={`px-3 py-2 font-medium ${col.align}`}
+                      >
                         {col.label}
                       </th>
                     );
@@ -171,9 +175,24 @@ export default async function SourcesPage({
                   const isActive = sort === sortKey;
                   const nextDir: SortDir = isActive && dir === "asc" ? "desc" : "asc";
                   return (
-                    <th key={col.key} className={`px-3 py-2 font-medium ${col.align}`}>
+                    <th
+                      key={col.key}
+                      scope="col"
+                      aria-sort={
+                        isActive
+                          ? dir === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className={`px-3 py-2 font-medium ${col.align}`}
+                    >
                       <a
-                        href={hrefWith(current, { sort: sortKey, dir: nextDir })}
+                        href={hrefWith(current, {
+                          // Drop the defaults (name/asc) so the link stays clean.
+                          sort: sortKey === "name" ? undefined : sortKey,
+                          dir: nextDir === "asc" ? undefined : nextDir,
+                        })}
                         className="inline-flex items-center gap-1 hover:text-stone-900"
                       >
                         {col.label}
@@ -200,6 +219,7 @@ export default async function SourcesPage({
                       rel="noopener noreferrer"
                       className="ml-1.5 text-xs text-blue-700 hover:underline"
                       title={s.url}
+                      aria-label={`Visit ${s.name ?? s.url} (opens in a new tab)`}
                     >
                       ↗
                     </a>
