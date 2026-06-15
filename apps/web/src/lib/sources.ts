@@ -45,8 +45,10 @@ export function filterSources(
   return sources.filter((s) => {
     if (opts.status && s.status !== opts.status) return false;
     if (q) {
-      const hay = `${s.name ?? ""} ${s.url}`.toLowerCase();
-      if (!hay.includes(q)) return false;
+      // Match name and url independently so a query can't straddle the two.
+      const inName = s.name?.toLowerCase().includes(q) ?? false;
+      const inUrl = s.url.toLowerCase().includes(q);
+      if (!inName && !inUrl) return false;
     }
     return true;
   });
@@ -79,6 +81,7 @@ export function sortSources(
     if (av == null && bv == null) return 0;
     if (av == null) return 1; // nulls last
     if (bv == null) return -1;
+    // String values are names or ISO dates; both sort correctly with < / >.
     if (av < bv) return -1 * factor;
     if (av > bv) return 1 * factor;
     return 0;
