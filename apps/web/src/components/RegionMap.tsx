@@ -2,8 +2,8 @@
 
 import "leaflet/dist/leaflet.css";
 import type { MapPin } from "@localfinds/db";
-import type { LatLngBoundsExpression, LatLngTuple } from "leaflet";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { LatLngBoundsExpression, LatLngTuple, Map as LeafletMap } from "leaflet";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CircleMarker,
   MapContainer,
@@ -114,8 +114,22 @@ function ViewportTracker({ onChange }: { onChange: (v: Vp) => void }) {
   return null;
 }
 
+// Captures the Leaflet map instance into a ref so click handlers outside the
+// map tree (e.g. cluster bubbles) can drive it.
+function MapRef({ mapRef }: { mapRef: { current: LeafletMap | null } }) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map;
+    return () => {
+      mapRef.current = null;
+    };
+  }, [map, mapRef]);
+  return null;
+}
+
 export default function RegionMap({ towns, boundaries, businesses, themes }: RegionMapProps) {
   const [vp, setVp] = useState<Vp | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
 
   const colorOf = useMemo(() => {
     const m = new Map(themes.map((t) => [t.key, t.color]));
@@ -147,7 +161,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
   // group comes back as one cluster (a count bubble). A pin can't fall under a
   // bubble — it would have merged in — and overlapping groups combine into one.
   const clusters = useMemo(() => {
-    if (!vp) return [];
+    if (!vp) return null;
     const index = new Supercluster({ radius: 90, maxZoom: 20 });
     index.load(
       candidates.map((p) => ({
@@ -158,8 +172,19 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
         geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
       })),
     );
-    return index.getClusters([vp.west, vp.south, vp.east, vp.north], Math.round(vp.zoom));
+    return { index, features: index.getClusters([vp.west, vp.south, vp.east, vp.north], Math.round(vp.zoom)) };
   }, [candidates, vp]);
+  const clusterIndex = clusters?.index ?? null;
+  const clusterFeatures = clusters?.features ?? [];
+
+  // Clicking a cluster bubble zooms to the level where it breaks apart, centered
+  // on the bubble (supercluster's expansion zoom), clamped to the tile max.
+  const expandCluster = useCallback((clusterId: number, lat: number, lng: number) => {
+    const map = mapRef.current;
+    if (!map || !clusterIndex) return;
+    const zoom = Math.min(clusterIndex.getClusterExpansionZoom(clusterId), 18);
+    map.flyTo([lat, lng], zoom);
+  }, [clusterIndex]);
 
   const { fallbackTowns, coverageRings, bounds, maskPositions } = useMemo(() => {
     const haveBoundary = new Set(boundaries.features.map((f) => f.properties.name));
@@ -196,6 +221,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
       >
         <ZoomInOne active={Boolean(bounds)} />
         <ViewportTracker onChange={setVp} />
+        <MapRef mapRef={mapRef} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -250,10 +276,11 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
           );
         })}
 
-        {clusters.map((c) => {
+        {clusterFeatures.map((c) => {
           const [lng, lat] = c.geometry.coordinates;
           const props = c.properties as {
             cluster?: boolean;
+            cluster_id?: number;
             point_count?: number;
             id?: number;
             name?: string;
@@ -286,7 +313,15 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
               key={`cl-${c.id}`}
               center={[lat, lng]}
               radius={radius}
-              pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.55, weight: 2 }}
+              pathOptions={{
+                color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.55, weight: 2,
+                className: "lf-bubble",
+              }}
+              eventHandlers={{
+                click: () => {
+                  if (props.cluster_id != null) expandCluster(props.cluster_id, lat, lng);
+                },
+              }}
             >
               <Tooltip direction="center" permanent opacity={1} className="cluster-count">
                 {count}
