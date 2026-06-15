@@ -16,7 +16,7 @@ import {
 } from "react-leaflet";
 import Supercluster from "supercluster";
 import {
-  selectPins,
+  selectVisible,
   tiersForZoom,
   type MapFilters,
   type Viewport,
@@ -93,20 +93,17 @@ function ZoomInOne({ active }: { active: boolean }) {
   return null;
 }
 
-// Emits the current viewport (bounds + pixel size + zoom) on load and after any
-// pan/zoom, so the parent can recompute which pins to show.
+// Emits the current viewport (bounds + zoom) on load and after any pan/zoom, so
+// the parent can recompute which pins are in view.
 function ViewportTracker({ onChange }: { onChange: (v: Vp) => void }) {
   const map = useMap();
   const emit = useCallback(() => {
     const b = map.getBounds();
-    const s = map.getSize();
     onChange({
       south: b.getSouth(),
       west: b.getWest(),
       north: b.getNorth(),
       east: b.getEast(),
-      widthPx: s.x,
-      heightPx: s.y,
       zoom: map.getZoom(),
     });
   }, [map, onChange]);
@@ -131,8 +128,8 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
   );
 
   // Phase 1 default filters: all themes on, tiers driven by zoom, no closed/chains.
-  const { shown, overflow } = useMemo(() => {
-    if (!vp) return { shown: [] as MapPin[], overflow: [] as MapPin[] };
+  const candidates = useMemo(() => {
+    if (!vp) return [] as MapPin[];
     const filters: MapFilters = {
       themes: new Set([...themes.map((t) => t.key), "other"]),
       subtypes: new Map(),
@@ -142,23 +139,27 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
       showChains: false,
       query: "",
     };
-    return selectPins(businesses, filters, vp);
+    return selectVisible(businesses, filters, vp);
   }, [vp, businesses, themes, availableTiers]);
 
-  // `overflow` already depends on `vp`; both memos recompute together each render,
-  // so the cluster set is always built from the current viewport's overflow.
+  // Cluster the WHOLE candidate set: supercluster merges nearby points, so an
+  // isolated point comes back as a singleton (rendered as a themed pin) and any
+  // group comes back as one cluster (a count bubble). A pin can't fall under a
+  // bubble — it would have merged in — and overlapping groups combine into one.
   const clusters = useMemo(() => {
     if (!vp) return [];
-    const index = new Supercluster({ radius: 60, maxZoom: 20 });
+    const index = new Supercluster({ radius: 90, maxZoom: 20 });
     index.load(
-      overflow.map((p) => ({
+      candidates.map((p) => ({
         type: "Feature" as const,
-        properties: { id: p.id, name: p.name },
+        properties: {
+          id: p.id, name: p.name, theme: p.theme, subtype: p.subtype, kind: p.kind,
+        },
         geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
       })),
     );
     return index.getClusters([vp.west, vp.south, vp.east, vp.north], Math.round(vp.zoom));
-  }, [overflow, vp]);
+  }, [candidates, vp]);
 
   const { fallbackTowns, coverageRings, bounds, maskPositions } = useMemo(() => {
     const haveBoundary = new Set(boundaries.features.map((f) => f.properties.name));
@@ -251,21 +252,35 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
 
         {clusters.map((c) => {
           const [lng, lat] = c.geometry.coordinates;
-          const props = c.properties as { cluster?: boolean; point_count?: number; id?: number; name?: string };
+          const props = c.properties as {
+            cluster?: boolean;
+            point_count?: number;
+            id?: number;
+            name?: string;
+            theme?: string;
+            subtype?: string | null;
+            kind?: string | null;
+          };
+          // Singleton -> a themed individual pin.
           if (!props.cluster) {
+            const color = colorOf(props.theme ?? "other");
             return (
               <CircleMarker
-                key={`pt-${props.id}`}
+                key={`pin-${props.id}`}
                 center={[lat, lng]}
-                radius={3}
-                pathOptions={{ color: CLUSTER_STROKE, fillColor: CLUSTER_FILL, fillOpacity: 0.7, weight: 1 }}
+                radius={5}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.9, weight: 1, className: "lf-pin" }}
               >
-                <Tooltip>{props.name}</Tooltip>
+                <Tooltip>
+                  <span className="font-medium">{props.name}</span>
+                  {props.subtype ? ` · ${props.subtype}` : props.kind ? ` · ${props.kind}` : ""}
+                </Tooltip>
               </CircleMarker>
             );
           }
+          // Group -> a gray coverage count-bubble.
           const count = props.point_count ?? 0;
-          const radius = Math.min(24, 11 + Math.log2(count + 1) * 2.5);
+          const radius = Math.min(16, 10 + Math.log2(count + 1) * 1.3);
           return (
             <CircleMarker
               key={`cl-${c.id}`}
@@ -275,23 +290,6 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
             >
               <Tooltip direction="center" permanent opacity={1} className="cluster-count">
                 {count}
-              </Tooltip>
-            </CircleMarker>
-          );
-        })}
-
-        {shown.map((b) => {
-          const color = colorOf(b.theme);
-          return (
-            <CircleMarker
-              key={b.id}
-              center={[b.lat, b.lng]}
-              radius={5}
-              pathOptions={{ color, fillColor: color, fillOpacity: 0.9, weight: 1 }}
-            >
-              <Tooltip>
-                <span className="font-medium">{b.name}</span>
-                {b.subtype ? ` · ${b.subtype}` : b.kind ? ` · ${b.kind}` : ""}
               </Tooltip>
             </CircleMarker>
           );

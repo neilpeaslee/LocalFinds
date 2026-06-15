@@ -1,7 +1,8 @@
-// Pure selection logic for the region map: given all pins + the current viewport
-// + active filters, decide which render as individual pins (up to an adaptive,
-// highest-tier-first budget) and which fall to coverage clusters. No React, no
-// Leaflet — unit-tested in isolation.
+// Pure selection logic for the region map: filter all pins down to the ones
+// inside the current viewport that pass the active filters. The view layer then
+// clusters this set (supercluster) — isolated points render as themed pins,
+// groups as coverage count-bubbles — so density is governed by clustering, not a
+// fixed budget. No React, no Leaflet — unit-tested in isolation.
 
 import type { MapPin } from "@localfinds/db";
 
@@ -25,8 +26,6 @@ export interface Viewport {
   west: number;
   north: number;
   east: number;
-  widthPx: number;
-  heightPx: number;
 }
 
 // Zoom -> default visible tiers. Monotonic; reaches all *business* tiers (1–3) at
@@ -37,16 +36,6 @@ export function tiersForZoom(zoom: number, available: number[]): Set<number> {
     zoom <= 11 ? [1, 2] :
     [1, 2, 3];
   return new Set(tiers.filter((t) => available.includes(t)));
-}
-
-// Adaptive pin budget: ~1 pin per PX_PER_PIN of map area, clamped to [MIN, MAX].
-const PX_PER_PIN = 9000;
-const MIN_BUDGET = 15;
-const MAX_BUDGET = 60;
-
-export function budgetForViewport(widthPx: number, heightPx: number): number {
-  const area = Math.max(0, widthPx) * Math.max(0, heightPx);
-  return Math.max(MIN_BUDGET, Math.min(MAX_BUDGET, Math.round(area / PX_PER_PIN)));
 }
 
 // Assumes a non-antimeridian-crossing viewport (west <= east) — true for a single region.
@@ -66,14 +55,12 @@ function passesFilters(p: MapPin, f: MapFilters): boolean {
   return true;
 }
 
-export function selectPins(
+// Filtered, in-viewport candidates. The view layer clusters these: an isolated
+// point becomes a themed pin, a group becomes a coverage count-bubble.
+export function selectVisible(
   pins: MapPin[],
   filters: MapFilters,
   viewport: Viewport,
-): { shown: MapPin[]; overflow: MapPin[] } {
-  const survivors = pins
-    .filter((p) => inBounds(p, viewport) && passesFilters(p, filters))
-    .sort((a, z) => a.tier - z.tier || a.name.localeCompare(z.name));
-  const budget = budgetForViewport(viewport.widthPx, viewport.heightPx);
-  return { shown: survivors.slice(0, budget), overflow: survivors.slice(budget) };
+): MapPin[] {
+  return pins.filter((p) => inBounds(p, viewport) && passesFilters(p, filters));
 }
