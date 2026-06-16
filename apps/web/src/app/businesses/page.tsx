@@ -15,12 +15,6 @@ export const dynamic = "force-dynamic";
 
 const STATUSES = ["active", "closed", "unknown"] as const;
 
-const STATUS_STYLE: Record<string, string> = {
-  active: "bg-green-100 text-green-800",
-  closed: "bg-red-100 text-red-800",
-  unknown: "bg-stone-200 text-stone-600",
-};
-
 const TIER_STYLE: Record<number, string> = {
   1: "bg-emerald-100 text-emerald-800",
   2: "bg-sky-100 text-sky-800",
@@ -128,7 +122,7 @@ export default async function BusinessesPage({
   const orderLabel = !sort
     ? "ranked by search priority"
     : sort === "tier"
-      ? `sorted by tier (${dir === "asc" ? "low–high" : "high–low"})`
+      ? `sorted by tier (${dir === "asc" ? "Tier 1 → 4" : "Tier 4 → 1"})`
       : `sorted by ${sort} (${dir === "asc" ? "A–Z" : "Z–A"})`;
 
   if (total === 0 && !hasFilters) {
@@ -282,7 +276,9 @@ export default async function BusinessesPage({
                         className="inline-flex items-center gap-1 hover:text-stone-900"
                       >
                         {col.label}
-                        {isActive && <span aria-hidden>{dir === "asc" ? "▲" : "▼"}</span>}
+                        {isActive && (
+                          <span aria-hidden="true">{dir === "asc" ? "▲" : "▼"}</span>
+                        )}
                       </a>
                     </th>
                   );
