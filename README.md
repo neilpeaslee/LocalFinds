@@ -4,6 +4,51 @@ A single-user web app showing a curated feed of local finds — events, org
 announcements, official notices — for one configurable region, gathered by
 scheduled Claude agents that learn your taste from feed feedback.
 
+## Why it exists
+
+Local events, notices, and announcements are scattered across town sites,
+library calendars, and local papers, most with no feed. LocalFinds gathers them
+for one region into a single feed. Scheduled Claude agents do the collecting;
+your thumbs, stars, and hides train a taste profile they read before each run.
+
+Single-user and self-hosted: one region, one person's taste, and all personal
+data (database, taste profile, agent notes) stays local, never in git.
+
+## Version Alpha 1
+
+This application is an alpha version for discovery.
+
+### Selected resources include:
+
+- OpenStreetMap
+- Overpass API
+- Leaflet (map JS library)
+- Custom agents for managing site data and content
+
+### Remaining tasks
+
+- Clean up UI/UX
+  - Breadcrumb, page title, navigation indicators
+- Tag filters: full-blown feature with schema upgrades
+  - tightly integrates/couples with OSM data schemes
+- Manually add new source (CRUD)
+
+## Version Beta 1
+
+Live user access on a working platform.
+
+### Planned changes include:
+
+- Integrate with AWS — more data storage, more memory
+- Individual user customization. Signup, auth, etc.
+- Downloaded OpenStreetMap data to feed app, gets regular updates
+- AI agent upgrades:
+  - Interviewer to customize user setup (location, routes, interests, etc.)
+  - More efficient web browsing/searching
+  - User credits
+
+## Architecture
+
 - **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), business
   directory (`/businesses`), agent profiles + run history (`/agents`).
 - **packages/agents** — four Claude Agent SDK agents, run sequentially:
@@ -61,14 +106,22 @@ Watch a run live — or read any past run's full transcript — on `/agents`: ea
 run streams a structured event log to `data/agents/<agent>/runs/<id>.jsonl`,
 surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
-## Resetting test data
+## Using your own region
 
-The repo was verified against a stand-in region (Ann Arbor). To start fresh
-with your real region:
+The committed `data/config/*.example` files describe a sample region (Knox
+County, ME), and every config falls back to its `.example`, so the app runs out
+of the box. To cover your own area:
 
 ```sh
-rm -f data/localfinds.db*
-rm -rf data/agents/*/notes data/agents/*/profile.md
-npm run db:push
-# region.md → your region; profiles re-bootstrap from *.example on next run
+# Required — agents read this verbatim, and it has no fallback:
+cp data/config/region.md.example data/config/region.md    # describe your region
+
+# For the dashboard map — list your towns, then fetch their outlines from OSM:
+cp data/config/towns.json.example data/config/towns.json  # name + bbox per town
+npm run boundaries:fetch                                  # → town-boundaries.json
 ```
+
+`categories.json` (search-priority tiers) and `map-categories.json` (map themes)
+are optional — copy those `.example`s only to customize ranking or map colors.
+Each agent's `profile.md` bootstraps from its `.example` on first run and is
+yours to edit anytime.
