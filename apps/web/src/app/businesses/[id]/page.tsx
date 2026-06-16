@@ -92,6 +92,7 @@ export default async function BusinessDetailPage({
             target="_blank"
             rel="noopener noreferrer"
             className="hover:underline"
+            aria-label={`View ${business.name} on OpenStreetMap (opens in a new tab)`}
           >
             {business.osmId}
           </a>
