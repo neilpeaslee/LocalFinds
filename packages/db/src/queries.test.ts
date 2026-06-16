@@ -585,3 +585,26 @@ describe("getSourceById / listFindsBySource", () => {
     expect(capped.map((f) => f.id)).toEqual([newer.id]);
   });
 });
+
+describe("listBusinessesRanked sort + getBusinessById", () => {
+  it("getBusinessById returns a row or undefined", () => {
+    const { id } = q.upsertBusiness({
+      osmId: "node/bz-1",
+      name: "BizById",
+      town: "Rockland",
+      addedBy: "test",
+    });
+    expect(q.getBusinessById(id)?.name).toBe("BizById");
+    expect(q.getBusinessById(999_999)).toBeUndefined();
+  });
+
+  it("sort=name reorders relative to the default ranking", () => {
+    q.upsertBusiness({ osmId: "node/sz-z", name: "Sortby ZZZ", kind: "amenity=cafe", town: "SortTown", addedBy: "test" });
+    q.upsertBusiness({ osmId: "node/sz-a", name: "Sortby AAA", kind: "amenity=cafe", town: "SortTown", addedBy: "test" });
+    const opts = { town: "SortTown", includeTier4: true } as const;
+    const asc = q.listBusinessesRanked({ ...opts, sort: "name", dir: "asc" }).rows.map((r) => r.business.name);
+    const desc = q.listBusinessesRanked({ ...opts, sort: "name", dir: "desc" }).rows.map((r) => r.business.name);
+    expect(asc).toEqual(["Sortby AAA", "Sortby ZZZ"]);
+    expect(desc).toEqual(["Sortby ZZZ", "Sortby AAA"]);
+  });
+});

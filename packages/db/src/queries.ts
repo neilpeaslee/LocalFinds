@@ -8,6 +8,11 @@ import {
   groupBusinessDuplicates,
   mergeFacts,
 } from "./business-dedupe";
+import {
+  type BusinessSort,
+  type SortDir,
+  sortRankedBusinesses,
+} from "./business-sort";
 import { findKey } from "./dedupe";
 import {
   type Business,
@@ -492,6 +497,10 @@ export interface RankedBusinessFilters extends BusinessFilters {
   page?: number;
   /** Positive page size. Omit (or <= 0) to return the full ranked set. */
   pageSize?: number;
+  /** Column sort. Omit for the default search-priority ranking. */
+  sort?: BusinessSort;
+  /** Sort direction (default "asc"). Ignored when `sort` is omitted. */
+  dir?: SortDir;
 }
 
 export interface RankedBusinessList {
@@ -533,32 +542,30 @@ export function listBusinessesRanked(
     if (a.isChain) chainCount++;
   }
 
-  const visible = annotated
-    .filter(
-      (a) =>
-        (showTier4 || a.tier !== 4) &&
-        (showChains || !a.isChain) &&
-        (filters.maxTier == null || a.tier <= filters.maxTier),
-    )
-    .sort(
-      (a, z) =>
-        Number(a.isChain) - Number(z.isChain) ||
-        a.tier - z.tier ||
-        a.business.name.localeCompare(z.business.name),
-    );
+  const visible = annotated.filter(
+    (a) =>
+      (showTier4 || a.tier !== 4) &&
+      (showChains || !a.isChain) &&
+      (filters.maxTier == null || a.tier <= filters.maxTier),
+  );
+  const ordered = sortRankedBusinesses(visible, filters.sort, filters.dir ?? "asc");
 
-  const matched = visible.length;
-  let rows = visible;
+  const matched = ordered.length;
+  let rows = ordered;
   let page = 1;
   let pageCount = 1;
   if (filters.pageSize && filters.pageSize > 0) {
     const win = resolvePage(matched, filters.page ?? 1, filters.pageSize);
     page = win.page;
     pageCount = win.pageCount;
-    rows = visible.slice(win.start, win.end);
+    rows = ordered.slice(win.start, win.end);
   }
 
   return { rows, total: annotated.length, matched, page, pageCount, tier4Count, chainCount };
+}
+
+export function getBusinessById(id: number): Business | undefined {
+  return db().select().from(businesses).where(eq(businesses.id, id)).get();
 }
 
 export interface MapPin {
