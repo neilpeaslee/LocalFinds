@@ -1,12 +1,14 @@
 import {
   type Business,
+  type BusinessSort,
+  type SortDir,
   listBusinessTowns,
   listBusinessesRanked,
-  readAgentNote,
+  parseBusinessSort,
+  parseDir,
   readCategoryConfig,
 } from "@localfinds/db";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Link from "next/link";
 import { PAGE_SIZES, pageWindow, parsePageSize } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +28,13 @@ const TIER_STYLE: Record<number, string> = {
   4: "bg-stone-100 text-stone-400",
 };
 
+const COLUMNS: { key: BusinessSort; label: string }[] = [
+  { key: "tier", label: "Tier" },
+  { key: "name", label: "Name" },
+  { key: "kind", label: "Kind" },
+  { key: "town", label: "Town" },
+];
+
 type Filters = {
   town?: string;
   status?: string;
@@ -35,6 +44,8 @@ type Filters = {
   chains?: string;
   size?: string;
   page?: string;
+  sort?: string;
+  dir?: string;
 };
 
 // Next.js delivers string[] for a repeated query key (?q=a&q=b); take the first.
@@ -74,9 +85,12 @@ export default async function BusinessesPage({
   const chains = first(params.chains);
   const size = parsePageSize(first(params.size));
   const pageReq = Math.max(1, Number.parseInt(first(params.page) ?? "", 10) || 1);
-  // `size` rides along on filter/pager links; the default (50) stays implicit to
-  // keep URLs clean. `page` is deliberately NOT in `current`, so every filter and
-  // size link drops it (resetting to page 1); only the numbered pager re-adds it.
+  const sort = parseBusinessSort(first(params.sort));
+  const dir = parseDir(first(params.dir));
+  // `size`/`sort`/`dir` ride along on filter/pager links; their defaults
+  // (50 / ranking / asc) stay implicit to keep URLs clean. `page` is
+  // deliberately NOT in `current`, so every filter, size, and sort link drops
+  // it (resetting to page 1); only the numbered pager re-adds it.
   const current: Filters = {
     town,
     status,
@@ -85,13 +99,14 @@ export default async function BusinessesPage({
     tier4,
     chains,
     size: size === 50 ? undefined : String(size),
+    sort: sort ?? undefined,
+    dir: dir === "asc" ? undefined : dir,
   };
 
   const cfg = readCategoryConfig();
   const showTier4 = tier4 === "1" || !cfg.hideInDirectory.tier4;
   const showChains = chains === "1" || !cfg.hideInDirectory.chains;
 
-  // The query layer owns tier/chain ranking, visibility, sorting, and counts.
   const { rows, total, matched, page, pageCount, tier4Count, chainCount } =
     listBusinessesRanked({
       town,
@@ -103,10 +118,18 @@ export default async function BusinessesPage({
       includeChains: showChains,
       page: pageReq,
       pageSize: size === "all" ? undefined : size,
+      sort,
+      dir,
     });
   const start = size === "all" ? 0 : (page - 1) * size;
   const towns = listBusinessTowns();
   const hasFilters = Boolean(town || status || tag || q);
+
+  const orderLabel = !sort
+    ? "ranked by search priority"
+    : sort === "tier"
+      ? `sorted by tier (${dir === "asc" ? "low–high" : "high–low"})`
+      : `sorted by ${sort} (${dir === "asc" ? "A–Z" : "Z–A"})`;
 
   if (total === 0 && !hasFilters) {
     return (
@@ -131,6 +154,8 @@ export default async function BusinessesPage({
           {tier4 && <input type="hidden" name="tier4" value={tier4} />}
           {chains && <input type="hidden" name="chains" value={chains} />}
           {current.size && <input type="hidden" name="size" value={current.size} />}
+          {current.sort && <input type="hidden" name="sort" value={current.sort} />}
+          {current.dir && <input type="hidden" name="dir" value={current.dir} />}
           <input
             type="search"
             name="q"
@@ -225,7 +250,7 @@ export default async function BusinessesPage({
         {size === "all" || matched === 0
           ? `${matched} ${matched === 1 ? "business" : "businesses"}`
           : `Showing ${start + 1}–${start + rows.length} of ${matched} businesses`}
-        {hasFilters ? " matching filters" : ""}, ranked by search priority
+        {hasFilters ? " matching filters" : ""}, {orderLabel}
       </p>
 
       {matched === 0 ? (
@@ -233,87 +258,82 @@ export default async function BusinessesPage({
           No businesses match these filters.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {rows.map(({ business: b, tier, isChain }) => {
-            const note = readAgentNote("cartographer", b.notesPath);
-            return (
-              <details
-                key={b.id}
-                className="rounded-lg border border-stone-200 bg-white p-3"
-              >
-                <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${TIER_STYLE[tier] ?? ""}`}
-                    title="Search-priority tier"
-                  >
-                    T{tier}
-                  </span>
-                  <span className="font-medium">{b.name}</span>
-                  {b.kind && (
-                    <span className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
-                      {b.kind}
-                    </span>
-                  )}
-                  {isChain && (
-                    <span
-                      className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
-                      title="National/regional chain (OSM brand)"
+        <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-stone-200 text-xs text-stone-500">
+                {COLUMNS.map((col) => {
+                  const isActive = sort === col.key;
+                  const nextDir: SortDir = isActive && dir === "asc" ? "desc" : "asc";
+                  return (
+                    <th
+                      key={col.key}
+                      scope="col"
+                      aria-sort={
+                        isActive ? (dir === "asc" ? "ascending" : "descending") : "none"
+                      }
+                      className="px-3 py-2 text-left font-medium"
                     >
-                      chain{b.brand ? `: ${b.brand}` : ""}
+                      <a
+                        href={hrefWith(current, {
+                          sort: col.key,
+                          dir: nextDir === "asc" ? undefined : nextDir,
+                        })}
+                        className="inline-flex items-center gap-1 hover:text-stone-900"
+                      >
+                        {col.label}
+                        {isActive && <span aria-hidden>{dir === "asc" ? "▲" : "▼"}</span>}
+                      </a>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ business: b, tier, isChain }) => (
+                <tr key={b.id} className="border-b border-stone-100 last:border-0">
+                  <td className="px-3 py-2">
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${TIER_STYLE[tier] ?? ""}`}
+                      title="Search-priority tier"
+                    >
+                      T{tier}
                     </span>
-                  )}
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[b.status] ?? ""}`}
-                  >
-                    {b.status}
-                  </span>
-                  <span className="ml-auto text-xs text-stone-500">{b.town ?? ""}</span>
-                </summary>
-                <div className="mt-3 flex flex-col gap-2 border-t border-stone-100 pt-3 text-sm">
-                  {b.address && <div className="text-stone-600">{b.address}</div>}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+                  </td>
+                  <td className="px-3 py-2">
+                    <Link
+                      href={`/businesses/${b.id}`}
+                      className="font-medium text-stone-900 hover:underline"
+                    >
+                      {b.name}
+                    </Link>
+                    {isChain && (
+                      <span
+                        className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
+                        title="National/regional chain (OSM brand)"
+                      >
+                        chain{b.brand ? `: ${b.brand}` : ""}
+                      </span>
+                    )}
                     {b.website && (
                       <a
                         href={b.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-700 hover:underline"
+                        className="ml-1.5 text-xs text-blue-700 hover:underline"
+                        title={b.website}
+                        aria-label={`Visit ${b.name} website (opens in a new tab)`}
                       >
-                        {b.website}
+                        ↗
                       </a>
                     )}
-                    {b.phone && <span>{b.phone}</span>}
-                    <a
-                      href={`https://www.openstreetmap.org/${b.osmId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:underline"
-                    >
-                      {b.osmId}
-                    </a>
-                  </div>
-                  {b.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {b.tags.map((t) => (
-                        <a
-                          key={t}
-                          href={hrefWith(current, { tag: t })}
-                          className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
-                        >
-                          {t}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  {note && (
-                    <div className="prose prose-sm prose-stone mt-1 max-w-none">
-                      <Markdown remarkPlugins={[remarkGfm]}>{note}</Markdown>
-                    </div>
-                  )}
-                </div>
-              </details>
-            );
-          })}
+                  </td>
+                  <td className="px-3 py-2 text-stone-600">{b.kind ?? "—"}</td>
+                  <td className="px-3 py-2 text-stone-500">{b.town ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
