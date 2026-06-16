@@ -519,9 +519,11 @@ export interface RankedBusinessList {
 }
 
 // Annotate each business with its search-priority tier + chain flag, apply the
-// tier4/chain visibility rules, and sort chains-last then by tier then name.
-// One place owns "rank/exclude by search priority" — the /businesses page and
-// the agents' list_businesses tool both use it instead of re-deriving it.
+// tier4/chain visibility rules, then order via sortRankedBusinesses — the
+// default (no `sort` filter) is chains-last then tier then name, overridden by
+// the `sort`/`dir` filters. One place owns "rank/exclude by search priority" —
+// the /businesses page and the agents' list_businesses tool both use it instead
+// of re-deriving it.
 export function listBusinessesRanked(
   filters: RankedBusinessFilters = {},
 ): RankedBusinessList {

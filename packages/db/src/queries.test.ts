@@ -601,6 +601,7 @@ describe("listBusinessesRanked sort + getBusinessById", () => {
   it("sort=name reorders relative to the default ranking", () => {
     q.upsertBusiness({ osmId: "node/sz-z", name: "Sortby ZZZ", kind: "amenity=cafe", town: "SortTown", addedBy: "test" });
     q.upsertBusiness({ osmId: "node/sz-a", name: "Sortby AAA", kind: "amenity=cafe", town: "SortTown", addedBy: "test" });
+    // includeTier4 keeps the rows visible regardless of how the config tiers cafes.
     const opts = { town: "SortTown", includeTier4: true } as const;
     const asc = q.listBusinessesRanked({ ...opts, sort: "name", dir: "asc" }).rows.map((r) => r.business.name);
     const desc = q.listBusinessesRanked({ ...opts, sort: "name", dir: "desc" }).rows.map((r) => r.business.name);
