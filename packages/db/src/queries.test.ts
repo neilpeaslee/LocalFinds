@@ -99,6 +99,80 @@ describe("feed expiry filtering", () => {
   });
 });
 
+describe("getFeedPage", () => {
+  it("paginates a tag-scoped set and supports newest/oldest sort", async () => {
+    for (const n of ["A", "B", "C", "D", "E"]) {
+      q.insertFind({
+        title: `Page ${n}`,
+        url: `https://example.com/feedpage-${n}`,
+        tags: ["feedpage"],
+        agent: "test",
+      });
+      await sleep(2); // distinct discoveredAt so the order is deterministic
+    }
+
+    // Unpaged: the whole set, newest discovered first (E was inserted last).
+    const all = q.getFeedPage({ tag: "feedpage" });
+    expect(all.rows.map((f) => f.title)).toEqual([
+      "Page E",
+      "Page D",
+      "Page C",
+      "Page B",
+      "Page A",
+    ]);
+    expect(all.total).toBe(5);
+    expect(all.page).toBe(1);
+    expect(all.pageCount).toBe(1);
+
+    // Page 2 of size 2 -> third + fourth newest; total/pageCount span the set.
+    const p2 = q.getFeedPage({ tag: "feedpage", page: 2, pageSize: 2 });
+    expect(p2.rows.map((f) => f.title)).toEqual(["Page C", "Page B"]);
+    expect(p2.total).toBe(5);
+    expect(p2.pageCount).toBe(3);
+    expect(p2.page).toBe(2);
+
+    // Out-of-range page clamps to the last (partial) page.
+    const last = q.getFeedPage({ tag: "feedpage", page: 99, pageSize: 2 });
+    expect(last.page).toBe(3);
+    expect(last.rows.map((f) => f.title)).toEqual(["Page A"]);
+
+    // sort "oldest" reverses the discovered order.
+    const oldest = q.getFeedPage({ tag: "feedpage", sort: "oldest" });
+    expect(oldest.rows.map((f) => f.title)).toEqual([
+      "Page A",
+      "Page B",
+      "Page C",
+      "Page D",
+      "Page E",
+    ]);
+  });
+
+  it("sort 'soonest' orders by event start ascending, undated finds last", () => {
+    q.insertFind({ title: "Soon B", url: "https://example.com/soon-b", eventStart: "2026-09-15", tags: ["soonsort"], agent: "test" });
+    q.insertFind({ title: "Soon A", url: "https://example.com/soon-a", eventStart: "2026-09-01", tags: ["soonsort"], agent: "test" });
+    q.insertFind({ title: "Soon Undated", url: "https://example.com/soon-u", tags: ["soonsort"], agent: "test" });
+    q.insertFind({ title: "Soon C", url: "https://example.com/soon-c", eventStart: "2026-09-20T18:00:00Z", tags: ["soonsort"], agent: "test" });
+
+    const rows = q.getFeedPage({ tag: "soonsort", sort: "soonest" }).rows.map((f) => f.title);
+    expect(rows).toEqual(["Soon A", "Soon B", "Soon C", "Soon Undated"]);
+  });
+
+  it("filters by an inclusive event-date range, excluding undated finds", () => {
+    q.insertFind({ title: "July 10", url: "https://example.com/ev-10", eventStart: "2026-07-10", tags: ["evrange"], agent: "test" });
+    q.insertFind({ title: "July 15 evening", url: "https://example.com/ev-15", eventStart: "2026-07-15T19:00:00Z", tags: ["evrange"], agent: "test" });
+    q.insertFind({ title: "July 20", url: "https://example.com/ev-20", eventStart: "2026-07-20", tags: ["evrange"], agent: "test" });
+    q.insertFind({ title: "Undated", url: "https://example.com/ev-undated", tags: ["evrange"], agent: "test" });
+
+    // from/to filter on eventStart; the undated find drops out entirely.
+    const inRange = q.getFeedPage({ tag: "evrange", from: "2026-07-10", to: "2026-07-15" });
+    expect(inRange.rows.map((f) => f.title).sort()).toEqual(["July 10", "July 15 evening"]);
+
+    // `to` includes the whole end day, so the evening event on the 15th is kept.
+    const endDay = q.getFeedPage({ tag: "evrange", from: "2026-07-15", to: "2026-07-15" });
+    expect(endDay.rows.map((f) => f.title)).toEqual(["July 15 evening"]);
+  });
+});
+
 describe("businesses", () => {
   it("creates then updates on the same osmId without nulling omitted fields", async () => {
     const created = q.upsertBusiness({

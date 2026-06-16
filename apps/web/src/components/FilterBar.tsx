@@ -1,32 +1,21 @@
 import Link from "next/link";
-
-export interface FeedParams {
-  view: string;
-  days?: number;
-  tag?: string;
-}
-
-function href(params: FeedParams): string {
-  const qs = new URLSearchParams();
-  if (params.view !== "default") qs.set("view", params.view);
-  if (params.days) qs.set("days", String(params.days));
-  if (params.tag) qs.set("tag", params.tag);
-  const s = qs.toString();
-  return s ? `/feed?${s}` : "/feed";
-}
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { type FeedDefaults, type FeedState, feedHref } from "@/lib/feed-url";
+import { PAGE_SIZES } from "@/lib/pagination";
+import type { ResolvedFeed } from "@/lib/settings";
 
 function Chip({
   active,
-  to,
+  href,
   label,
 }: {
   active: boolean;
-  to: FeedParams;
+  href: string;
   label: string;
 }) {
   return (
     <Link
-      href={href(to)}
+      href={href}
       className={`rounded-full px-2.5 py-0.5 text-xs ${
         active
           ? "bg-stone-800 text-white"
@@ -51,58 +40,117 @@ const WINDOWS = [
   [30, "30d"],
 ] as const;
 
+const SORTS = [
+  ["newest", "Newest"],
+  ["oldest", "Oldest"],
+  ["soonest", "Soonest"],
+] as const;
+
+const DENSITIES = [
+  ["full", "Full"],
+  ["compact", "Compact"],
+] as const;
+
 export function FilterBar({
-  current,
+  resolved,
+  defaults,
   tags,
 }: {
-  current: FeedParams;
+  resolved: ResolvedFeed;
+  defaults: FeedDefaults;
   tags: string[];
 }) {
+  const base: FeedState = {
+    view: resolved.view,
+    days: resolved.days,
+    from: resolved.from,
+    to: resolved.to,
+    tag: resolved.tag,
+    pageSize: resolved.pageSize,
+    density: resolved.density,
+    sort: resolved.sort,
+  };
+  const rangeActive = Boolean(resolved.from || resolved.to);
+  // Each chip is the resolved state with one field changed; feedHref then emits
+  // only what differs from the cookie defaults.
+  const href = (patch: Partial<FeedState>) => feedHref({ ...base, ...patch }, defaults);
+
   return (
     <div className="mb-4 flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {VIEWS.map(([view, label]) => (
           <Chip
             key={view}
-            active={current.view === view}
-            to={{ ...current, view }}
+            active={resolved.view === view}
+            href={href({ view })}
             label={label}
           />
         ))}
         <span className="mx-1 text-stone-300">|</span>
         <Chip
-          active={!current.days}
-          to={{ ...current, days: undefined }}
+          active={!resolved.days && !rangeActive}
+          href={href({ days: undefined, from: undefined, to: undefined })}
           label="Any time"
         />
         {WINDOWS.map(([days, label]) => (
           <Chip
             key={days}
-            active={current.days === days}
-            to={{ ...current, days }}
+            active={resolved.days === days}
+            href={href({ days, from: undefined, to: undefined })}
             label={label}
           />
         ))}
       </div>
+
+      <DateRangePicker
+        state={base}
+        defaults={defaults}
+        from={resolved.from}
+        to={resolved.to}
+      />
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-medium text-stone-500">Per page</span>
+        {PAGE_SIZES.map((s) => (
+          <Chip
+            key={s}
+            active={resolved.pageSize === s}
+            href={href({ pageSize: s })}
+            label={s === "all" ? "All" : String(s)}
+          />
+        ))}
+        <span className="mx-1 text-stone-300">|</span>
+        <span className="mr-1 text-xs font-medium text-stone-500">Sort</span>
+        {SORTS.map(([sort, label]) => (
+          <Chip
+            key={sort}
+            active={resolved.sort === sort}
+            href={href({ sort })}
+            label={label}
+          />
+        ))}
+        <span className="mx-1 text-stone-300">|</span>
+        <span className="mr-1 text-xs font-medium text-stone-500">Cards</span>
+        {DENSITIES.map(([density, label]) => (
+          <Chip
+            key={density}
+            active={resolved.density === density}
+            href={href({ density })}
+            label={label}
+          />
+        ))}
+      </div>
+
       {tags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {current.tag && (
-            <Chip
-              active
-              to={{ ...current, tag: undefined }}
-              label={`✕ ${current.tag}`}
-            />
+          {resolved.tag && (
+            <Chip active href={href({ tag: undefined })} label={`✕ ${resolved.tag}`} />
           )}
           {tags
-            .filter((tag) => tag !== current.tag)
+            .filter((tag) => tag !== resolved.tag)
             .slice(0, 12)
             .map((tag) => (
-              <Chip
-                key={tag}
-                active={false}
-                to={{ ...current, tag }}
-                label={tag}
-              />
+              <Chip key={tag} active={false} href={href({ tag })} label={tag} />
             ))}
         </div>
       )}

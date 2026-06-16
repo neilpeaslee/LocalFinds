@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "./client";
 import { readCategoryConfig, readMapCategories } from "./config";
@@ -111,12 +111,29 @@ export function insertFind(input: NewFindInput): SaveFindResult {
 }
 
 export type FeedView = "default" | "starred" | "hidden" | "all";
+export type FeedSort = "newest" | "oldest" | "soonest";
 
 export interface FeedFilters {
   view?: FeedView;
   days?: number;
+  // Inclusive event-date range (ISO YYYY-MM-DD) filtering on eventStart. When
+  // set, finds with no eventStart drop out. Distinct from `days`, which is a
+  // recently-discovered window over discoveredAt.
+  from?: string;
+  to?: string;
   tag?: string;
   limit?: number;
+  page?: number;
+  // Positive => paginate; omit/<=0 => the full matching set on one page.
+  pageSize?: number;
+  sort?: FeedSort;
+}
+
+export interface FeedPage {
+  rows: Find[];
+  total: number;
+  page: number;
+  pageCount: number;
 }
 
 // Items stay visible through their expiry date (date-prefix comparison works
@@ -126,7 +143,9 @@ function notExpired() {
   return sql`(${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})`;
 }
 
-export function getFeed(filters: FeedFilters = {}) {
+// Shared WHERE-building for the feed, used by both getFeed (array) and
+// getFeedPage (paginated) so their filter semantics never drift.
+function feedConditions(filters: FeedFilters) {
   const conditions = [];
   const view = filters.view ?? "default";
   if (view === "default") {
@@ -142,10 +161,33 @@ export function getFeed(filters: FeedFilters = {}) {
     ).toISOString();
     conditions.push(gte(finds.discoveredAt, since));
   }
+  // Event-date range on eventStart. `to` covers the whole end day, so an event
+  // timestamped that evening still matches a same-day upper bound.
+  if (filters.from) conditions.push(gte(finds.eventStart, filters.from));
+  if (filters.to)
+    conditions.push(lte(finds.eventStart, `${filters.to}T23:59:59.999Z`));
   if (filters.tag) {
     // tags is a JSON string array — exact-element match on the serialized form
     conditions.push(jsonArrayHas(finds.tags, filters.tag));
   }
+  return conditions;
+}
+
+// Feed ordering. "newest"/"oldest" use discovery time; "soonest" uses the
+// event start date (earliest first), with undated finds pushed to the end.
+function feedOrder(sort: FeedSort | undefined) {
+  switch (sort) {
+    case "oldest":
+      return [asc(finds.discoveredAt)];
+    case "soonest":
+      return [sql`${finds.eventStart} is null`, asc(finds.eventStart)];
+    default:
+      return [desc(finds.discoveredAt)];
+  }
+}
+
+export function getFeed(filters: FeedFilters = {}) {
+  const conditions = feedConditions(filters);
   return db()
     .select()
     .from(finds)
@@ -153,6 +195,39 @@ export function getFeed(filters: FeedFilters = {}) {
     .orderBy(desc(finds.discoveredAt))
     .limit(filters.limit ?? 200)
     .all();
+}
+
+// Paginated feed for /feed: same filters as getFeed plus page/pageSize/sort,
+// returning the page slice with the total match count for the pager.
+export function getFeedPage(filters: FeedFilters = {}): FeedPage {
+  const conditions = feedConditions(filters);
+  const where = conditions.length ? and(...conditions) : undefined;
+  const order = feedOrder(filters.sort);
+
+  const total =
+    db().select({ n: sql<number>`count(*)` }).from(finds).where(where).get()?.n ??
+    0;
+
+  // No page size -> the full matching set on a single page.
+  if (!filters.pageSize || filters.pageSize <= 0) {
+    const rows = db().select().from(finds).where(where).orderBy(...order).all();
+    return { rows, total, page: 1, pageCount: 1 };
+  }
+
+  const { page, pageCount, start } = resolvePage(
+    total,
+    filters.page ?? 1,
+    filters.pageSize,
+  );
+  const rows = db()
+    .select()
+    .from(finds)
+    .where(where)
+    .orderBy(...order)
+    .limit(filters.pageSize)
+    .offset(start)
+    .all();
+  return { rows, total, page, pageCount };
 }
 
 // Distinct tags among currently feed-visible items, for the filter bar.
@@ -213,6 +288,22 @@ export function updateFindStatus(id: number, status: FindStatus): boolean {
 export function setFindExpiry(id: number, expiresAt: string): boolean {
   return db().update(finds).set({ expiresAt }).where(eq(finds.id, id)).run()
     .changes > 0;
+}
+
+// Bulk status changes for feed management. Status-only (no feedback rows) so a
+// sweep of the visible page doesn't flood the agents' taste signal.
+export function updateFindStatuses(ids: number[], status: FindStatus): number {
+  if (ids.length === 0) return 0;
+  return db().update(finds).set({ status }).where(inArray(finds.id, ids)).run()
+    .changes;
+}
+
+export function unhideAll(): number {
+  return db()
+    .update(finds)
+    .set({ status: "shown" })
+    .where(eq(finds.status, "hidden"))
+    .run().changes;
 }
 
 export function recordFeedback(

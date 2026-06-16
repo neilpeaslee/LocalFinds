@@ -1,5 +1,6 @@
 import type { Find } from "@localfinds/db";
 import { submitFeedback } from "@/app/actions";
+import type { FeedDensity } from "@/lib/settings";
 
 function ActionButton({
   findId,
@@ -42,14 +43,28 @@ function formatDate(iso: string | null): string | null {
   });
 }
 
-export function FindCard({ find }: { find: Find }) {
+export function FindCard({
+  find,
+  density = "full",
+}: {
+  find: Find;
+  density?: FeedDensity;
+}) {
+  const compact = density === "compact";
   const eventStart = formatDate(find.eventStart);
   const eventEnd = formatDate(find.eventEnd);
   const discovered = formatDate(find.discoveredAt);
+  // Compact trades the summary and most tags for vertical density; the action
+  // row stays (it's what distinguishes the feed from the read-only dashboard).
+  const tags = compact ? find.tags.slice(0, 3) : find.tags;
 
   return (
-    <article className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-      <h2 className="font-medium leading-snug">
+    <article
+      className={`rounded-lg border border-stone-200 bg-white shadow-sm ${
+        compact ? "p-3" : "p-4"
+      }`}
+    >
+      <h2 className={`font-medium leading-snug ${compact ? "text-sm" : ""}`}>
         {find.url ? (
           <a
             href={find.url}
@@ -63,7 +78,7 @@ export function FindCard({ find }: { find: Find }) {
           find.title
         )}
       </h2>
-      {find.summary && (
+      {find.summary && !compact && (
         <p className="mt-1 text-sm text-stone-600">{find.summary}</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500">
@@ -73,7 +88,7 @@ export function FindCard({ find }: { find: Find }) {
             {eventEnd && eventEnd !== eventStart ? ` – ${eventEnd}` : ""}
           </span>
         )}
-        {find.tags.map((tag) => (
+        {tags.map((tag) => (
           <span key={tag} className="rounded bg-stone-100 px-1.5 py-0.5">
             {tag}
           </span>

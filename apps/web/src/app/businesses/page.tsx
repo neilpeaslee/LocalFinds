@@ -10,6 +10,7 @@ import {
 } from "@localfinds/db";
 import Link from "next/link";
 import { PAGE_SIZES, pageWindow, parsePageSize } from "@/lib/pagination";
+import { first, hrefWith } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
 
@@ -41,20 +42,6 @@ type Filters = {
   sort?: string;
   dir?: string;
 };
-
-// Next.js delivers string[] for a repeated query key (?q=a&q=b); take the first.
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function hrefWith(current: Filters, patch: Filters): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries({ ...current, ...patch })) {
-    if (v) params.set(k, v);
-  }
-  const qs = params.toString();
-  return qs ? `/businesses?${qs}` : "/businesses";
-}
 
 function pill(active: boolean): string {
   return `rounded px-2 py-0.5 text-xs ${
@@ -167,11 +154,11 @@ export default async function BusinessesPage({
 
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-xs font-medium text-stone-500">Status</span>
-          <a href={hrefWith(current, { status: undefined })} className={pill(!status)}>
+          <a href={hrefWith("/businesses", current, { status: undefined })} className={pill(!status)}>
             all
           </a>
           {STATUSES.map((s) => (
-            <a key={s} href={hrefWith(current, { status: s })} className={pill(status === s)}>
+            <a key={s} href={hrefWith("/businesses", current, { status: s })} className={pill(status === s)}>
               {s}
             </a>
           ))}
@@ -180,13 +167,13 @@ export default async function BusinessesPage({
         {towns.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs font-medium text-stone-500">Town</span>
-            <a href={hrefWith(current, { town: undefined })} className={pill(!town)}>
+            <a href={hrefWith("/businesses", current, { town: undefined })} className={pill(!town)}>
               all
             </a>
             {towns.map((t) => (
               <a
                 key={t.town}
-                href={hrefWith(current, { town: t.town })}
+                href={hrefWith("/businesses", current, { town: t.town })}
                 className={pill(town === t.town)}
               >
                 {t.town} <span className="opacity-60">{t.n}</span>
@@ -200,7 +187,7 @@ export default async function BusinessesPage({
             <span className="mr-1 text-xs font-medium text-stone-500">Show</span>
             {chainCount > 0 && (
               <a
-                href={hrefWith(current, { chains: showChains ? undefined : "1" })}
+                href={hrefWith("/businesses", current, { chains: showChains ? undefined : "1" })}
                 className={pill(showChains)}
               >
                 chains ({chainCount})
@@ -208,7 +195,7 @@ export default async function BusinessesPage({
             )}
             {tier4Count > 0 && (
               <a
-                href={hrefWith(current, { tier4: showTier4 ? undefined : "1" })}
+                href={hrefWith("/businesses", current, { tier4: showTier4 ? undefined : "1" })}
                 className={pill(showTier4)}
               >
                 excluded categories ({tier4Count})
@@ -222,7 +209,7 @@ export default async function BusinessesPage({
           {PAGE_SIZES.map((s) => (
             <a
               key={s}
-              href={hrefWith(current, { size: s === 50 ? undefined : String(s) })}
+              href={hrefWith("/businesses", current, { size: s === 50 ? undefined : String(s) })}
               className={pill(size === s)}
             >
               {s === "all" ? "All" : s}
@@ -233,7 +220,7 @@ export default async function BusinessesPage({
         {tag && (
           <div className="text-xs text-stone-500">
             Tag: <span className="font-medium">{tag}</span>{" "}
-            <a href={hrefWith(current, { tag: undefined })} className="text-blue-700 hover:underline">
+            <a href={hrefWith("/businesses", current, { tag: undefined })} className="text-blue-700 hover:underline">
               clear
             </a>
           </div>
@@ -269,7 +256,7 @@ export default async function BusinessesPage({
                       className="px-3 py-2 text-left font-medium"
                     >
                       <a
-                        href={hrefWith(current, {
+                        href={hrefWith("/businesses", current, {
                           sort: col.key,
                           dir: nextDir === "asc" ? undefined : nextDir,
                         })}
@@ -337,7 +324,7 @@ export default async function BusinessesPage({
         <nav className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
           {page > 1 ? (
             <a
-              href={hrefWith(current, { page: String(page - 1) })}
+              href={hrefWith("/businesses", current, { page: String(page - 1) })}
               className={pill(false)}
               aria-label="Previous page"
             >
@@ -358,14 +345,14 @@ export default async function BusinessesPage({
                 {p}
               </span>
             ) : (
-              <a key={p} href={hrefWith(current, { page: String(p) })} className={pill(false)}>
+              <a key={p} href={hrefWith("/businesses", current, { page: String(p) })} className={pill(false)}>
                 {p}
               </a>
             ),
           )}
           {page < pageCount ? (
             <a
-              href={hrefWith(current, { page: String(page + 1) })}
+              href={hrefWith("/businesses", current, { page: String(page + 1) })}
               className={pill(false)}
               aria-label="Next page"
             >
