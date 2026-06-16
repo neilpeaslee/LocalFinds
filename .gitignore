@@ -16,6 +16,7 @@ node_modules/
 # internal deploy/ops docs — reference real infra (IPs, hosts); kept local only
 docs/superpowers/specs/*deploy-localfinds*
 docs/superpowers/plans/*deploy-localfinds*
+.claude/skills/deploy-localfinds/
 
 # PII boundary: ALL runtime state (db, profiles, notes, logs) stays out of git.
 # Only committed templates (*.example) are allowed through.
