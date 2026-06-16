@@ -2,6 +2,7 @@ export * from "./client";
 export * from "./config";
 export * from "./dedupe";
 export * from "./business-dedupe";
+export * from "./business-sort";
 export * from "./paths";
 export * from "./queries";
 export * from "./run-events";
