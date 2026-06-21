@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Deploy-code stage: ship the committed tree, install/build/reload on the server.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+cd "$DEPLOY_ROOT"
+
+# Detect whether package-lock changed BEFORE rsync (after rsync they'd match).
+LOCAL_LOCK="$(sha256sum package-lock.json | cut -d' ' -f1)"
+REMOTE_LOCK="$(ssh "$DEPLOY_HOST" "sha256sum $DEPLOY_PATH/package-lock.json 2>/dev/null | cut -d' ' -f1" || true)"
+
+echo "deploy-code: rsync committed tree"
+if [ "$DRY_RUN" = 1 ]; then
+  echo "DRY rsync> git ls-files -> $DEPLOY_HOST:$DEPLOY_PATH/"
+else
+  rsync -az --files-from=<(git ls-files) ./ "$DEPLOY_HOST:$DEPLOY_PATH/"
+fi
+
+if [ "$LOCAL_LOCK" != "$REMOTE_LOCK" ]; then
+  echo "deploy-code: package-lock changed — npm ci"
+  remote "npm ci"
+else
+  echo "deploy-code: package-lock unchanged — skipping npm ci"
+fi
+
+echo "deploy-code: build + reload"
+remote "npm run build -w @localfinds/web"
+remote "pm2 reload $DEPLOY_PM2_NAME && pm2 save"
+
+if [ "$DRY_RUN" != 1 ]; then
+  echo "deploy-code: verify"
+  curl -sS -o /dev/null -w "GET %{http_code}\n"  "https://localfinds.peaslee.org/"
+  curl -sS -o /dev/null -w "POST %{http_code}\n" -X POST "https://localfinds.peaslee.org/"
+fi
+
+echo "deploy-code: done"
