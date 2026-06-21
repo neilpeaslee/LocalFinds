@@ -2,6 +2,9 @@
 node_modules/
 .next/
 *.tsbuildinfo
+# Next.js auto-generates this and rewrites its path between dev/build runs —
+# noisy to track; `next dev`/`next build` regenerate it on any checkout.
+next-env.d.ts
 
 # browser-automation debug artifacts
 .playwright-mcp/
