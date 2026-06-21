@@ -7,7 +7,11 @@ cd "$DEPLOY_ROOT"
 
 # Detect whether package-lock changed BEFORE rsync (after rsync they'd match).
 LOCAL_LOCK="$(sha256sum package-lock.json | cut -d' ' -f1)"
-REMOTE_LOCK="$(ssh "$DEPLOY_HOST" "sha256sum $DEPLOY_PATH/package-lock.json 2>/dev/null | cut -d' ' -f1" || true)"
+if [ "$DRY_RUN" = 1 ]; then
+  REMOTE_LOCK=""
+else
+  REMOTE_LOCK="$(ssh "$DEPLOY_HOST" "sha256sum '$DEPLOY_PATH/package-lock.json' 2>/dev/null | cut -d' ' -f1" || true)"
+fi
 
 echo "deploy-code: rsync committed tree"
 if [ "$DRY_RUN" = 1 ]; then
