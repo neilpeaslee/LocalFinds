@@ -25,10 +25,10 @@ echo "sync-content: backup prod DB -> ${DEPLOY_DB}.bak-${STAMP}"
 remote "sqlite3 ${DEPLOY_DB} \".backup '${DEPLOY_DB}.bak-${STAMP}'\""
 
 echo "sync-content: merge on prod"
-remote "npx tsx packages/db/src/sync-merge.ts ${INCOMING_REL} ${DEPLOY_DB}"
+remote "npx tsx packages/db/src/sync-merge.ts '${INCOMING_REL}' '${DEPLOY_DB}'"
 
 echo "sync-content: cleanup + reload"
-remote "rm -f ${INCOMING_REL}"
+remote "rm -f '${INCOMING_REL}'"
 remote "pm2 reload $DEPLOY_PM2_NAME"
 
 echo "sync-content: done"
