@@ -39,3 +39,17 @@ describe("recordSourceUpsert run counters", () => {
     expect(counters).toEqual({ added: 0, updated: 1 });
   });
 });
+
+describe("recordSourceUpsert ical_url", () => {
+  it("passes ical_url through to the sources row", async () => {
+    const { listSources } = await import("@localfinds/db");
+    const counters = { added: 0, updated: 0 };
+    recordSourceUpsert(
+      { url: "https://feedvenue.org/", ical_url: "https://feedvenue.org/events/?ical=1" },
+      "source-keeper",
+      counters,
+    );
+    const row = listSources().find((s) => s.url === "https://feedvenue.org/");
+    expect(row?.icalUrl).toBe("https://feedvenue.org/events/?ical=1");
+  });
+});

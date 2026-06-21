@@ -15,6 +15,7 @@ export const sources = sqliteTable("sources", {
   url: text("url").notNull().unique(),
   name: text("name"),
   notesPath: text("notes_path"),
+  icalUrl: text("ical_url"),
   status: text("status", { enum: ["active", "paused", "dead"] })
     .notNull()
     .default("active"),

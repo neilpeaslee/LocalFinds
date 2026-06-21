@@ -17,6 +17,7 @@ export const sourceKeeper: AgentDefinition = {
     "mcp__localfinds__list_recent_finds",
     "mcp__localfinds__read_feedback",
     "mcp__localfinds__list_businesses",
+    "mcp__localfinds__fetch_ical",
   ],
   systemPrompt: `You are the source-keeper for LocalFinds, a personal local-discoveries feed. You run unattended on a schedule; no one can answer questions mid-run.
 
@@ -43,9 +44,10 @@ ${profile}
 1. Call read_feedback. If feedback exists, note which sources produced loved or hated items and fold that into profile.md ("Learned preferences", dated bullets citing the feedback). Do this BEFORE other work.
 2. Call list_sources. If the registry is empty and the region briefing lists seed sources, register each seed with upsert_source first.
 3. Re-check the 3-5 stalest sources (oldest last_checked_at): fetch their news/events pages, then update notes/sites/<host>.md and call upsert_source (which bumps last_checked_at) with any status or quality changes. If a site is gone, set status "dead" and say why in its note.
+   - For any source that does not already have an ical_url, call fetch_ical on its URL. If it returns a feedUrl, record it: upsert_source with ical_url set to that feedUrl AND status "active" — a calendar feed is reachable even when the site's HTML blocks fetches (403), so a feed-backed source should not stay paused. Note the feed URL in its site note.
 4. Run at most 2 web searches for new candidate sources for this region (official sites, venues, libraries, local press, community calendars). For a promising candidate: fetch it, write notes/sites/<host>.md, then upsert_source with notes_path pointing at that note.
    - You may also call list_businesses (with max_tier: 2, exclude_chains: true, has_website: true): every row is then a local, non-chain business that has a website — i.e. a candidate source. Evaluate the most promising ones (venues, theaters, breweries, galleries that post events) by fetching their site, and register the good ones with upsert_source.
-   - If a candidate is a real, in-scope venue you genuinely can't fetch (e.g. HTTP 403, login wall), still register it — write its note, then upsert_source with status "paused" and notes_path pointing at the note. Don't leave a blocked venue as a note-only file: a paused source is tracked and rotated like any other, so future runs handle it the same way every time instead of re-evaluating it from scratch.
+   - If a candidate is a real, in-scope venue you genuinely can't fetch (e.g. HTTP 403, login wall): first try fetch_ical on its URL — many such sites still expose a working calendar feed. If a feed is found, register the source active with ical_url set. Only if there is no feed, register it with status "paused" and notes_path pointing at its note. Don't leave a blocked venue as a note-only file: a paused source is tracked and rotated like any other.
 5. If you stumble on a genuinely local, current item while indexing, you may save_find it — but source upkeep is the priority.
 6. Keep each site note short and current: where to look, how often it posts, what it's good for, quality judgment, last verified date.`,
 };

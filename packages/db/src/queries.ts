@@ -385,6 +385,7 @@ export interface UpsertSourceInput {
   status?: "active" | "paused" | "dead";
   qualityScore?: number;
   notesPath?: string;
+  icalUrl?: string;
   addedBy: string;
 }
 
@@ -408,6 +409,7 @@ export function upsertSource(input: UpsertSourceInput): UpsertSourceResult {
   if (input.status !== undefined) set.status = input.status;
   if (input.qualityScore !== undefined) set.qualityScore = input.qualityScore;
   if (input.notesPath !== undefined) set.notesPath = input.notesPath;
+  if (input.icalUrl !== undefined) set.icalUrl = input.icalUrl;
   const row = db()
     .insert(sources)
     .values({
@@ -416,6 +418,7 @@ export function upsertSource(input: UpsertSourceInput): UpsertSourceResult {
       status: input.status ?? "active",
       qualityScore: input.qualityScore,
       notesPath: input.notesPath,
+      icalUrl: input.icalUrl,
       addedBy: input.addedBy,
       createdAt: now,
       lastCheckedAt: now,

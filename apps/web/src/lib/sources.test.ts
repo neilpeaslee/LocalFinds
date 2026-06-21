@@ -16,6 +16,7 @@ function src(over: Partial<Source>): Source {
     url: "https://example.org",
     name: "Example",
     notesPath: null,
+    icalUrl: null,
     status: "active",
     qualityScore: null,
     findsCount: 0,
