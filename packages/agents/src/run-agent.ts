@@ -240,19 +240,15 @@ export async function runAgent(
         } else if (isScout && ev.kind === "tool_result" && fetchUrls.has(ev.toolUseId)) {
           const url = fetchUrls.get(ev.toolUseId)!;
           fetchUrls.delete(ev.toolUseId);
-          // Logging must never fail a run.
-          try {
-            const { klass, status } = classifyWebFetchResult(webFetchResultText(ev.content));
-            recordFetch({
-              runId,
-              agent: def.name,
-              host: hostOf(url) ?? url,
-              url,
-              status,
-              klass,
-            });
-          } catch (err) {
-            console.error(`[${def.name}] recordFetch failed:`, err);
+          const host = hostOf(url);
+          if (host) {
+            // Logging must never fail a run.
+            try {
+              const { klass, status } = classifyWebFetchResult(webFetchResultText(ev.content));
+              recordFetch({ runId, agent: def.name, host, url, status, klass });
+            } catch (err) {
+              console.error(`[${def.name}] recordFetch failed:`, err);
+            }
           }
         }
       }
