@@ -19,6 +19,7 @@ export const scout: AgentDefinition = {
     "mcp__localfinds__read_feedback",
     "mcp__localfinds__list_sources",
     "mcp__localfinds__list_businesses",
+    "mcp__localfinds__fetch_ical",
   ],
   systemPrompt: `You are the scout for LocalFinds, a personal local-discoveries feed. You run unattended on a schedule; no one can answer questions mid-run.
 

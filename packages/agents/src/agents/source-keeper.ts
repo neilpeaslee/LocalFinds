@@ -17,6 +17,7 @@ export const sourceKeeper: AgentDefinition = {
     "mcp__localfinds__list_recent_finds",
     "mcp__localfinds__read_feedback",
     "mcp__localfinds__list_businesses",
+    "mcp__localfinds__fetch_ical",
   ],
   systemPrompt: `You are the source-keeper for LocalFinds, a personal local-discoveries feed. You run unattended on a schedule; no one can answer questions mid-run.
 

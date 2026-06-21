@@ -11,6 +11,7 @@ import {
   upsertSource,
 } from "@localfinds/db";
 import { z } from "zod";
+import { formatIcalResult, runIcalFetch } from "./ical";
 import {
   formatOverpassResult,
   isValidOsmId,
@@ -38,6 +39,7 @@ export interface SourceUpsertArgs {
   status?: "active" | "paused" | "dead";
   quality_score?: number;
   notes_path?: string;
+  ical_url?: string;
 }
 
 // Upsert a source and tally it against the run counters. Mirrors
@@ -53,6 +55,7 @@ export function recordSourceUpsert(
     status: args.status,
     qualityScore: args.quality_score,
     notesPath: args.notes_path,
+    icalUrl: args.ical_url,
     addedBy: agent,
   });
   if (result.outcome === "created") counters.added++;
@@ -254,8 +257,21 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             .string()
             .optional()
             .describe("Workspace-relative path to your site note, e.g. notes/sites/example.org.md"),
+          ical_url: z
+            .string()
+            .optional()
+            .describe("iCal feed URL for this source, if it has one (e.g. The Events Calendar ?ical=1)"),
         },
         async (args) => asText(recordSourceUpsert(args, agent, counters)),
+      ),
+      tool(
+        "fetch_ical",
+        "Fetch a venue's iCal calendar feed and return its upcoming events as structured data (summary, start, end, url, location). Pass the venue's site or events-page URL — the tool probes the common feed URLs (e.g. ?ical=1) itself and returns the resolved feedUrl. Works on many sites whose HTML blocks WebFetch (403). Use the per-event url when saving a find.",
+        {
+          url: z.string().describe("The venue's site, events-page, or known iCal feed URL"),
+          limit: z.number().optional().describe("Max upcoming events to return, default 30, capped at 60"),
+        },
+        async (args) => formatIcalResult(await runIcalFetch(args.url), args.limit),
       ),
       tool(
         "overpass_query",
