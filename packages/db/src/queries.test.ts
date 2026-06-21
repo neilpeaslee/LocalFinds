@@ -685,9 +685,12 @@ describe("listBusinessesRanked sort + getBusinessById", () => {
 });
 
 describe("recordFetch / clearFetchHistory", () => {
+  let runId: number;
+  beforeAll(() => { runId = q.startRun("scout"); });
+
   it("inserts a fetch row with defaults and reads it back", () => {
     q.recordFetch({
-      runId: 1,
+      runId,
       agent: "scout",
       host: "example.org",
       url: "https://example.org/a",
@@ -702,8 +705,8 @@ describe("recordFetch / clearFetchHistory", () => {
   });
 
   it("clearFetchHistory deletes a host's rows and returns the count", () => {
-    q.recordFetch({ runId: 1, agent: "scout", host: "wipe.org", url: "https://wipe.org/1", status: 403, klass: "blocked" });
-    q.recordFetch({ runId: 1, agent: "scout", host: "wipe.org", url: "https://wipe.org/2", status: 403, klass: "blocked" });
+    q.recordFetch({ runId, agent: "scout", host: "wipe.org", url: "https://wipe.org/1", status: 403, klass: "blocked" });
+    q.recordFetch({ runId, agent: "scout", host: "wipe.org", url: "https://wipe.org/2", status: 403, klass: "blocked" });
     const deleted = q.clearFetchHistory("wipe.org");
     expect(deleted).toBe(2);
     expect(q.listFetchesForHost("wipe.org").length).toBe(0);
