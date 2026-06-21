@@ -821,3 +821,30 @@ export function listFetchesForHost(host: string) {
     .orderBy(asc(fetches.id))
     .all();
 }
+
+// Hosts to hard-block: those whose most-recent `strikes` fetch outcomes were
+// all blocked (403/401), uninterrupted. Newest-first is by id (insertion order),
+// which is monotonic and deterministic — no dependence on ts clock resolution.
+export function blockedHosts(strikes = 3): string[] {
+  const rows = db()
+    .select({ host: fetches.host, klass: fetches.klass })
+    .from(fetches)
+    .orderBy(desc(fetches.id))
+    .limit(2000)
+    .all();
+
+  const state = new Map<string, { streak: number; done: boolean }>();
+  const blocked: string[] = [];
+  for (const r of rows) {
+    const s = state.get(r.host) ?? { streak: 0, done: false };
+    if (s.done) continue;
+    if (r.klass === "blocked") {
+      s.streak += 1;
+      if (s.streak >= strikes && !blocked.includes(r.host)) blocked.push(r.host);
+    } else {
+      s.done = true; // first non-blocked (newest-first) ends this host's streak
+    }
+    state.set(r.host, s);
+  }
+  return blocked;
+}

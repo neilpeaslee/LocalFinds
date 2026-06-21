@@ -684,6 +684,42 @@ describe("listBusinessesRanked sort + getBusinessById", () => {
   });
 });
 
+describe("blockedHosts", () => {
+  let runId: number;
+  beforeAll(() => { runId = q.startRun("scout"); });
+
+  const rec = (host: string, klass: "ok" | "blocked" | "truncated" | "error") =>
+    q.recordFetch({ runId, agent: "scout", host, url: `https://${host}/x`, status: klass === "blocked" ? 403 : 200, klass });
+
+  it("blocks a host after N consecutive blocked outcomes", () => {
+    rec("blocked3.org", "blocked");
+    rec("blocked3.org", "blocked");
+    rec("blocked3.org", "blocked");
+    expect(q.blockedHosts(3)).toContain("blocked3.org");
+  });
+
+  it("does not block with only N-1 strikes", () => {
+    rec("twice.org", "blocked");
+    rec("twice.org", "blocked");
+    expect(q.blockedHosts(3)).not.toContain("twice.org");
+  });
+
+  it("a non-blocked outcome breaks the streak (newest-first)", () => {
+    rec("recovered.org", "blocked");
+    rec("recovered.org", "blocked");
+    rec("recovered.org", "blocked");
+    rec("recovered.org", "ok"); // newest
+    expect(q.blockedHosts(3)).not.toContain("recovered.org");
+  });
+
+  it("error (429/5xx) does not count as a strike and breaks the streak", () => {
+    rec("flaky.org", "blocked");
+    rec("flaky.org", "blocked");
+    rec("flaky.org", "error"); // newest — transient, not a strike
+    expect(q.blockedHosts(3)).not.toContain("flaky.org");
+  });
+});
+
 describe("recordFetch / clearFetchHistory", () => {
   let runId: number;
   beforeAll(() => { runId = q.startRun("scout"); });
