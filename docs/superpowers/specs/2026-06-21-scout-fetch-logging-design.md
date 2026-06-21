@@ -84,8 +84,12 @@ fetches
 records the parsed code for `blocked`/`error`. The column is nullable only so a
 future `via='fetch_url'` row (or an unclassifiable result) can omit it.
 
-No DB migration tooling is in use beyond `schema.ts` + table creation on open;
-the new table is created the same way the others are.
+The `fetches` table must be created by running `npx drizzle-kit push` —
+`packages/db/src/client.ts` only opens the SQLite file and sets pragmas; there
+is no automatic CREATE TABLE on open. In tests this happens in the `beforeAll`
+fixture; in dev and production it must be run as a deploy/setup step. Skipping
+it causes `recordFetch` to throw `no such table: fetches`, which the run-agent
+`try/catch` swallows — silently disabling logging and blocking.
 
 ## Components
 
