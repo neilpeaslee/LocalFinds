@@ -41,17 +41,25 @@ export function adoptBaseline(
 
   const marked: string[] = [];
   const skipped: string[] = [];
-  for (const entry of journal.entries) {
-    const sql = fs.readFileSync(path.join(folder, `${entry.tag}.sql`), "utf8");
-    const hash = crypto.createHash("sha256").update(sql).digest("hex");
-    if (existing.has(hash)) {
-      skipped.push(entry.tag);
-      continue;
-    }
-    insert.run(hash, entry.when);
-    marked.push(entry.tag);
+  try {
+    sqlite.transaction(() => {
+      for (const entry of journal.entries) {
+        const sql = fs.readFileSync(
+          path.join(folder, `${entry.tag}.sql`),
+          "utf8",
+        );
+        const hash = crypto.createHash("sha256").update(sql).digest("hex");
+        if (existing.has(hash)) {
+          skipped.push(entry.tag);
+          continue;
+        }
+        insert.run(hash, entry.when);
+        marked.push(entry.tag);
+      }
+    })();
+  } finally {
+    sqlite.close();
   }
-  sqlite.close();
   return { marked, skipped };
 }
 
