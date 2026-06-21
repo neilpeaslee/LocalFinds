@@ -107,7 +107,9 @@ export const runs = sqliteTable("runs", {
   agent: text("agent").notNull(),
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
-  status: text("status", { enum: ["running", "success", "error"] })
+  // "capped" = the run stopped on its budget guardrail (error_max_budget_usd)
+  // after completing and persisting its work — a normal, non-error outcome.
+  status: text("status", { enum: ["running", "success", "capped", "error"] })
     .notNull()
     .default("running"),
   itemsAdded: integer("items_added").notNull().default(0),
@@ -122,8 +124,33 @@ export const runs = sqliteTable("runs", {
   error: text("error"),
 });
 
+// One row per WebFetch call (scout, for now). klass is the durable signal;
+// status is best-effort (often 200 by assumption on success). via is reserved
+// for a future controlled fetch tool so it can be added without a migration.
+export const fetches = sqliteTable(
+  "fetches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    runId: integer("run_id").references(() => runs.id),
+    agent: text("agent").notNull(),
+    host: text("host").notNull(),
+    url: text("url").notNull(),
+    method: text("method").notNull().default("GET"),
+    status: integer("status"),
+    klass: text("klass", {
+      enum: ["ok", "blocked", "truncated", "error"],
+    }).notNull(),
+    via: text("via").notNull().default("webfetch"),
+    ts: text("ts").notNull(),
+  },
+  (t) => [index("fetches_host_idx").on(t.host), index("fetches_run_idx").on(t.runId)],
+);
+
+export type FetchClass = (typeof fetches.$inferInsert)["klass"];
+
 export type Find = typeof finds.$inferSelect;
 export type Source = typeof sources.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
 export type Feedback = typeof feedback.$inferSelect;
 export type Run = typeof runs.$inferSelect;
+export type Fetch = typeof fetches.$inferSelect;

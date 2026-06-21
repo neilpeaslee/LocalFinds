@@ -683,3 +683,29 @@ describe("listBusinessesRanked sort + getBusinessById", () => {
     expect(desc).toEqual(["Sortby ZZZ", "Sortby AAA"]);
   });
 });
+
+describe("recordFetch / clearFetchHistory", () => {
+  it("inserts a fetch row with defaults and reads it back", () => {
+    q.recordFetch({
+      runId: 1,
+      agent: "scout",
+      host: "example.org",
+      url: "https://example.org/a",
+      status: 200,
+      klass: "ok",
+    });
+    const rows = q.listFetchesForHost("example.org");
+    expect(rows.length).toBe(1);
+    expect(rows[0].method).toBe("GET");
+    expect(rows[0].via).toBe("webfetch");
+    expect(rows[0].klass).toBe("ok");
+  });
+
+  it("clearFetchHistory deletes a host's rows and returns the count", () => {
+    q.recordFetch({ runId: 1, agent: "scout", host: "wipe.org", url: "https://wipe.org/1", status: 403, klass: "blocked" });
+    q.recordFetch({ runId: 1, agent: "scout", host: "wipe.org", url: "https://wipe.org/2", status: 403, klass: "blocked" });
+    const deleted = q.clearFetchHistory("wipe.org");
+    expect(deleted).toBe(2);
+    expect(q.listFetchesForHost("wipe.org").length).toBe(0);
+  });
+});

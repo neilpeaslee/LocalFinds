@@ -17,9 +17,11 @@ import { findKey } from "./dedupe";
 import {
   type Business,
   type Find,
+  type FetchClass,
   type Source,
   businesses,
   feedback,
+  fetches,
   finds,
   runs,
   sources,
@@ -318,11 +320,18 @@ export function recordFeedback(
 }
 
 function lastSuccessfulRunStart(agent: string): string | null {
+  // A budget-capped run ("capped") still completed step 1 (read_feedback)
+  // before the cap, so it counts as a baseline for "unread feedback" too.
   return (
     db()
       .select({ startedAt: runs.startedAt })
       .from(runs)
-      .where(and(eq(runs.agent, agent), eq(runs.status, "success")))
+      .where(
+        and(
+          eq(runs.agent, agent),
+          inArray(runs.status, ["success", "capped"]),
+        ),
+      )
       .orderBy(desc(runs.startedAt))
       .limit(1)
       .get()?.startedAt ?? null
@@ -748,7 +757,7 @@ export function startRun(agent: string): number {
 }
 
 export interface FinishRunPatch {
-  status: "success" | "error";
+  status: "success" | "capped" | "error";
   itemsAdded?: number;
   itemsUpdated?: number;
   warnings?: number;
@@ -773,4 +782,42 @@ export function listRuns(limit = 50) {
 
 export function getRun(id: number) {
   return db().select().from(runs).where(eq(runs.id, id)).get();
+}
+
+export function recordFetch(input: {
+  runId: number;
+  agent: string;
+  host: string;
+  url: string;
+  status: number | null;
+  klass: FetchClass;
+  via?: string;
+}): void {
+  db()
+    .insert(fetches)
+    .values({
+      runId: input.runId,
+      agent: input.agent,
+      host: input.host,
+      url: input.url,
+      status: input.status,
+      klass: input.klass,
+      via: input.via ?? "webfetch",
+      ts: new Date().toISOString(),
+    })
+    .run();
+}
+
+// Manual un-block: drop a host's fetch history so it is no longer hard-blocked.
+export function clearFetchHistory(host: string): number {
+  return db().delete(fetches).where(eq(fetches.host, host)).run().changes;
+}
+
+export function listFetchesForHost(host: string) {
+  return db()
+    .select()
+    .from(fetches)
+    .where(eq(fetches.host, host))
+    .orderBy(asc(fetches.id))
+    .all();
 }
