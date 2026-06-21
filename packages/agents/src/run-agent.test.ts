@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { workspaceSystemNote } from "./run-agent";
+import { statusFromResult, workspaceSystemNote } from "./run-agent";
+
+describe("statusFromResult", () => {
+  const result = (subtype: string) => ({ subtype }) as never;
+
+  it("maps a clean finish to success", () => {
+    expect(statusFromResult(result("success"))).toBe("success");
+  });
+
+  it("maps a budget cap to capped, not error (it's the intended guardrail)", () => {
+    expect(statusFromResult(result("error_max_budget_usd"))).toBe("capped");
+  });
+
+  it("maps other non-success subtypes to error", () => {
+    expect(statusFromResult(result("error_max_turns"))).toBe("error");
+    expect(statusFromResult(result("error_during_execution"))).toBe("error");
+  });
+
+  it("treats a missing result as error", () => {
+    expect(statusFromResult(undefined)).toBe("error");
+  });
+});
 
 describe("workspaceSystemNote", () => {
   const workspace = "/home/neil/Projects/LocalFinds/data/agents/scout";

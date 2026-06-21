@@ -29,7 +29,7 @@ export type RunEvent =
       permissionDenials: unknown;
     }
   | { kind: "error"; message: string }
-  | { kind: "run_end"; status: "success" | "error" };
+  | { kind: "run_end"; status: "success" | "capped" | "error" };
 
 // On disk and as read back: a RunEvent plus a per-run sequence number and an
 // ISO timestamp, both stamped by the writer at append time.

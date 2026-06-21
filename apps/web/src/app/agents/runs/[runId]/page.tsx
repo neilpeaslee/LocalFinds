@@ -45,9 +45,14 @@ export default async function RunDetailPage({
               className={
                 run.status === "success"
                   ? "text-green-700"
-                  : run.status === "running"
+                  : run.status === "running" || run.status === "capped"
                     ? "text-amber-700"
                     : "text-red-700"
+              }
+              title={
+                run.status === "capped"
+                  ? "stopped on its budget guardrail — results were saved"
+                  : undefined
               }
             >
               {stale ? "running — likely crashed" : run.status}

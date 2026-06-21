@@ -119,6 +119,21 @@ function logMessage(message: { type: string } & Record<string, any>): void {
   }
 }
 
+/**
+ * Map a terminal SDK result to a run status. A budget cap
+ * (`error_max_budget_usd`) is the intended guardrail — the agent works until it
+ * runs out of money and its saves are already persisted — so it's "capped", a
+ * normal outcome, not an "error". Anything else non-success is a real error.
+ */
+export function statusFromResult(
+  result: SDKResultMessage | undefined,
+): "success" | "capped" | "error" {
+  if (!result) return "error";
+  if (result.subtype === "success") return "success";
+  if (result.subtype === "error_max_budget_usd") return "capped";
+  return "error";
+}
+
 export async function runAgent(
   def: AgentDefinition,
   opts: RunOptions = {},
@@ -199,11 +214,11 @@ export async function runAgent(
       if (message.type === "result") result = message;
     }
 
-    const status = result?.subtype === "success" ? "success" : "error";
+    const status = statusFromResult(result);
     log.write({ kind: "run_end", status });
     log.close();
     finishRun(runId, {
-      status: result?.subtype === "success" ? "success" : "error",
+      status,
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,
       warnings,
@@ -211,8 +226,7 @@ export async function runAgent(
       costUsd: result?.total_cost_usd,
       usageJson: result ? JSON.stringify(result.modelUsage) : undefined,
       sessionId: result?.session_id,
-      error:
-        result && result.subtype !== "success" ? result.subtype : undefined,
+      error: status === "error" ? result?.subtype : undefined,
     });
     // Deterministic post-run housekeeping: collapse OSM duplicate elements the
     // scan may have introduced. Cartographer-only; never LLM-triggered. A
@@ -228,13 +242,17 @@ export async function runAgent(
       }
     }
   } catch (err) {
-    // The SDK yields the error result message (e.g. error_max_turns), then
-    // throws when the CLI process exits non-zero — keep the captured stats.
-    log.write({ kind: "error", message: err instanceof Error ? err.message : String(err) });
-    log.write({ kind: "run_end", status: "error" });
+    // The SDK yields the terminal result message (e.g. error_max_budget_usd or
+    // error_max_turns), then throws when the CLI process exits non-zero — keep
+    // the captured stats. A budget cap is the intended guardrail, so it lands
+    // here as a "capped" (non-error) run that already persisted its finds.
+    const status = statusFromResult(result);
+    const message = err instanceof Error ? err.message : String(err);
+    if (status === "error") log.write({ kind: "error", message });
+    log.write({ kind: "run_end", status });
     log.close();
     finishRun(runId, {
-      status: "error",
+      status,
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,
       warnings,
@@ -242,8 +260,7 @@ export async function runAgent(
       costUsd: result?.total_cost_usd,
       usageJson: result ? JSON.stringify(result.modelUsage) : undefined,
       sessionId: result?.session_id,
-      error:
-        result?.subtype ?? (err instanceof Error ? err.message : String(err)),
+      error: status === "error" ? (result?.subtype ?? message) : undefined,
     });
     if (!result) throw err;
   }
