@@ -33,6 +33,12 @@ events could not be confirmed because their pages 403'd or were truncated.
   WebFetch, but a **coarse** class is derivable by parsing that text.
 - A model-independent hard block is achievable with a `PreToolUse` hook on
   `WebFetch` (we already run such a hook — the path-guard for file tools).
+- **Dynamic filtering is not used and is out of scope.** The API `web_fetch`
+  dynamic-filtering feature (`web_fetch_20260209`+) requires the code execution
+  tool, which the agents deliberately disallow (sandboxing) and the SDK WebFetch
+  does not expose. We already get the equivalent token reduction from WebFetch's
+  built-in small-model extraction driven by the agent's `prompt`, and scout's
+  fetch prompts are already specific. No change here.
 
 ## Scope
 
