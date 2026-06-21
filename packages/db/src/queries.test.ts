@@ -683,3 +683,18 @@ describe("listBusinessesRanked sort + getBusinessById", () => {
     expect(desc).toEqual(["Sortby ZZZ", "Sortby AAA"]);
   });
 });
+
+describe("upsertSource ical_url", () => {
+  it("stores and updates ical_url", () => {
+    q.upsertSource({ url: "https://venue.org/", addedBy: "test" });
+    q.upsertSource({
+      url: "https://venue.org/",
+      icalUrl: "https://venue.org/events/?ical=1",
+      status: "active",
+      addedBy: "test",
+    });
+    const row = q.listSources().find((s) => s.url === "https://venue.org/");
+    expect(row?.icalUrl).toBe("https://venue.org/events/?ical=1");
+    expect(row?.status).toBe("active");
+  });
+});
