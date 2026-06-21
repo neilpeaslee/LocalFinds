@@ -6,6 +6,13 @@ export const scout: AgentDefinition = {
   // slightly heavier run risks a maxTurns cutoff mid-work. Budget ($1/run) is
   // the intended guardrail and bites first; give turns room so it stays so.
   defaultMaxTurns: 45,
+  // At the default (high) effort, reasoning dominated cost: run #26 spent ~$0.37
+  // of its $0.75 Sonnet bill on output tokens and got cut off by the $1 budget
+  // cap mid-run (only 8 finds vs run #25's 12). Scout's work is mostly triage —
+  // search, judge snippets, save — not deep reasoning, so medium effort buys
+  // more finds under the same cap. (Cartographer, pure ETL, went to "low".)
+  // Drop to "low" if cost still bites; raise back to default if find quality drops.
+  effort: "medium",
   allowedTools: [
     "WebSearch",
     "WebFetch",
