@@ -1,6 +1,7 @@
 import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   agentWorkspaceDir,
+  blockedHosts,
   countRunWarnings,
   dedupeBusinesses,
   finishRun,
@@ -8,13 +9,18 @@ import {
   openRunLog,
   projectMessage,
   readCategoryConfig,
+  recordFetch,
   readRegionConfig,
   startRun,
 } from "@localfinds/db";
 import fs from "node:fs";
 import path from "node:path";
 import { buildLocalfindsServer, type RunCounters } from "./mcp-tools";
-import { makePathGuard } from "./path-guard";
+import { classifyWebFetchResult, hostOf, webFetchResultText } from "./web-fetch-log";
+import { makePathGuard, makeWebFetchGuard } from "./path-guard";
+
+// A scout host is hard-blocked after this many consecutive 403/401 outcomes.
+const STRIKE_THRESHOLD = 3;
 
 /** Default model for agents that don't pin their own. */
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
@@ -158,6 +164,17 @@ export async function runAgent(
   }
   if (opts.extraPrompt) prompt += `\n\n${opts.extraPrompt}`;
 
+  // Scout-only: skip hosts that have repeatedly 403/401'd. The prompt note avoids
+  // wasting a turn on a denial; the PreToolUse guard (below) is the hard backstop.
+  const blocked = def.name === "scout" ? blockedHosts(STRIKE_THRESHOLD) : [];
+  if (blocked.length > 0) {
+    prompt +=
+      "\n\n## Hosts to skip\n" +
+      "These hosts repeatedly returned 403/401 and are blocked this run — do not fetch them:\n" +
+      blocked.map((h) => `- ${h}`).join("\n");
+  }
+  const blockedSet = new Set(blocked);
+
   const model = def.model ?? DEFAULT_MODEL;
   const runId = startRun(def.name);
   const log = openRunLog(def.name, runId);
@@ -176,6 +193,7 @@ export async function runAgent(
 
   let result: SDKResultMessage | undefined;
   let warnings = 0;
+  const fetchUrls = new Map<string, string>(); // WebFetch tool_use id -> url
   try {
     for await (const message of query({
       prompt,
@@ -203,13 +221,40 @@ export async function runAgent(
               matcher: "Read|Write|Edit|Glob|Grep",
               hooks: [makePathGuard(workspace)],
             },
+            {
+              matcher: "WebFetch",
+              hooks: [makeWebFetchGuard(blockedSet)],
+            },
           ],
         },
       },
     })) {
       logMessage(message as never);
       const events = projectMessage(message);
-      for (const ev of events) log.write(ev);
+      for (const ev of events) {
+        log.write(ev);
+        if (ev.kind === "tool_use" && ev.name === "WebFetch") {
+          const url = (ev.input as { url?: unknown })?.url;
+          if (typeof url === "string") fetchUrls.set(ev.id, url);
+        } else if (ev.kind === "tool_result" && fetchUrls.has(ev.toolUseId)) {
+          const url = fetchUrls.get(ev.toolUseId)!;
+          fetchUrls.delete(ev.toolUseId);
+          // Logging must never fail a run.
+          try {
+            const { klass, status } = classifyWebFetchResult(webFetchResultText(ev.content));
+            recordFetch({
+              runId,
+              agent: def.name,
+              host: hostOf(url) ?? url,
+              url,
+              status,
+              klass,
+            });
+          } catch (err) {
+            console.error(`[${def.name}] recordFetch failed:`, err);
+          }
+        }
+      }
       warnings += countRunWarnings(events);
       if (message.type === "result") result = message;
     }
