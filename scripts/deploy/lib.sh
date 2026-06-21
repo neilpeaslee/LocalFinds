@@ -27,7 +27,7 @@ done
 
 # Run a command on the server inside the nvm prefix and the app directory.
 remote() {
-  local cmd="$DEPLOY_NVM_PREFIX cd $DEPLOY_PATH && $*"
+  local cmd="$DEPLOY_NVM_PREFIX cd \"$DEPLOY_PATH\" && $*"
   if [ "$DRY_RUN" = 1 ]; then
     echo "DRY remote> $cmd"
   else
