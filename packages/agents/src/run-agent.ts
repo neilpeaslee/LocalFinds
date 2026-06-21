@@ -166,7 +166,8 @@ export async function runAgent(
 
   // Scout-only: skip hosts that have repeatedly 403/401'd. The prompt note avoids
   // wasting a turn on a denial; the PreToolUse guard (below) is the hard backstop.
-  const blocked = def.name === "scout" ? blockedHosts(STRIKE_THRESHOLD) : [];
+  const isScout = def.name === "scout";
+  const blocked = isScout ? blockedHosts(STRIKE_THRESHOLD) : [];
   if (blocked.length > 0) {
     prompt +=
       "\n\n## Hosts to skip\n" +
@@ -233,10 +234,10 @@ export async function runAgent(
       const events = projectMessage(message);
       for (const ev of events) {
         log.write(ev);
-        if (ev.kind === "tool_use" && ev.name === "WebFetch") {
+        if (isScout && ev.kind === "tool_use" && ev.name === "WebFetch") {
           const url = (ev.input as { url?: unknown })?.url;
           if (typeof url === "string") fetchUrls.set(ev.id, url);
-        } else if (ev.kind === "tool_result" && fetchUrls.has(ev.toolUseId)) {
+        } else if (isScout && ev.kind === "tool_result" && fetchUrls.has(ev.toolUseId)) {
           const url = fetchUrls.get(ev.toolUseId)!;
           fetchUrls.delete(ev.toolUseId);
           // Logging must never fail a run.
