@@ -119,6 +119,21 @@ describe("runIcalFetch", () => {
     const fetchImpl = stubFetch({}); // every url -> 404
     const r = await runIcalFetch("https://x.org/events/", fetchImpl);
     expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(404);
+    }
+  });
+
+  it("skips a 200 response whose body is not VCALENDAR and tries the next candidate", async () => {
+    const fetchImpl = stubFetch({
+      "https://x.org/events/": { status: 200, body: "<html>login page</html>" },
+      "https://x.org/events/?ical=1": { status: 200, body: FEED },
+    });
+    const r = await runIcalFetch("https://x.org/events/", fetchImpl);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.feedUrl).toBe("https://x.org/events/?ical=1");
+    }
   });
 });
 
@@ -137,6 +152,13 @@ describe("formatIcalResult", () => {
     const out = formatIcalResult({ ok: false, error: "HTTP 403", status: 403 });
     expect(out.isError).toBe(true);
     expect(JSON.parse(out.content[0].text).status).toBe(403);
+  });
+
+  it("sets truncated false when matched events are at or under cap", () => {
+    const result = { ok: true as const, feedUrl: "https://x.org/events/?ical=1", events: parseICal(FEED) };
+    const out = formatIcalResult(result, 30, "2026-06-21");
+    const payload = JSON.parse(out.content[0].text);
+    expect(payload.truncated).toBe(false);
   });
 
   it("caps and flags truncation", () => {
