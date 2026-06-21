@@ -111,3 +111,80 @@ export function icalCandidates(url: string): string[] {
   }
   return out.slice(0, 5);
 }
+
+const ICAL_UA =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/124.0 Safari/537.36 LocalFinds/1.0 (personal local-discovery feed)";
+
+export type IcalFetchResult =
+  | { ok: true; feedUrl: string; events: ICalEvent[] }
+  | { ok: false; error: string; status?: number };
+
+// Try each candidate; the first 2xx response whose body is a VCALENDAR wins.
+export async function runIcalFetch(
+  url: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<IcalFetchResult> {
+  let last: IcalFetchResult = { ok: false, error: "no candidates" };
+  for (const candidate of icalCandidates(url)) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25_000);
+    try {
+      const res = await fetchImpl(candidate, {
+        headers: { "User-Agent": ICAL_UA },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        last = { ok: false, error: `HTTP ${res.status}`, status: res.status };
+        continue;
+      }
+      const body = await res.text();
+      if (!isVCalendar(body)) {
+        last = { ok: false, error: "response was not an iCalendar feed" };
+        continue;
+      }
+      return { ok: true, feedUrl: candidate, events: parseICal(body) };
+    } catch (err) {
+      last = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return last;
+}
+
+// Project a fetch result into the fetch_ical tool's response: upcoming events
+// only (start >= today, date-prefix compare), sorted ascending, capped. A failed
+// fetch is flagged isError:true so it surfaces in the run's warning count.
+export function formatIcalResult(
+  result: IcalFetchResult,
+  limit?: number,
+  today: string = new Date().toISOString().slice(0, 10),
+): ToolTextResult {
+  if (!result.ok) {
+    return {
+      content: [{ type: "text", text: JSON.stringify({ error: result.error, status: result.status }) }],
+      isError: true,
+    };
+  }
+  const cap = Math.min(Math.max(limit ?? 30, 1), 60);
+  const upcoming = result.events
+    .filter((e): e is ICalEvent & { start: string } => !!e.start && e.start.slice(0, 10) >= today)
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const events = upcoming.slice(0, cap);
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          feedUrl: result.feedUrl,
+          matched: upcoming.length,
+          returned: events.length,
+          truncated: upcoming.length > cap,
+          events,
+        }),
+      },
+    ],
+  };
+}
