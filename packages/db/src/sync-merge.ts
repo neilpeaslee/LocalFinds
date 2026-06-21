@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { dbPath } from "./paths";
@@ -83,10 +84,12 @@ export function syncMerge(incomingPath: string, prodPath: string = dbPath()): vo
       ON CONFLICT(id) DO NOTHING
     `);
   });
-  tx();
-
-  db.exec("DETACH DATABASE src");
-  db.close();
+  try {
+    tx();
+  } finally {
+    db.exec("DETACH DATABASE src");
+    db.close();
+  }
 }
 
 // CLI entry: `tsx src/sync-merge.ts <incoming.db> [prod.db]`
@@ -94,6 +97,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const incoming = process.argv[2];
   if (!incoming) {
     console.error("usage: tsx src/sync-merge.ts <incoming-snapshot.db> [prod-db]");
+    process.exit(1);
+  }
+  if (!fs.existsSync(incoming)) {
+    console.error(`sync-merge: incoming snapshot not found: ${incoming}`);
     process.exit(1);
   }
   syncMerge(incoming, process.argv[3]);
