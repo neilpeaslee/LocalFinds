@@ -13,6 +13,11 @@
     "db:push": "npm -w @localfinds/db run push",
     "db:seed": "npm -w @localfinds/db run seed",
     "db:studio": "npm -w @localfinds/db run studio",
-    "boundaries:fetch": "node scripts/fetch-town-boundaries.mjs"
+    "boundaries:fetch": "node scripts/fetch-town-boundaries.mjs",
+    "deploy": "bash scripts/deploy/deploy.sh",
+    "deploy:gate": "bash scripts/deploy/gate.sh",
+    "deploy:migrate": "bash scripts/deploy/migrate.sh",
+    "deploy:code": "bash scripts/deploy/deploy-code.sh",
+    "deploy:sync-content": "bash scripts/deploy/sync-content.sh"
   }
 }
