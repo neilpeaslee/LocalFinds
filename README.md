@@ -51,11 +51,15 @@ Live user access on a working platform.
 
 - **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), business
   directory (`/businesses`), agent profiles + run history (`/agents`).
-- **packages/agents** — four Claude Agent SDK agents, run sequentially:
+- **packages/agents** — five Claude Agent SDK agents, run sequentially:
   **scout** (web-searches for new finds), **source-keeper** (maintains the
   source registry + per-site notes), **cartographer** (mirrors every business
-  in the region from OpenStreetMap into the directory), **curator** (dedupes,
-  prunes, expires, and keeps the taste profile).
+  in the region from OpenStreetMap into the directory), **prospector**
+  (discovery-only local B2B lead-gen — qualifies the directory against an Ideal
+  Customer Profile and saves matches as `lead`-type finds), **curator**
+  (dedupes, prunes, expires, and keeps the taste profile). Finds carry a
+  free-text `type` (`event` by default, `lead`, …); the feed shows all types and
+  `/feed?type=lead` narrows it.
 - **packages/db** — Drizzle + SQLite for exact facts (finds, sources,
   businesses, feedback, runs). Anything fuzzy lives in per-agent markdown under
   `data/agents/<name>/` (profile.md is yours to edit too).
@@ -81,6 +85,7 @@ re-run `npm run db:push` to apply them to your existing database.
 ```sh
 npm run agent -- scout --max-turns 8         # cheap capped test run
 npm run agent -- cartographer --max-turns 8  # populate /businesses from OpenStreetMap
+npm run agent -- prospector --max-turns 8    # qualify the directory into leads (needs an ICP profile)
 npm run agents:all                           # full roster, sequential
 npm test                                     # vitest (db package)
 npm run db:studio                            # inspect the database

@@ -67,6 +67,11 @@ describe("resolveFeed precedence (URL > cookie > default)", () => {
     expect(resolveFeed({ page: "3" }, DEFAULT_SETTINGS).page).toBe(3);
     expect(resolveFeed({}, withFeed({})).page).toBe(1);
   });
+
+  it("keeps type ad-hoc — URL only, never persisted", () => {
+    expect(resolveFeed({ type: "lead" }, DEFAULT_SETTINGS).type).toBe("lead");
+    expect(resolveFeed({}, DEFAULT_SETTINGS).type).toBeUndefined();
+  });
 });
 
 describe("resolveFeed date precedence (URL range > URL days > cookie range > cookie days)", () => {

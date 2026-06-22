@@ -170,6 +170,18 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             .string()
             .optional()
             .describe("URL of the registered source this came from, if any"),
+          type: z
+            .string()
+            .optional()
+            .describe('Find type — omit for an event (default), or "lead" for a qualified business lead.'),
+          business_id: z
+            .number()
+            .optional()
+            .describe("For a lead: the id of the linked business (from list_businesses)."),
+          score: z
+            .number()
+            .optional()
+            .describe("0-1 fit/quality score (e.g. a lead's ICP fit)."),
         },
         async (args) => {
           const result = insertFind({
@@ -182,6 +194,9 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             publishedAt: args.published_at,
             tags: args.tags,
             sourceUrl: args.source_url,
+            type: args.type,
+            businessId: args.business_id,
+            score: args.score,
             agent,
           });
           if (result.outcome === "created") counters.added++;

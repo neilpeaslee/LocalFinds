@@ -36,9 +36,9 @@ describe("resolveTarget", () => {
     }
   });
 
-  it("includes the four roster agents and 'all'", () => {
+  it("includes the five roster agents and 'all'", () => {
     expect([...RUN_TARGETS].sort()).toEqual(
-      ["all", "cartographer", "curator", "scout", "source-keeper"].sort(),
+      ["all", "cartographer", "curator", "prospector", "scout", "source-keeper"].sort(),
     );
   });
 

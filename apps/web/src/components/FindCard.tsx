@@ -1,4 +1,5 @@
 import type { Find } from "@localfinds/db";
+import Link from "next/link";
 import { submitFeedback } from "@/app/actions";
 import type { FeedDensity } from "@/lib/settings";
 
@@ -82,6 +83,21 @@ export function FindCard({
         <p className="mt-1 text-sm text-stone-600">{find.summary}</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+        {/* Type badge only for non-event finds; events stay visually identical. */}
+        {find.type !== "event" && (
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-medium capitalize text-emerald-800">
+            {find.type}
+            {find.score != null ? ` · fit ${Math.round(find.score * 100)}%` : ""}
+          </span>
+        )}
+        {find.businessId != null && (
+          <Link
+            href={`/businesses/${find.businessId}`}
+            className="rounded bg-stone-100 px-1.5 py-0.5 hover:bg-stone-200"
+          >
+            Business ↗
+          </Link>
+        )}
         {eventStart && (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
             {eventStart}

@@ -49,6 +49,12 @@ export const finds = sqliteTable("finds", {
     .notNull()
     .default(sql`'[]'`),
   score: real("score"),
+  // Free-text discriminator (cf. businesses.kind): "event" (default), "lead",
+  // and later "resource-search"/"news"/etc. Taxonomy is applied at render time.
+  type: text("type").notNull().default("event"),
+  // Nullable FK linking a lead to its OSM business record. Forward reference —
+  // businesses is declared after finds; the thunk resolves it.
+  businessId: integer("business_id").references(() => businesses.id),
 });
 
 export const feedback = sqliteTable("feedback", {

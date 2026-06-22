@@ -125,6 +125,7 @@ export interface ResolvedFeed {
   from?: string;
   to?: string;
   tag?: string;
+  type?: string;
   pageSize: PageSize;
   density: FeedDensity;
   sort: FeedSort;
@@ -166,8 +167,9 @@ export function resolveFeed(sp: SearchParams, settings: Settings): ResolvedFeed 
     days,
     from,
     to,
-    // Tags stay ad-hoc (URL only) — never persisted as a default.
+    // Tags and type stay ad-hoc (URL only) — never persisted as a default.
     tag: first(sp.tag) || undefined,
+    type: first(sp.type) || undefined,
     pageSize: urlSize ? parsePageSize(urlSize) : f.pageSize,
     density: validDensity(first(sp.density)) ?? f.density,
     sort: validSort(first(sp.sort)) ?? f.sort,

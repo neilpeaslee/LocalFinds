@@ -763,3 +763,72 @@ describe("upsertSource ical_url", () => {
     expect(row?.status).toBe("active");
   });
 });
+
+describe("find type discriminator", () => {
+  it("defaults type to 'event' and round-trips an explicit type/business_id/score", () => {
+    const biz = q.upsertBusiness({
+      osmId: "node/typetest",
+      name: "Type Test Cafe",
+      addedBy: "cartographer",
+    });
+    const event = q.insertFind({
+      title: "Type default event",
+      url: "https://example.com/type-default",
+      agent: "test",
+    });
+    const lead = q.insertFind({
+      title: "Type explicit lead",
+      url: "https://example.com/type-lead",
+      type: "lead",
+      businessId: biz.id,
+      score: 0.9,
+      agent: "prospector",
+    });
+
+    const all = q.getFeed({ view: "all" });
+    const eventRow = all.find((f) => f.id === event.id);
+    const leadRow = all.find((f) => f.id === lead.id);
+    expect(eventRow?.type).toBe("event");
+    expect(eventRow?.businessId).toBeNull();
+    expect(leadRow?.type).toBe("lead");
+    expect(leadRow?.businessId).toBe(biz.id);
+    expect(leadRow?.score).toBe(0.9);
+  });
+
+  it("filters by type and excludeTypes", () => {
+    const event = q.insertFind({
+      title: "Filter event",
+      url: "https://example.com/filter-event",
+      tags: ["typefilter"],
+      agent: "test",
+    });
+    const lead = q.insertFind({
+      title: "Filter lead",
+      url: "https://example.com/filter-lead",
+      type: "lead",
+      tags: ["typefilter"],
+      agent: "prospector",
+    });
+
+    const leadIds = q.getFeed({ tag: "typefilter", type: "lead" }).map((f) => f.id);
+    expect(leadIds).toEqual([lead.id]);
+
+    const noLeadIds = q
+      .getFeed({ tag: "typefilter", excludeTypes: ["lead"] })
+      .map((f) => f.id);
+    expect(noLeadIds).toContain(event.id);
+    expect(noLeadIds).not.toContain(lead.id);
+  });
+
+  it("listFindTypes reports the distinct visible types", () => {
+    q.insertFind({
+      title: "Types facet lead",
+      url: "https://example.com/types-facet-lead",
+      type: "lead",
+      agent: "prospector",
+    });
+    const types = q.listFindTypes();
+    expect(types).toContain("event");
+    expect(types).toContain("lead");
+  });
+});

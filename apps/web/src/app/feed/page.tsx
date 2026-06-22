@@ -1,4 +1,9 @@
-import { getFeedPage, listActiveTags, markFindsShown } from "@localfinds/db";
+import {
+  getFeedPage,
+  listActiveTags,
+  listFindTypes,
+  markFindsShown,
+} from "@localfinds/db";
 import Link from "next/link";
 import { bulkUpdateStatus, unhideAllAction } from "@/app/settings-actions";
 import { FilterBar } from "@/components/FilterBar";
@@ -36,6 +41,7 @@ export default async function FeedPage({
     from: r.from,
     to: r.to,
     tag: r.tag,
+    type: r.type,
     sort: r.sort,
     page: r.page,
     pageSize: r.pageSize === "all" ? undefined : r.pageSize,
@@ -50,6 +56,7 @@ export default async function FeedPage({
     from: r.from,
     to: r.to,
     tag: r.tag,
+    type: r.type,
     pageSize: r.pageSize,
     density: r.density,
     sort: r.sort,
@@ -62,7 +69,12 @@ export default async function FeedPage({
   return (
     <div className="flex flex-col gap-4">
       <SettingsPanel feed={settings.feed} />
-      <FilterBar resolved={r} defaults={settings.feed} tags={listActiveTags()} />
+      <FilterBar
+        resolved={r}
+        defaults={settings.feed}
+        tags={listActiveTags()}
+        types={listFindTypes()}
+      />
 
       {rows.length === 0 ? (
         <p className="py-12 text-center text-sm text-stone-500">

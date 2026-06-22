@@ -42,21 +42,24 @@ export function syncMerge(incomingPath: string, prodPath: string = dbPath()): vo
         last_seen_at=excluded.last_seen_at, duplicate_of=excluded.duplicate_of
     `);
 
-    // finds — upsert by url_hash; NEVER write status; remap source_id by url.
+    // finds — upsert by url_hash; NEVER write status; remap source_id by url and
+    // business_id by osm_id (ids are per-DB — a naive copy points at the wrong
+    // prod row; the subquery yields NULL when there's no matching business).
     // status is omitted on insert (schema default 'new') and from the update set.
     db.exec(`
       INSERT INTO main.finds
-        (title, url, url_hash, summary, event_start, event_end, expires_at, published_at, discovered_at, agent, source_id, tags, score)
+        (title, url, url_hash, summary, event_start, event_end, expires_at, published_at, discovered_at, agent, source_id, tags, score, type, business_id)
       SELECT
         s.title, s.url, s.url_hash, s.summary, s.event_start, s.event_end, s.expires_at, s.published_at, s.discovered_at, s.agent,
         (SELECT m.id FROM main.sources m JOIN src.sources ss ON ss.url = m.url WHERE ss.id = s.source_id),
-        s.tags, s.score
+        s.tags, s.score, s.type,
+        (SELECT mb.id FROM main.businesses mb JOIN src.businesses sb ON sb.osm_id = mb.osm_id WHERE sb.id = s.business_id)
       FROM src.finds s WHERE true
       ON CONFLICT(url_hash) DO UPDATE SET
         title=excluded.title, url=excluded.url, summary=excluded.summary,
         event_start=excluded.event_start, event_end=excluded.event_end, expires_at=excluded.expires_at,
         published_at=excluded.published_at, agent=excluded.agent, source_id=excluded.source_id,
-        tags=excluded.tags, score=excluded.score
+        tags=excluded.tags, score=excluded.score, type=excluded.type, business_id=excluded.business_id
     `);
 
     // runs — preserve id (local owns the id space); prod never writes runs, so

@@ -18,6 +18,7 @@ export interface FeedState {
   from?: string;
   to?: string;
   tag?: string;
+  type?: string;
   pageSize: PageSize;
   density: FeedDensity;
   sort: FeedSort;
@@ -59,6 +60,8 @@ export function feedHref(
   }
 
   if (target.tag) qs.set("tag", target.tag);
+  // type is ad-hoc (URL only), never persisted — same as tag.
+  if (target.type) qs.set("type", target.type);
   if (page && page > 1) qs.set("page", String(page));
 
   const s = qs.toString();

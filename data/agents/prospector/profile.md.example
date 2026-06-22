@@ -1,0 +1,47 @@
+# Prospector — Ideal Customer Profile (ICP)
+
+_Last updated: (date) by (you or prospector)_
+
+The prospector reads this before every run and qualifies the cartographer's
+business directory against it. **This is where you define what you sell and to
+whom.** Until you fill it in, the prospector has nothing to match — edit it by
+hand. Keep it under ~150 lines.
+
+## What you offer
+
+- (e.g. websites + booking systems for service businesses)
+- (one or two lines on the product/service you'd pitch these leads)
+
+## Ideal customer (who's a lead)
+
+- (e.g. independent restaurants and cafes without a working website)
+- (e.g. trades — plumbers, electricians, landscapers — with no online booking)
+- (e.g. tourism/lodging businesses in Camden & Rockport)
+- Categories / OSM kinds that fit: (e.g. amenity=cafe, shop=*, craft=*)
+- Towns to prioritize: (e.g. Rockland, Camden, Belfast)
+
+## Disqualifiers (never a lead)
+
+- National/regional chains (OSM brand tag) — they don't buy local.
+- Businesses marked closed/unknown in the directory.
+- (e.g. categories you can't serve, or that never convert)
+
+## Fit scoring (0-1)
+
+- 0.8-1.0: squarely in the ICP, clear unmet need, reachable.
+- 0.5-0.7: plausible fit, some uncertainty (verify on the web before saving).
+- < 0.5: don't save — leave it for a future, sharper ICP.
+
+## Learned signals
+
+(The prospector appends dated bullets here, each citing the feedback that drove
+it — e.g. "2026-06-22: user starred a lead with no website → weight has_website
+absence higher.")
+
+## Standing instructions
+
+- Discovery only — never contact a business or imply outreach.
+- Prefer independent businesses with a website (reachable) over those without,
+  unless an absent website is itself the opportunity you sell.
+- Put the exact facts in save_find; keep the qualification reasoning in notes/.
+- Walk the directory town by town; record coverage so runs don't repeat work.

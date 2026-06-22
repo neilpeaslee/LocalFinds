@@ -51,4 +51,9 @@ describe("feedHref", () => {
     expect(feedHref(state(), defaults(), 3)).toBe("/feed?page=3");
     expect(feedHref(state({ tag: "music" }), defaults())).toBe("/feed?tag=music");
   });
+
+  it("emits type ad-hoc (never part of the cookie defaults)", () => {
+    expect(feedHref(state({ type: "lead" }), defaults())).toBe("/feed?type=lead");
+    expect(feedHref(state(), defaults())).toBe("/feed");
+  });
 });

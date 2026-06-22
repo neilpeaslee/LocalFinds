@@ -2,6 +2,7 @@ import { loadEnv } from "./env";
 import { runAgent, type AgentDefinition, type RunOptions } from "./run-agent";
 import { cartographer } from "./agents/cartographer";
 import { curator } from "./agents/curator";
+import { prospector } from "./agents/prospector";
 import { scout } from "./agents/scout";
 import { sourceKeeper } from "./agents/source-keeper";
 
@@ -9,9 +10,18 @@ const registry: Record<string, AgentDefinition> = {
   scout,
   "source-keeper": sourceKeeper,
   cartographer,
+  prospector,
   curator,
 };
-const rosterOrder = ["scout", "source-keeper", "cartographer", "curator"];
+// prospector runs after cartographer (so it reads fresh businesses) and before
+// curator (so curator prunes leads the same cycle).
+const rosterOrder = [
+  "scout",
+  "source-keeper",
+  "cartographer",
+  "prospector",
+  "curator",
+];
 
 function parseArgs(argv: string[]): { target: string; opts: RunOptions } {
   const [target, ...rest] = argv;

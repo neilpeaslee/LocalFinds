@@ -32,6 +32,11 @@ export function CompactFindCard({ find }: { find: Find }) {
         <p className="mt-1 line-clamp-2 text-xs text-stone-600">{find.summary}</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
+        {find.type !== "event" && (
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-medium capitalize text-emerald-800">
+            {find.type}
+          </span>
+        )}
         {eventStart && (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
             {eventStart}

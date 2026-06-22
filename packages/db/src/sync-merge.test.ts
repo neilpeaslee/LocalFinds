@@ -118,6 +118,46 @@ describe("syncMerge", () => {
     out.close();
   });
 
+  it("remaps a lead's business_id by osm_id, and keeps a NULL-business lead", () => {
+    // prod has the business at one id; src has it at a different id (same osm_id),
+    // so a naive copy of business_id would point at the wrong prod row.
+    runMigrations(prodPath);
+    const prod = new Database(prodPath);
+    prod
+      .prepare("INSERT INTO businesses (osm_id, name, status, added_by, discovered_at, last_seen_at) VALUES (?,?,?,?,?,?)")
+      .run("node/999", "Shared Cafe", "active", "cartographer", "2026-01-01", "2026-01-01");
+    const prodBizId = (prod.prepare("SELECT id FROM businesses WHERE osm_id=?").get("node/999") as any).id;
+    prod.close();
+
+    runMigrations(srcPath);
+    const src = new Database(srcPath);
+    // bump the businesses autoincrement so the src id differs from prod's.
+    src.prepare("INSERT INTO businesses (osm_id, name, status, added_by, discovered_at, last_seen_at) VALUES (?,?,?,?,?,?)").run("node/1", "filler", "active", "cartographer", "2026-01-01", "2026-01-01");
+    src.prepare("DELETE FROM businesses WHERE osm_id='node/1'").run();
+    src.prepare("INSERT INTO businesses (osm_id, name, status, added_by, discovered_at, last_seen_at) VALUES (?,?,?,?,?,?)").run("node/999", "Shared Cafe", "active", "cartographer", "2026-01-01", "2026-01-01");
+    const srcBizId = (src.prepare("SELECT id FROM businesses WHERE osm_id=?").get("node/999") as any).id;
+    expect(srcBizId).not.toBe(prodBizId); // remap is actually under test
+    // a lead linked to the src business id
+    src.prepare("INSERT INTO finds (title, url_hash, status, agent, type, business_id, discovered_at) VALUES (?,?,?,?,?,?,?)")
+      .run("Cafe lead", "hash-lead", "new", "prospector", "lead", srcBizId, "2026-06-01");
+    // a lead with no business link
+    src.prepare("INSERT INTO finds (title, url_hash, status, agent, type, business_id, discovered_at) VALUES (?,?,?,?,?,?,?)")
+      .run("Linkless lead", "hash-lead-null", "new", "prospector", "lead", null, "2026-06-01");
+    src.close();
+
+    syncMerge(srcPath, prodPath);
+
+    const out = new Database(prodPath);
+    const linked = out.prepare("SELECT * FROM finds WHERE url_hash='hash-lead'").get() as any;
+    expect(linked.type).toBe("lead");
+    expect(linked.business_id).toBe(prodBizId); // remapped, not the src id
+    const linkless = out.prepare("SELECT * FROM finds WHERE url_hash='hash-lead-null'").get() as any;
+    expect(linkless).toBeTruthy();
+    expect(linkless.type).toBe("lead");
+    expect(linkless.business_id).toBeNull();
+    out.close();
+  });
+
   it("upserts runs (by id, mutable) and fetches (by id, immutable)", () => {
     runMigrations(prodPath);
     runMigrations(srcPath);

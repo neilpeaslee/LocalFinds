@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "./client";
 import { readCategoryConfig, readMapCategories } from "./config";
@@ -50,6 +50,12 @@ export interface NewFindInput {
   tags?: string[];
   agent: string;
   sourceUrl?: string | null;
+  // Free-text find type ("event" default, "lead", ...). cf. finds.type.
+  type?: string;
+  // FK to a businesses row (a lead's OSM business). Null for non-lead finds.
+  businessId?: number | null;
+  // 0-1 fit/quality score. Persisted here (insertFind previously dropped it).
+  score?: number | null;
 }
 
 export interface SaveFindResult {
@@ -85,6 +91,9 @@ export function insertFind(input: NewFindInput): SaveFindResult {
       agent: input.agent,
       sourceId: sourceId ?? null,
       tags: input.tags ?? [],
+      type: input.type ?? "event",
+      businessId: input.businessId ?? null,
+      score: input.score ?? null,
     })
     .onConflictDoNothing({ target: finds.urlHash })
     .returning({ id: finds.id })
@@ -124,6 +133,10 @@ export interface FeedFilters {
   from?: string;
   to?: string;
   tag?: string;
+  // Narrow to a single find type (e.g. "lead"). Omit for all types.
+  type?: string;
+  // Drop these find types (e.g. ["lead"] to hide leads). Applied after `type`.
+  excludeTypes?: string[];
   limit?: number;
   page?: number;
   // Positive => paginate; omit/<=0 => the full matching set on one page.
@@ -171,6 +184,10 @@ function feedConditions(filters: FeedFilters) {
   if (filters.tag) {
     // tags is a JSON string array — exact-element match on the serialized form
     conditions.push(jsonArrayHas(finds.tags, filters.tag));
+  }
+  if (filters.type) conditions.push(eq(finds.type, filters.type));
+  if (filters.excludeTypes && filters.excludeTypes.length > 0) {
+    conditions.push(notInArray(finds.type, filters.excludeTypes));
   }
   return conditions;
 }
@@ -241,6 +258,20 @@ export function listActiveTags(limit = 30): string[] {
         group by tag order by n desc limit ${limit}`,
   );
   return rows.map((r) => r.tag);
+}
+
+// Distinct find types among currently feed-visible items, for the filter bar.
+// Ordered by count desc so the common types (events) lead. "event" always
+// appears (it's the default), so a single-type feed still shows one chip.
+export function listFindTypes(): string[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = db().all<{ type: string; n: number }>(
+    sql`select ${finds.type} as type, count(*) as n
+        from ${finds}
+        where ${finds.status} != 'hidden' and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})
+        group by ${finds.type} order by n desc`,
+  );
+  return rows.map((r) => r.type);
 }
 
 export function costLastNDays(days = 30): number {

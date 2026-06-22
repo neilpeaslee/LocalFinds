@@ -55,10 +55,12 @@ export function FilterBar({
   resolved,
   defaults,
   tags,
+  types,
 }: {
   resolved: ResolvedFeed;
   defaults: FeedDefaults;
   tags: string[];
+  types: string[];
 }) {
   const base: FeedState = {
     view: resolved.view,
@@ -66,6 +68,7 @@ export function FilterBar({
     from: resolved.from,
     to: resolved.to,
     tag: resolved.tag,
+    type: resolved.type,
     pageSize: resolved.pageSize,
     density: resolved.density,
     sort: resolved.sort,
@@ -140,6 +143,21 @@ export function FilterBar({
           />
         ))}
       </div>
+
+      {types.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs font-medium text-stone-500">Type</span>
+          <Chip active={!resolved.type} href={href({ type: undefined })} label="All" />
+          {types.map((type) => (
+            <Chip
+              key={type}
+              active={resolved.type === type}
+              href={href({ type })}
+              label={type.charAt(0).toUpperCase() + type.slice(1)}
+            />
+          ))}
+        </div>
+      )}
 
       {tags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">

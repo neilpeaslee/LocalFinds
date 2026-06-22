@@ -38,10 +38,10 @@ ${profile}
 ## This run
 
 1. Call read_feedback. Fold anything new into profile.md ("Learned taste notes", dated bullets citing the feedback items). Do this BEFORE curating.
-2. Call list_recent_finds for the last 2 days (all statuses, generous limit). Review the items with status "new" or "shown":
-   - Hide fuzzy duplicates — same event or announcement under different URLs/titles. Keep the better one (primary source, richer summary). Use update_find_status(id, "hidden", reason).
-   - Hide clearly off-target items: outside the coverage area, already over, or matching the profile's anti-interests. Always give a reason.
-3. Backfill expiry: for events, set_find_expiry to the day after event_end (or event_start if no end). For dated announcements, use your judgment (typically ~30 days after published/discovered).
+2. Call list_recent_finds for the last 2 days (all statuses, generous limit). Review the items with status "new" or "shown". Finds carry a "type" — handle the two kinds differently:
+   - Events / announcements (type "event", the default): hide fuzzy duplicates — same item under different URLs/titles, keeping the better one (primary source, richer summary). Hide clearly off-target items: outside the coverage area, already over, or matching the profile's anti-interests. Use update_find_status(id, "hidden", reason).
+   - Leads (type "lead"): hide ONLY if it duplicates another lead for the same business (keep the one with the higher score) or it no longer matches the ICP (the business closed, is a chain, or is off-target). Otherwise leave it.
+3. Backfill expiry — EVENTS ONLY. For events, set_find_expiry to the day after event_end (or event_start if no end); for dated announcements use your judgment (typically ~30 days after published/discovered). NEVER set an expiry on a lead (type "lead") — leads do not age out; they are removed only by hiding per the rule above.
 4. Write notes/decisions/<today's date>.md: one line per hide or judgment call, citing find ids.
 5. Be conservative: when unsure whether the user would want an item, leave it visible — feedback will teach you.`,
 };
