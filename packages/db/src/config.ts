@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dataDir } from "./paths";
+import { agentWorkspaceDir, dataDir } from "./paths";
 
 export interface RegionConfig {
   name: string;
@@ -21,6 +21,27 @@ export function readRegionConfig(): RegionConfig | null {
   const nameLine = frontmatter?.[1].match(/^name:\s*(.+)$/m);
   if (nameLine) name = nameLine[1].trim().replace(/^["']|["']$/g, "");
   return { name, raw };
+}
+
+// Write region.md from a structured shape — frontmatter `name:` plus the
+// coverage prose. Round-validates by reading the name back through
+// readRegionConfig, the same parser the agents use, so a write that wouldn't
+// parse is a throw, never a silently broken file. The name is JSON-quoted so a
+// value containing a comma (e.g. "Rockland, Maine") survives the frontmatter.
+export function writeRegionConfig(input: {
+  name: string;
+  coverageMarkdown: string;
+}): void {
+  const body = input.coverageMarkdown.trim();
+  const contents = `---\nname: ${JSON.stringify(input.name)}\n---\n\n${body}\n`;
+  fs.mkdirSync(path.dirname(regionConfigPath()), { recursive: true });
+  fs.writeFileSync(regionConfigPath(), contents);
+  const check = readRegionConfig();
+  if (!check || check.name !== input.name) {
+    throw new Error(
+      `writeRegionConfig: name did not round-trip through readRegionConfig (${input.name})`,
+    );
+  }
 }
 
 // --- Category search-priority config (data/config/categories.json) ---
@@ -106,6 +127,46 @@ export function readCategoryConfig(): CategoryConfig {
   return { defaultTier, hideInDirectory, tiers, tierOf };
 }
 
+// An OSM "key=value" kind, or a "key=*" wildcard. The key side is permissive
+// (whatever real OSM keys appear in the live config) but a single `=` and a
+// non-empty value are required, so a bare word or empty entry is rejected
+// rather than written into a file the prospector and /businesses page read.
+const CATEGORY_RE = /^[a-z_]+=(?:\*|[a-z0-9_:.-]+)$/;
+
+// Write categories.json from the same shape readCategoryConfig consumes (the
+// snake_case on-disk keys, not the camelCase reader output). Every category is
+// validated against CATEGORY_RE first — a writer that can't faithfully rewrite
+// the config already shipping is the worst failure mode, so the round-trip test
+// validates this against every live entry.
+export function writeCategoryConfig(
+  input: {
+    default_tier: number;
+    hide_in_directory: { tier4: boolean; chains: boolean };
+    tiers: Record<string, string[]>;
+  },
+  opts: { comment?: string } = {},
+): void {
+  for (const [tier, cats] of Object.entries(input.tiers)) {
+    if (!Number.isFinite(Number(tier))) {
+      throw new Error(`writeCategoryConfig: non-numeric tier key "${tier}"`);
+    }
+    for (const cat of cats) {
+      if (!CATEGORY_RE.test(cat)) {
+        throw new Error(
+          `writeCategoryConfig: "${cat}" is not an OSM key=value (or key=*) category`,
+        );
+      }
+    }
+  }
+  const payload: Record<string, unknown> = {};
+  if (opts.comment) payload._comment = opts.comment;
+  payload.default_tier = input.default_tier;
+  payload.hide_in_directory = input.hide_in_directory;
+  payload.tiers = input.tiers;
+  fs.mkdirSync(path.dirname(categoryConfigPath()), { recursive: true });
+  fs.writeFileSync(categoryConfigPath(), `${JSON.stringify(payload, null, 2)}\n`);
+}
+
 // --- Town coverage boxes (data/config/towns.json) ---
 
 export interface TownBox {
@@ -158,6 +219,88 @@ export function readTownsConfig(): TownsConfig {
     }
   }
   return { towns: [] };
+}
+
+// A town as written by the interviewer: the map-facing {name, bbox, primary}
+// plus the disambiguation hints fetch-town-boundaries.mjs needs (county,
+// optional query). The reader (readTownsConfig) only types name/bbox/primary
+// but the on-disk objects carry county/query verbatim, so the writer must too.
+export interface WritableTown extends TownBox {
+  county?: string;
+  query?: string;
+}
+
+// Write towns.json, throwing on any town whose bbox fails isValidTownBox — a bad
+// box surfaces loudly instead of being silently dropped (the data-safety rule,
+// since town-boundaries.json polygons are matched to these exact bboxes). All
+// towns are validated before anything is written, so a bad batch leaves the
+// existing file untouched. county/query/primary are preserved; an optional
+// `_comment` is round-tripped so the file's human notes aren't wiped.
+export function writeTownsConfig(
+  towns: WritableTown[],
+  opts: { comment?: string } = {},
+): void {
+  for (const t of towns) {
+    if (!isValidTownBox(t)) {
+      const label =
+        t && typeof (t as { name?: unknown }).name === "string"
+          ? (t as { name: string }).name
+          : JSON.stringify(t);
+      throw new Error(`writeTownsConfig: invalid town box for ${label}`);
+    }
+  }
+  const payload: Record<string, unknown> = {};
+  if (opts.comment) payload._comment = opts.comment;
+  payload.towns = towns.map((t) => {
+    const out: Record<string, unknown> = { name: t.name };
+    if (t.county !== undefined) out.county = t.county;
+    if (t.query !== undefined) out.query = t.query;
+    out.bbox = t.bbox;
+    if (t.primary) out.primary = true;
+    return out;
+  });
+  fs.mkdirSync(path.dirname(townsConfigPath()), { recursive: true });
+  fs.writeFileSync(townsConfigPath(), `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+// --- Prospector ICP profile (data/agents/prospector/profile.md) ---
+//
+// The interviewer is the only writer of the prospector's ICP; until it runs the
+// file is byte-identical to the committed template and the prospector has
+// nothing to match. These helpers live here (not in run-agent) so config tests
+// can round-trip them with the other config writers.
+
+export function icpProfilePath(): string {
+  return path.join(agentWorkspaceDir("prospector"), "profile.md");
+}
+
+// Write the prospector's ICP, creating its workspace + notes/ first (the same
+// layout ensureWorkspace builds) so a cold machine doesn't need a prior run.
+export function writeIcpProfile(markdown: string): void {
+  const workspace = agentWorkspaceDir("prospector");
+  fs.mkdirSync(path.join(workspace, "notes"), { recursive: true });
+  fs.writeFileSync(icpProfilePath(), markdown);
+}
+
+// Current ICP, or null if it's still untouched. "Untouched" = missing, or
+// byte-identical to profile.md.example — the prospector seeds profile.md by
+// copying the .example, so a cold profile reads exactly equal to it. We do NOT
+// sniff for "(e.g" substrings: those appear in legitimate ICP prose.
+export function readIcpProfile(): string | null {
+  const file = icpProfilePath();
+  let current: string;
+  try {
+    current = fs.readFileSync(file, "utf8");
+  } catch {
+    return null; // no profile written yet
+  }
+  try {
+    const example = fs.readFileSync(`${file}.example`, "utf8");
+    if (current === example) return null; // copied template, never edited
+  } catch {
+    // no template to compare against — treat any present profile as real
+  }
+  return current;
 }
 
 // --- Town boundary polygons (data/config/town-boundaries.json) ---

@@ -88,7 +88,10 @@ export interface RunOutcome {
 
 // Drop session markers from any parent Claude Code session so the spawned
 // agent CLI doesn't inherit its project context (memory dirs, session ids).
-function sanitizedEnv(): Record<string, string> {
+// Exported (security-relevant, single definition) so the interviewer runner
+// reuses the exact same stripping — note it removes every CLAUDE_* var, so any
+// CLAUDE_* the child genuinely needs must be re-added on top, deliberately.
+export function sanitizedEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;

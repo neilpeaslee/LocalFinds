@@ -5,6 +5,7 @@
   "scripts": {
     "agent": "tsx src/cli.ts",
     "all": "tsx src/cli.ts all",
+    "interview": "tsx src/interview.ts",
     "test": "vitest run"
   },
   "dependencies": {
