@@ -21,6 +21,9 @@ docs/superpowers/specs/*deploy-localfinds*
 docs/superpowers/plans/*deploy-localfinds*
 .claude/skills/deploy-localfinds/
 
+# private strategy docs — competitive positioning / ICP; flag keeps them local on the public repo
+*.private.md
+
 # PII boundary: ALL runtime state (db, profiles, notes, logs) stays out of git.
 # Only committed templates (*.example) are allowed through.
 data/**
