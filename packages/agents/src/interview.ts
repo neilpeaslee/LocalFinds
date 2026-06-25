@@ -237,6 +237,9 @@ async function runBuild(
 
 // --- The confirm-before-write diff gate ---
 //
+// This snapshot/restore machinery backs the PREPARED path (runPrepared); the
+// interactive path uses a staging dir instead.
+//
 // The four target files are hand-tuned and production-bound (sync-content.sh
 // rsyncs data/ to the live site), so a silent drop/rename must be visible before
 // the user commits. set_towns needs a written region to derive its state, so a
@@ -435,6 +438,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
       process.stdout.write(
         "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
       );
+      discardProvisionalFinds();
       discardStaging(staging);
       rl.close();
       return;
@@ -442,6 +446,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     lastTranscript = renderTranscript(readJournal());
     if (!lastTranscript.trim()) {
       process.stdout.write("\nNo answers were captured, so there's nothing to write.\n");
+      discardProvisionalFinds();
       discardStaging(staging);
       rl.close();
       return;
