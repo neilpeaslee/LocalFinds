@@ -23,18 +23,26 @@ import {
 import { loadEnv } from "./env";
 import { sanitizedEnv } from "./run-agent";
 import { buildInterviewerServer, type InterviewIO } from "./interview-tools";
-import { appendEntry, clearJournal, readJournal, summarizeForResume } from "./interview-journal";
 import {
-  INTERACTIVE_SYSTEM_PROMPT,
+  appendEntry,
+  archiveJournal,
+  readJournal,
+  renderTranscript,
+  summarizeForResume,
+} from "./interview-journal";
+import { recentProspectorContext } from "./prospector-context";
+import {
+  COLLECTION_SYSTEM_PROMPT,
+  COLLECTION_TOOLS,
+  INTERVIEWER_COLLECTION_EFFORT,
   INTERVIEWER_DISALLOWED,
-  INTERVIEWER_EFFORT,
   INTERVIEWER_MODEL,
-  INTERVIEWER_TOOLS,
-  PREPARED_SYSTEM_PROMPT,
-  PREPARED_TOOLS,
+  INTERVIEWER_SYNTHESIS_EFFORT,
   QUESTIONNAIRE_TEMPLATE,
-  interactiveKickoff,
-  preparedKickoff,
+  SYNTHESIS_SYSTEM_PROMPT,
+  SYNTHESIS_TOOLS,
+  collectionKickoff,
+  synthesisKickoff,
 } from "./agents/interviewer";
 
 // --- Pure helpers (unit-tested) ---
@@ -123,6 +131,12 @@ function rlQuestion(rl: readline.Interface, q: string): Promise<string> {
   return new Promise((resolve) => rl.question(q, resolve));
 }
 
+// A filesystem-safe, sortable name for an archived interview transcript
+// (e.g. "2026-06-24T15-42-03Z"). Colons would be invalid on some filesystems.
+function interviewRunId(): string {
+  return new Date().toISOString().replace(/:/g, "-").replace(/\.\d+Z$/, "Z");
+}
+
 // Show the cumulative diff and ask the user to keep or revert. Returns true to
 // keep. A run with no changes is reported and treated as "kept" (nothing to do).
 async function reviewAndConfirm(
@@ -178,7 +192,10 @@ function logMessage(message: SDKMessage): void {
 // --- Path: interactive ---
 
 async function runInteractive(): Promise<void> {
-  process.stdout.write("\nGrab a coffee first — this takes about 5–10 minutes.\n\n");
+  process.stdout.write(
+    "\nNo clock here — take as long as you like. I'll ask about your business and\n" +
+      "who you're trying to reach, then show you every change before anything saves.\n\n",
+  );
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   // Each ask/answer is journaled synchronously so a Ctrl-C loses nothing.
@@ -188,6 +205,10 @@ async function runInteractive(): Promise<void> {
       const hint = opts?.choices?.length ? ` [${opts.choices.join(" / ")}]` : "";
       const answer = await rlQuestion(rl, `\n${question}${hint}\n> `);
       appendEntry({ role: "user", kind: "answer", text: answer });
+      // Instant feedback: the model now thinks (silently) before its next turn, so
+      // acknowledge the moment they hit enter — a keystroke must never vanish into
+      // dead air while the agent reasons.
+      process.stdout.write("\n  · got it — thinking…\n");
       return answer;
     },
     say: (message) => {
@@ -203,38 +224,96 @@ async function runInteractive(): Promise<void> {
   const files = targetConfigFiles();
   const before = snapshot(files);
 
-  let result: SDKResultMessage | undefined;
+  // --- Phase 1: collection — a snappy live conversation that writes nothing ---
+  // Ground a refinement interview in what the prospector actually found ("" on a
+  // true cold start, so the section is simply omitted).
+  const prospectorContext = recentProspectorContext();
+  let collected: SDKResultMessage | undefined;
   try {
     for await (const message of query({
-      prompt: interactiveKickoff(seed),
+      prompt: collectionKickoff({ resumeSeed: seed, prospectorContext: prospectorContext || undefined }),
       options: {
         model: INTERVIEWER_MODEL,
-        effort: INTERVIEWER_EFFORT,
+        effort: INTERVIEWER_COLLECTION_EFFORT,
         env: interviewerEnv(),
-        systemPrompt: INTERACTIVE_SYSTEM_PROMPT,
+        systemPrompt: COLLECTION_SYSTEM_PROMPT,
         settingSources: [],
         settings: { autoMemoryEnabled: false },
         permissionMode: "bypassPermissions",
         mcpServers: { interviewer: buildInterviewerServer(io) },
-        allowedTools: INTERVIEWER_TOOLS,
+        allowedTools: COLLECTION_TOOLS,
         disallowedTools: INTERVIEWER_DISALLOWED,
-        maxTurns: 60,
-        // No maxBudgetUsd: a human-paced interview can't run away, and a
-        // mid-interview budget kill is a bad UX (Issue 6).
+        // Every ask_user blocks on a human, so this can't run away; it only
+        // backstops a non-interactive tool loop. Kept well above a thorough
+        // conversation so the agent never rushes to wrap up before the cap — the
+        // invisible "hidden timer" that ended an earlier run at ~80%. No
+        // maxBudgetUsd: a mid-interview budget kill is a bad UX (Issue 6).
+        maxTurns: 200,
       },
     })) {
       logMessage(message);
-      if (message.type === "result") result = message;
+      if (message.type === "result") collected = message;
     }
   } catch (err) {
     console.error("\nInterview run ended early:", err instanceof Error ? err.message : err);
   }
 
-  if (result?.subtype === "success") {
+  if (collected?.subtype !== "success") {
+    process.stdout.write(
+      "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
+    );
+    rl.close();
+    return;
+  }
+
+  const transcript = renderTranscript(readJournal());
+  if (!transcript.trim()) {
+    process.stdout.write(
+      "\nNo answers were captured, so there's nothing to write. Re-run `npm run interview` to start over.\n",
+    );
+    rl.close();
+    return;
+  }
+
+  // --- Phase 2: synthesis — a deeper pass that writes the config from the
+  // transcript. The one slow step, confined to the end where a wait is expected. ---
+  process.stdout.write("\nThanks — writing up your targeting and ICP now. This part takes a moment…\n");
+  let written: SDKResultMessage | undefined;
+  try {
+    for await (const message of query({
+      prompt: synthesisKickoff(transcript),
+      options: {
+        model: INTERVIEWER_MODEL,
+        effort: INTERVIEWER_SYNTHESIS_EFFORT,
+        env: interviewerEnv(),
+        systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
+        settingSources: [],
+        settings: { autoMemoryEnabled: false },
+        permissionMode: "bypassPermissions",
+        mcpServers: { interviewer: buildInterviewerServer(io) },
+        allowedTools: SYNTHESIS_TOOLS,
+        disallowedTools: INTERVIEWER_DISALLOWED,
+        maxTurns: 60,
+      },
+    })) {
+      logMessage(message);
+      if (message.type === "result") written = message;
+    }
+  } catch (err) {
+    console.error("\nWriting the config ended early:", err instanceof Error ? err.message : err);
+  }
+
+  if (written?.subtype === "success") {
     const keep = await reviewAndConfirm(rl, files, before);
     if (keep) {
-      clearJournal();
+      // Archive (not delete) the journal: the transcript survives under runs/ for
+      // later review, and moving it clears the live journal so the next interview
+      // still starts fresh.
+      const archived = archiveJournal(interviewRunId());
       process.stdout.write("\nSaved. Run `npm run agent -- prospector` to generate your first leads.\n");
+      if (archived) {
+        process.stdout.write(`Transcript kept at ${path.relative(process.cwd(), archived)}\n`);
+      }
     } else {
       restore(files, before);
       // Journal kept (not cleared) so a re-run resumes from your answers.
@@ -243,8 +322,10 @@ async function runInteractive(): Promise<void> {
       );
     }
   } else {
+    // A failed/partial synthesis must not leave unconfirmed writes behind.
+    restore(files, before);
     process.stdout.write(
-      "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
+      "\nI couldn't finish writing the config from the interview — your earlier config is unchanged. Re-run `npm run interview` to try again (your answers are saved).\n",
     );
   }
   rl.close();
@@ -281,17 +362,17 @@ async function runPrepared(): Promise<void> {
   let result: SDKResultMessage | undefined;
   try {
     for await (const message of query({
-      prompt: preparedKickoff(content),
+      prompt: synthesisKickoff(content),
       options: {
         model: INTERVIEWER_MODEL,
-        effort: INTERVIEWER_EFFORT,
+        effort: INTERVIEWER_SYNTHESIS_EFFORT,
         env: interviewerEnv(),
-        systemPrompt: PREPARED_SYSTEM_PROMPT,
+        systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
         settingSources: [],
         settings: { autoMemoryEnabled: false },
         permissionMode: "bypassPermissions",
         mcpServers: { interviewer: buildInterviewerServer(io) },
-        allowedTools: PREPARED_TOOLS,
+        allowedTools: SYNTHESIS_TOOLS,
         disallowedTools: INTERVIEWER_DISALLOWED,
         maxTurns: 40,
       },

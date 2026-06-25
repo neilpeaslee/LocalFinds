@@ -4,9 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendEntry,
-  clearJournal,
+  archiveJournal,
   journalPath,
   readJournal,
+  renderTranscript,
   summarizeForResume,
 } from "./interview-journal";
 
@@ -59,16 +60,51 @@ describe("appendEntry / readJournal", () => {
   });
 });
 
-describe("clearJournal", () => {
-  it("removes the journal so a completed interview starts fresh next time", () => {
-    appendEntry({ role: "user", kind: "answer", text: "x" });
-    expect(fs.existsSync(journalPath())).toBe(true);
-    clearJournal();
+describe("archiveJournal", () => {
+  it("moves a completed journal into runs/ so the transcript survives and the next interview starts fresh", () => {
+    appendEntry({ role: "agent", kind: "ask", text: "What do you sell?" });
+    appendEntry({ role: "user", kind: "answer", text: "Websites." });
+
+    const archived = archiveJournal("2026-06-24_run");
+
+    // The live journal is gone, so the next interview won't resume this one.
+    expect(fs.existsSync(journalPath())).toBe(false);
     expect(readJournal()).toEqual([]);
+    // ...but the transcript survives under runs/ for later review.
+    expect(archived).not.toBeNull();
+    expect(archived).toContain(path.join("runs", "2026-06-24_run.jsonl"));
+    const lines = fs.readFileSync(archived as string, "utf8").trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[1])).toMatchObject({ kind: "answer", text: "Websites." });
   });
 
-  it("is a no-op when there is no journal", () => {
-    expect(() => clearJournal()).not.toThrow();
+  it("returns null and does not throw when there is no journal", () => {
+    expect(archiveJournal("whatever")).toBeNull();
+  });
+});
+
+describe("renderTranscript", () => {
+  it("renders the full conversation in order, labeling questions, answers, and interviewer notes", () => {
+    const transcript = renderTranscript([
+      { role: "agent", kind: "ask", text: "What do you sell?" },
+      { role: "user", kind: "answer", text: "Websites and AI help." },
+      { role: "agent", kind: "say", text: "So web is your lead offer." },
+      { role: "agent", kind: "ask", text: "Which towns?" },
+      { role: "user", kind: "answer", text: "Rockland and Camden." },
+    ]);
+    expect(transcript).toBe(
+      [
+        "Q: What do you sell?",
+        "A: Websites and AI help.",
+        "(interviewer note) So web is your lead offer.",
+        "Q: Which towns?",
+        "A: Rockland and Camden.",
+      ].join("\n"),
+    );
+  });
+
+  it("returns an empty string for an empty journal", () => {
+    expect(renderTranscript([])).toBe("");
   });
 });
 

@@ -60,13 +60,35 @@ export function readJournal(): JournalEntry[] {
   return entries;
 }
 
-// Remove the journal so a completed interview starts fresh next time.
-export function clearJournal(): void {
-  try {
-    fs.rmSync(journalPath());
-  } catch {
-    // already gone — nothing to do
-  }
+// Archive a completed interview's journal into runs/ instead of deleting it, so
+// the transcript survives for later review — other agents keep runs/<id>.jsonl
+// the same way. Moving (not copying) clears the live session.jsonl in the same
+// step, so the next interview still starts fresh. The caller supplies a unique
+// name (interview.ts uses a timestamp) to keep this deterministic and testable.
+// Returns the archived path, or null if there was no journal to archive.
+export function archiveJournal(name: string): string | null {
+  const src = journalPath();
+  if (!fs.existsSync(src)) return null;
+  const dest = path.join(agentWorkspaceDir("interviewer"), "runs", `${name}.jsonl`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.renameSync(src, dest);
+  return dest;
+}
+
+// Render the whole conversation as plain text to hand to the synthesis phase:
+// every question, answer, and interviewer note, in order. Unlike
+// summarizeForResume (which keeps only un-written Q/A pairs to avoid re-asking),
+// this preserves the full picture — including the user's brain-dumps and the
+// agent's reflections — so the config-writing pass works from everything said.
+export function renderTranscript(entries: JournalEntry[]): string {
+  return entries
+    .map((e) => {
+      if (e.kind === "ask") return `Q: ${e.text}`;
+      if (e.kind === "answer") return `A: ${e.text}`;
+      if (e.kind === "say") return `(interviewer note) ${e.text}`;
+      return e.text;
+    })
+    .join("\n");
 }
 
 // Compact the journal into a transcript seeded into a resumed run. The structured

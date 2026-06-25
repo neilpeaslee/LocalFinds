@@ -1,5 +1,17 @@
-// The interviewer's static configuration: model, effort, tool allow/deny lists,
-// the per-path system prompts, and the prepared-mode questionnaire template.
+// The interviewer's static configuration: model, per-phase effort, tool
+// allow/deny lists, the system prompts, and the prepared-mode questionnaire.
+//
+// The interactive interview runs in TWO phases (interview.ts is the runner):
+//   1. Collection — a live, medium-effort conversation that draws out and
+//      reflects back the full picture but writes NOTHING.
+//   2. Synthesis — a high-effort pass that reads the transcript and writes the
+//      region/towns/categories/ICP in one go. This is the SAME machinery the
+//      prepared (questionnaire) path uses, just seeded with a transcript.
+// Splitting them keeps each interview turn snappy (cheap effort, no deep think
+// stalling the conversation) while giving the config-writing real reasoning
+// budget — and confines the one slow step to the end, where a brief wait reads
+// as "writing it up" rather than dead air. A single medium-effort pass is exactly
+// what produced the earlier rushed, ~80%-complete profile.
 //
 // Unlike the scheduled agents, the interviewer does NOT go through runAgent /
 // AgentDefinition — it has no DB workspace, no localfinds MCP server, and no
@@ -10,15 +22,22 @@
 import type { ReasoningEffort } from "../run-agent";
 
 export const INTERVIEWER_MODEL = "claude-sonnet-4-6";
-// Issue 5: medium gives snappy interactive turns at lower cost; every tuned
-// agent dials effort down, none use high. A higher tier is only worth it for the
-// non-interactive prepared generation if quality ever demands it.
-export const INTERVIEWER_EFFORT: ReasoningEffort = "medium";
+// Collection turns stay snappy and cheap; synthesis gets real budget because
+// that's where the strategic depth (honest skill ranking, the engagement
+// trajectory, the fit-scoring) actually pays off.
+export const INTERVIEWER_COLLECTION_EFFORT: ReasoningEffort = "medium";
+export const INTERVIEWER_SYNTHESIS_EFFORT: ReasoningEffort = "high";
 
-// The interviewer's MCP tools. ask_user is interactive-only and dropped for the
-// prepared path (see PREPARED_TOOLS).
-export const INTERVIEWER_TOOLS = [
+// Phase 1 (live conversation) writes nothing — only ask/say/read/preview tools.
+export const COLLECTION_TOOLS = [
   "mcp__interviewer__ask_user",
+  "mcp__interviewer__say",
+  "mcp__interviewer__read_current_config",
+  "mcp__interviewer__geocode_town",
+];
+
+// Phase 2 (synthesis) and the prepared path write config but never ask the user.
+export const SYNTHESIS_TOOLS = [
   "mcp__interviewer__say",
   "mcp__interviewer__read_current_config",
   "mcp__interviewer__geocode_town",
@@ -27,11 +46,6 @@ export const INTERVIEWER_TOOLS = [
   "mcp__interviewer__set_categories",
   "mcp__interviewer__write_icp",
 ];
-
-// Prepared mode answers from a file — never asks live, so ask_user is removed.
-export const PREPARED_TOOLS = INTERVIEWER_TOOLS.filter(
-  (t) => t !== "mcp__interviewer__ask_user",
-);
 
 // Hard lockout for both paths: the interviewer writes config ONLY through its MCP
 // tools, never the filesystem or web directly, and must not spawn sub-agents.
@@ -49,35 +63,42 @@ export const INTERVIEWER_DISALLOWED = [
   "AskUserQuestion",
 ];
 
-const SHARED_RULES = `You are the LocalFinds interviewer. Your one job is to set up targeting for a hyper-local discovery system: a region, a town list, business-category search tiers, and the prospector's Ideal Customer Profile (ICP). You write all of these through your tools — you never touch files or the web directly.
+// Domain context shared by BOTH phases (and the prepared path). No writing
+// instructions here — collection must NOT write.
+const SYSTEM_CONTEXT = `You are the LocalFinds interviewer. Your job is to set up targeting for a hyper-local discovery system: a region, a town list, business-category search tiers, and the prospector's Ideal Customer Profile (ICP). These are written ONLY through your tools — never files or the web directly.
 
-How the system uses what you write:
+How the system uses each piece:
 - The region (set_region) names the area and its state; the state is reused to geocode towns.
-- The town list (set_towns) drives the map and the prospector's town filters. You supply each town's NAME and COUNTY (for disambiguation) — NEVER coordinates; the tool geocodes new towns and KEEPS the hand-tuned bbox of any town that already exists.
+- The town list (set_towns) drives the map and the prospector's town filters. Supply each town's NAME and COUNTY (for disambiguation) — NEVER coordinates; the tool geocodes new towns and KEEPS the hand-tuned bbox of any town that already exists. Exactly one town is the primary (home) town.
 - The category tiers (set_categories) are OSM "key=value" kinds ranked 1 (highest priority) to 4 (excluded from the directory). "key=*" matches any value of a key.
 - The ICP (write_icp) is prose the prospector reads before every run to qualify businesses as leads.
 
-Process (always):
-1. Call read_current_config FIRST. Edit what's there; do not blindly overwrite. Nulls mean "not set yet".
-2. Gather the answers you need (see your mode below).
-3. Write the STRUCTURED config first, in order: set_region, then set_towns, then set_categories. Then write_icp LAST, referencing the same towns and categories so the prose and the structured config agree.
-4. For towns, pass county for every town (e.g. "Knox County"); set primary:true on exactly one home town. If set_towns reports a town with an error, re-resolve it (try a query override) or drop it — never invent coordinates.
+ICP rules: keep it under ~150 lines, using these sections — What you offer; Ideal customer (who's a lead); Disqualifiers; Fit scoring (0-1); Learned signals; Standing instructions. Be specific and grounded in the user's answers. Discovery only — the prospector never contacts businesses.
 
-ICP rules:
-- Keep it under ~150 lines. Use these sections: What you offer; Ideal customer (who's a lead); Disqualifiers; Fit scoring (0-1); Learned signals; Standing instructions.
-- Be specific and grounded in the user's answers. Discovery only — the prospector never contacts businesses.
+Always call read_current_config FIRST so you build on what's already set (nulls mean "not set yet") rather than blindly overwriting.`;
 
-The runner shows the user a real before/after diff of every file you changed and asks them to confirm at the end — so make your writes count, but don't ask the user to confirm saves yourself.`;
+// Synthesis-only: the order and care for actually writing the four configs.
+const WRITING_PROCESS = `Writing order: set_region, then set_towns, then set_categories, then write_icp LAST — referencing the same towns and categories so the prose and structured config agree. Pass county for every town (e.g. "Knox County"); set primary:true on exactly one home town. If set_towns reports a town error, re-resolve it (try a query override) or drop it — never invent coordinates. The runner shows the user a real before/after diff of every change and asks them to confirm at the end — so make your writes count, but don't ask the user to confirm saves yourself.`;
 
-export const INTERACTIVE_SYSTEM_PROMPT = `${SHARED_RULES}
+// Phase 1 prompt: live conversation, gather only.
+export const COLLECTION_SYSTEM_PROMPT = `${SYSTEM_CONTEXT}
 
-## Your mode: live interview
-Talk with the user through ask_user, one question at a time. Start broad (what they sell, who their ideal customer is), then ask adaptive follow-ups to sharpen the ICP and the town/category targeting. Use say to share brief context or confirm understanding. Take the time to get it right — there is no timer. When you have enough, write the config and ICP as described.`;
+## Your mode: live interview — GATHER ONLY, you do NOT write config in this phase
+A separate synthesis step writes the config from this conversation, so do NOT call set_region / set_towns / set_categories / write_icp here. Your job is to draw out and reflect back a complete, honest picture. Make it feel like a conversation, not a form:
 
-export const PREPARED_SYSTEM_PROMPT = `${SHARED_RULES}
+- Ask in focused clusters, NOT a rigid one-at-a-time checklist: a short lead question plus, when it's natural, a couple of specific follow-ups in the same ask. Let the user brain-dump — a one-line answer and a three-paragraph answer are equally fine.
+- Reflect back what you heard before moving on (use say), and actively hunt for contradictions and gaps to challenge. Pressure-test the gap between what they SAY they offer and what they can actually deliver well — e.g. if the picture leans on a capability (ops automation, data work) they never named as a real strength, point it out and ask. Catching that mismatch is the single most valuable thing you do here.
+- Go past surface targeting. Sharpen all of: what they actually sell and an HONEST ranking of their strengths; who their ideal customer is and why; how an engagement starts and where it grows over time (the trajectory — not a flat list of services); how to score fit; firm disqualifiers; and the town/category targeting.
+- There is no timer and no turn budget to husband — take the time to get it right. When you have probed every dimension above and the user agrees the picture is right, give a short closing summary with say and END. Do not keep asking past that point.`;
 
-## Your mode: prepared questionnaire
-The user has already answered a fixed questionnaire (included in your first message). You cannot ask follow-ups — work from their answers, making sensible best-guess interpretations where they're ambiguous, and note any assumptions in the ICP's Standing instructions. Write the config and ICP in one pass.`;
+// Phase 2 prompt: write the config from a transcript or a filled questionnaire.
+// Both the interactive synthesis pass and the prepared path use this.
+export const SYNTHESIS_SYSTEM_PROMPT = `${SYSTEM_CONTEXT}
+
+${WRITING_PROCESS}
+
+## Your mode: synthesis
+You are given everything the user said — a full live-interview transcript or a filled questionnaire (in your first message). You CANNOT ask anything more. Work from it, making sensible best-guess interpretations where it's thin and noting any assumptions in the ICP's Standing instructions. Write the region, towns, categories, and ICP in one pass.`;
 
 // The prepared-path questionnaire. The user fills every "Answer:" line and re-runs.
 // isQuestionnaireFilled (interview.ts) treats any non-empty Answer: line as filled.
@@ -113,15 +134,23 @@ Standing preferences, signals you care about, etc. (optional)
 Answer:
 `;
 
-// The interactive kickoff message. A resume seed (prior un-written answers) is
-// appended when re-entering an interrupted session.
-export function interactiveKickoff(resumeSeed?: string): string {
-  const base =
-    "Begin the interview. Call read_current_config first, then start asking the user about their business and targeting.";
-  return resumeSeed ? `${base}\n\n${resumeSeed}` : base;
+// The collection (phase 1) kickoff. Optionally carries a prospector-activity
+// block (so a refinement interview is grounded in real run results) and a resume
+// seed (prior un-written answers, when re-entering an interrupted session).
+export function collectionKickoff(opts?: {
+  resumeSeed?: string;
+  prospectorContext?: string;
+}): string {
+  const parts = [
+    "Begin the interview. Call read_current_config first, then start the conversation about their business and targeting.",
+  ];
+  if (opts?.prospectorContext) parts.push(opts.prospectorContext);
+  if (opts?.resumeSeed) parts.push(opts.resumeSeed);
+  return parts.join("\n\n");
 }
 
-// The prepared kickoff message: the user's filled questionnaire answers.
-export function preparedKickoff(answers: string): string {
-  return `The user filled in this questionnaire. Read it, call read_current_config, then write the region, towns, categories, and ICP.\n\n----- QUESTIONNAIRE -----\n${answers}\n----- END -----`;
+// The synthesis (phase 2 / prepared) kickoff: the source is either a rendered
+// interview transcript or a filled questionnaire.
+export function synthesisKickoff(source: string): string {
+  return `Below is everything the user told you (a live interview transcript or a filled questionnaire). Read it, call read_current_config, then write the region, towns, categories, and ICP.\n\n----- INTERVIEW -----\n${source}\n----- END -----`;
 }
