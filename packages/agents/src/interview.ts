@@ -21,7 +21,9 @@ import {
   townsConfigPath,
 } from "@localfinds/db";
 import { loadEnv } from "./env";
-import { sanitizedEnv } from "./run-agent";
+import { runAgent, sanitizedEnv, type RunOptions } from "./run-agent";
+import { prospector } from "./agents/prospector";
+import { setConfigDirOverride } from "@localfinds/db";
 import { buildInterviewerServer, type InterviewIO } from "./interview-tools";
 import {
   appendEntry,
@@ -74,6 +76,34 @@ export function lineDiff(before: string, after: string): string {
   const removed = a.slice(start, endA).map((l) => `- ${l}`);
   const added = b.slice(start, endB).map((l) => `+ ${l}`);
   return [...removed, ...added].join("\n");
+}
+
+// A deliberately tiny prospector pass for the interview loop: one quick capped
+// run (runAgent's maxTurns<=10 path already caps it to ~2 fetches / ~3 saves),
+// low effort, reading the staged ICP and writing provisional leads to the real DB.
+export function sampleRunOptions(stagingDir: string): RunOptions {
+  return {
+    maxTurns: 8,
+    effort: "low",
+    workspaceDir: path.join(stagingDir, "agents", "prospector"),
+    findStatusOverride: "provisional",
+  };
+}
+
+// Run the sample pass with config reads pointed at staging. The DB stays real
+// (provisional leads land in the real finds table), so we override only the
+// config dir, and always restore it.
+async function runProspectorSample(
+  stagingDir: string,
+): Promise<{ runId: number; status: string }> {
+  process.stdout.write("\nRunning a quick prospector pass against this profile…\n");
+  setConfigDirOverride(stagingDir);
+  try {
+    const { runId, result } = await runAgent(prospector, sampleRunOptions(stagingDir));
+    return { runId, status: result?.subtype ?? "error" };
+  } finally {
+    setConfigDirOverride(undefined);
+  }
 }
 
 // --- The confirm-before-write diff gate ---

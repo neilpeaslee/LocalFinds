@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { QUESTIONNAIRE_TEMPLATE } from "./agents/interviewer";
-import { isQuestionnaireFilled, lineDiff, parseInterviewArgs } from "./interview";
+import { isQuestionnaireFilled, lineDiff, parseInterviewArgs, sampleRunOptions } from "./interview";
 
 describe("parseInterviewArgs", () => {
   it("defaults to the interactive path", () => {
@@ -43,5 +43,15 @@ describe("lineDiff", () => {
     const diff = lineDiff("", "line1\nline2");
     expect(diff).toContain("+ line1");
     expect(diff).toContain("+ line2");
+  });
+});
+
+describe("sampleRunOptions", () => {
+  it("is small, low-effort, provisional, and points at the staging prospector workspace", () => {
+    const opts = sampleRunOptions("/data/.staging-x");
+    expect(opts.maxTurns).toBe(8);
+    expect(opts.effort).toBe("low");
+    expect(opts.findStatusOverride).toBe("provisional");
+    expect(opts.workspaceDir).toBe("/data/.staging-x/agents/prospector");
   });
 });
