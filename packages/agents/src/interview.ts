@@ -18,12 +18,12 @@ import {
   categoryConfigPath,
   icpProfilePath,
   regionConfigPath,
+  setConfigDirOverride,
   townsConfigPath,
 } from "@localfinds/db";
 import { loadEnv } from "./env";
 import { runAgent, sanitizedEnv, type RunOptions } from "./run-agent";
 import { prospector } from "./agents/prospector";
-import { setConfigDirOverride } from "@localfinds/db";
 import { buildInterviewerServer, type InterviewIO } from "./interview-tools";
 import {
   appendEntry,
