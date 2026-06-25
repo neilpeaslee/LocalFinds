@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { resolveFindStatus } from "./mcp-tools";
 
 // Point @localfinds/db at a throwaway data dir BEFORE importing anything that
 // pulls it in, then push the schema — same pattern as the db package's tests.
@@ -37,6 +38,15 @@ describe("recordSourceUpsert run counters", () => {
     const counters = { added: 0, updated: 0 };
     recordSourceUpsert(args, "source-keeper", counters); // re-upsert
     expect(counters).toEqual({ added: 0, updated: 1 });
+  });
+});
+
+describe("resolveFindStatus", () => {
+  it("defaults to undefined (insertFind will use 'new')", () => {
+    expect(resolveFindStatus(undefined)).toBeUndefined();
+  });
+  it("returns the override when set", () => {
+    expect(resolveFindStatus("provisional")).toBe("provisional");
   });
 });
 

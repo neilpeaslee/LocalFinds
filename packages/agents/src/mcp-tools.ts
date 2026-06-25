@@ -9,6 +9,7 @@ import {
   updateFindStatus,
   upsertBusiness,
   upsertSource,
+  type FindStatus,
 } from "@localfinds/db";
 import { z } from "zod";
 import { formatIcalResult, runIcalFetch } from "./ical";
@@ -22,6 +23,13 @@ import {
 export interface RunCounters {
   added: number;
   updated: number;
+}
+
+// The status a save_find insert should use. undefined → insertFind defaults to
+// "new". An interview sample run passes "provisional" so its leads stay out of
+// the feed until the interview is confirmed.
+export function resolveFindStatus(override: FindStatus | undefined): FindStatus | undefined {
+  return override;
 }
 
 function asText(data: unknown) {
@@ -137,7 +145,11 @@ function upsertOneBusiness(
 }
 
 // All tools are defined on one server; each agent's allowedTools picks its subset.
-export function buildLocalfindsServer(agent: string, counters: RunCounters) {
+export function buildLocalfindsServer(
+  agent: string,
+  counters: RunCounters,
+  opts: { findStatusOverride?: FindStatus } = {},
+) {
   return createSdkMcpServer({
     name: "localfinds",
     version: "1.0.0",
@@ -198,6 +210,7 @@ export function buildLocalfindsServer(agent: string, counters: RunCounters) {
             businessId: args.business_id,
             score: args.score,
             agent,
+            status: resolveFindStatus(opts.findStatusOverride),
           });
           if (result.outcome === "created") counters.added++;
           return asText(result);
