@@ -473,15 +473,20 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     discardProvisionalFinds();
     const run = await runProspectorSample(staging);
 
-    // ── REVIEW ──
-    lastReview = await runReview(
-      io,
-      lastTranscript,
-      path.join(staging, "agents", "prospector"),
-      run,
-      reviewEffort,
-      isFinal,
-    );
+    // ── REVIEW (reads the staged config + the run's provisional leads) ──
+    setConfigDirOverride(staging);
+    try {
+      lastReview = await runReview(
+        io,
+        lastTranscript,
+        path.join(staging, "agents", "prospector"),
+        run,
+        reviewEffort,
+        isFinal,
+      );
+    } finally {
+      setConfigDirOverride(undefined);
+    }
   }
 
   // ── FINAL GATE ──

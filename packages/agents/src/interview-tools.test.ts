@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { insertFind, writeRegionConfig, writeTownsConfig, type WritableTown } from "@localfinds/db";
 import type { GeocodeInput, GeocodeResult } from "./geocode";
 import {
@@ -189,8 +189,10 @@ describe("with a data dir", () => {
 
 describe("reviewRunResults", () => {
   let reviewDir: string;
+  let savedDataDir: string | undefined;
 
   beforeAll(() => {
+    savedDataDir = process.env.LOCALFINDS_DATA_DIR;
     reviewDir = fs.mkdtempSync(path.join(os.tmpdir(), "localfinds-review-"));
     process.env.LOCALFINDS_DATA_DIR = reviewDir;
     // Push the schema to the fresh SQLite file so insertFind can write.
@@ -200,6 +202,11 @@ describe("reviewRunResults", () => {
       stdio: "ignore",
     });
   }, 60_000);
+
+  afterAll(() => {
+    if (savedDataDir === undefined) delete process.env.LOCALFINDS_DATA_DIR;
+    else process.env.LOCALFINDS_DATA_DIR = savedDataDir;
+  });
 
   it("returns provisional leads and the scratch coverage note", () => {
     insertFind({

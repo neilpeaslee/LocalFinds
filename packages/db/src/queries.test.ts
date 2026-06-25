@@ -867,3 +867,31 @@ describe("provisional finds", () => {
     expect(q.listProvisionalFinds()).toHaveLength(0);
   });
 });
+
+describe("listRecentFinds provisional exclusion", () => {
+  it("excludes provisional rows by default, but includes them when status is explicit", () => {
+    const normal = q.insertFind({
+      title: "Dedup Normal Lead",
+      url: "https://example.com/dedup-normal-lead",
+      type: "lead",
+      agent: "prospector",
+    });
+    const provisional = q.insertFind({
+      title: "Dedup Provisional Lead",
+      url: "https://example.com/dedup-provisional-lead",
+      type: "lead",
+      agent: "prospector",
+      status: "provisional",
+    });
+
+    // Default (no status) — provisional rows must be excluded.
+    const defaultIds = q.listRecentFinds({}).map((f) => f.id);
+    expect(defaultIds).toContain(normal.id);
+    expect(defaultIds).not.toContain(provisional.id);
+
+    // Explicit status filter — only provisional rows returned.
+    const provIds = q.listRecentFinds({ status: "provisional" }).map((f) => f.id);
+    expect(provIds).toContain(provisional.id);
+    expect(provIds).not.toContain(normal.id);
+  });
+});

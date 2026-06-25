@@ -313,6 +313,7 @@ export function listRecentFinds(
   ).toISOString();
   const conditions = [gte(finds.discoveredAt, since)];
   if (opts.status) conditions.push(eq(finds.status, opts.status));
+  else conditions.push(notProvisional());
   return db()
     .select()
     .from(finds)
