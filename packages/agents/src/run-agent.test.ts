@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { statusFromResult, workspaceSystemNote } from "./run-agent";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ensureWorkspace, statusFromResult, workspaceSystemNote } from "./run-agent";
+
+describe("ensureWorkspace(dir)", () => {
+  it("creates notes/ and seeds a profile.md at the GIVEN dir", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lf-ws-"));
+    const out = ensureWorkspace(dir);
+    expect(out).toBe(dir);
+    expect(fs.existsSync(path.join(dir, "notes"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "profile.md"))).toBe(true);
+  });
+
+  it("does not clobber an existing profile.md", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lf-ws-"));
+    fs.writeFileSync(path.join(dir, "profile.md"), "# Mine\n");
+    ensureWorkspace(dir);
+    expect(fs.readFileSync(path.join(dir, "profile.md"), "utf8")).toBe("# Mine\n");
+  });
+});
 
 describe("statusFromResult", () => {
   const result = (subtype: string) => ({ subtype }) as never;

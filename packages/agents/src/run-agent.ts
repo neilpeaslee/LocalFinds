@@ -12,6 +12,7 @@ import {
   recordFetch,
   readRegionConfig,
   startRun,
+  type FindStatus,
 } from "@localfinds/db";
 import fs from "node:fs";
 import path from "node:path";
@@ -78,6 +79,12 @@ export interface RunOptions {
   maxBudgetUsd?: number;
   /** Appended to the task prompt — used for dev/test runs. */
   extraPrompt?: string;
+  /** Override the agent's reasoning effort (interview sample runs use "low"). */
+  effort?: ReasoningEffort;
+  /** Run in this workspace dir instead of the agent's default (interview staging). */
+  workspaceDir?: string;
+  /** Stamp save_find inserts with this status (interview runs pass "provisional"). */
+  findStatusOverride?: FindStatus;
 }
 
 export interface RunOutcome {
@@ -101,8 +108,7 @@ export function sanitizedEnv(): Record<string, string> {
   return env;
 }
 
-function ensureWorkspace(name: string): string {
-  const workspace = agentWorkspaceDir(name);
+export function ensureWorkspace(workspace: string): string {
   fs.mkdirSync(path.join(workspace, "notes"), { recursive: true });
   const profilePath = path.join(workspace, "profile.md");
   if (!fs.existsSync(profilePath)) {
@@ -110,7 +116,7 @@ function ensureWorkspace(name: string): string {
     if (fs.existsSync(example)) {
       fs.copyFileSync(example, profilePath);
     } else {
-      fs.writeFileSync(profilePath, `# ${name} profile\n`);
+      fs.writeFileSync(profilePath, `# profile\n`);
     }
   }
   return workspace;
@@ -154,7 +160,7 @@ export async function runAgent(
     );
   }
 
-  const workspace = ensureWorkspace(def.name);
+  const workspace = ensureWorkspace(opts.workspaceDir ?? agentWorkspaceDir(def.name));
   const profile = fs.readFileSync(path.join(workspace, "profile.md"), "utf8");
   const counters: RunCounters = { added: 0, updated: 0 };
   const maxTurns = opts.maxTurns ?? def.defaultMaxTurns;
@@ -203,7 +209,7 @@ export async function runAgent(
       prompt,
       options: {
         model,
-        effort: def.effort,
+        effort: opts.effort ?? def.effort,
         cwd: workspace,
         env: sanitizedEnv(),
         systemPrompt: `${def.systemPrompt}\n\n${workspaceSystemNote(workspace)}`,
@@ -213,7 +219,9 @@ export async function runAgent(
         settings: { autoMemoryEnabled: false },
         permissionMode: "bypassPermissions",
         mcpServers: {
-          localfinds: buildLocalfindsServer(def.name, counters),
+          localfinds: buildLocalfindsServer(def.name, counters, {
+            findStatusOverride: opts.findStatusOverride,
+          }),
         },
         allowedTools: def.allowedTools,
         disallowedTools: ["Bash", "Agent", "Task", "AskUserQuestion"],
