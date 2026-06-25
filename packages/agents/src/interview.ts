@@ -16,7 +16,10 @@ import { pathToFileURL } from "node:url";
 import {
   agentWorkspaceDir,
   categoryConfigPath,
+  dataDir,
+  discardProvisionalFinds,
   icpProfilePath,
+  promoteProvisionalFinds,
   regionConfigPath,
   setConfigDirOverride,
   townsConfigPath,
@@ -29,9 +32,11 @@ import {
   buildReviewServer,
   type InterviewIO,
   type ReviewContext,
+  type ReviewProbe,
   type ReviewResult,
   type ReviewSink,
 } from "./interview-tools";
+import { createStagingDir, discardStaging, promoteStaging, seedStaging } from "./interview-staging";
 import {
   appendEntry,
   archiveJournal,
@@ -165,6 +170,71 @@ async function runReview(
   return sink.value ?? { report: "", calibration: "", probes: [] };
 }
 
+// --- Cycle sub-steps ---
+
+async function runConvo(
+  io: InterviewIO,
+  kickoff: { resumeSeed?: string; prospectorContext?: string; reviewFindings?: ReviewProbe[] },
+): Promise<SDKResultMessage | undefined> {
+  let collected: SDKResultMessage | undefined;
+  try {
+    for await (const message of query({
+      prompt: collectionKickoff(kickoff),
+      options: {
+        model: INTERVIEWER_MODEL,
+        effort: INTERVIEWER_COLLECTION_EFFORT,
+        env: interviewerEnv(),
+        systemPrompt: COLLECTION_SYSTEM_PROMPT,
+        settingSources: [],
+        settings: { autoMemoryEnabled: false },
+        permissionMode: "bypassPermissions",
+        mcpServers: { interviewer: buildInterviewerServer(io) },
+        allowedTools: COLLECTION_TOOLS,
+        disallowedTools: INTERVIEWER_DISALLOWED,
+        maxTurns: 200,
+      },
+    })) {
+      logMessage(message);
+      if (message.type === "result") collected = message;
+    }
+  } catch (err) {
+    console.error("\nInterview run ended early:", err instanceof Error ? err.message : err);
+  }
+  return collected;
+}
+
+async function runBuild(
+  io: InterviewIO,
+  transcript: string,
+  effort: ReasoningEffort,
+): Promise<SDKResultMessage | undefined> {
+  let written: SDKResultMessage | undefined;
+  try {
+    for await (const message of query({
+      prompt: synthesisKickoff(transcript),
+      options: {
+        model: INTERVIEWER_MODEL,
+        effort,
+        env: interviewerEnv(),
+        systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
+        settingSources: [],
+        settings: { autoMemoryEnabled: false },
+        permissionMode: "bypassPermissions",
+        mcpServers: { interviewer: buildInterviewerServer(io) },
+        allowedTools: SYNTHESIS_TOOLS,
+        disallowedTools: INTERVIEWER_DISALLOWED,
+        maxTurns: 60,
+      },
+    })) {
+      logMessage(message);
+      if (message.type === "result") written = message;
+    }
+  } catch (err) {
+    console.error("\nWriting the config ended early:", err instanceof Error ? err.message : err);
+  }
+  return written;
+}
+
 // --- The confirm-before-write diff gate ---
 //
 // The four target files are hand-tuned and production-bound (sync-content.sh
@@ -278,25 +348,54 @@ function logMessage(message: SDKMessage): void {
   }
 }
 
+// Diff each real config artifact against its staged version and ask to keep.
+async function confirmStaging(
+  rl: readline.Interface,
+  dataRoot: string,
+  stagingDir: string,
+): Promise<boolean> {
+  const rels = [
+    { label: "data/config/region.md", rel: "config/region.md" },
+    { label: "data/config/towns.json", rel: "config/towns.json" },
+    { label: "data/config/categories.json", rel: "config/categories.json" },
+    { label: "data/agents/prospector/profile.md", rel: "agents/prospector/profile.md" },
+  ];
+  const changed = rels
+    .map((f) => ({
+      label: f.label,
+      diff: lineDiff(
+        readOrNull(path.join(dataRoot, f.rel)) ?? "",
+        readOrNull(path.join(stagingDir, f.rel)) ?? "",
+      ),
+    }))
+    .filter((c) => c.diff !== "");
+
+  if (changed.length === 0) {
+    process.stdout.write("\nNo configuration changes were made.\n");
+    return true;
+  }
+  process.stdout.write("\n===== Proposed changes =====\n");
+  for (const c of changed) process.stdout.write(`\n--- ${c.label} ---\n${c.diff}\n`);
+  const ans = (await rlQuestion(rl, "\nKeep these changes? (y/N) ")).trim().toLowerCase();
+  return ans === "y" || ans === "yes";
+}
+
 // --- Path: interactive ---
 
-async function runInteractive(): Promise<void> {
+async function runInteractive(depth: InterviewDepth): Promise<void> {
   process.stdout.write(
     "\nNo clock here — take as long as you like. I'll ask about your business and\n" +
-      "who you're trying to reach, then show you every change before anything saves.\n\n",
+      "who you're trying to reach, run a quick test pass, and show you every change\n" +
+      "before anything saves.\n\n",
   );
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
-  // Each ask/answer is journaled synchronously so a Ctrl-C loses nothing.
   const io: InterviewIO = {
     ask: async (question, opts) => {
       appendEntry({ role: "agent", kind: "ask", text: question });
       const hint = opts?.choices?.length ? ` [${opts.choices.join(" / ")}]` : "";
       const answer = await rlQuestion(rl, `\n${question}${hint}\n> `);
       appendEntry({ role: "user", kind: "answer", text: answer });
-      // Instant feedback: the model now thinks (silently) before its next turn, so
-      // acknowledge the moment they hit enter — a keystroke must never vanish into
-      // dead air while the agent reasons.
       process.stdout.write("\n  · got it — thinking…\n");
       return answer;
     },
@@ -310,112 +409,92 @@ async function runInteractive(): Promise<void> {
   const seed = prior.length ? summarizeForResume(prior) : undefined;
   if (seed) process.stdout.write("Resuming your earlier interview — picking up where you left off.\n");
 
-  const files = targetConfigFiles();
-  const before = snapshot(files);
-
-  // --- Phase 1: collection — a snappy live conversation that writes nothing ---
-  // Ground a refinement interview in what the prospector actually found ("" on a
-  // true cold start, so the section is simply omitted).
+  const dataRoot = dataDir();
+  const runId = interviewRunId();
+  const staging = createStagingDir(dataRoot, runId);
+  seedStaging(dataRoot, staging);
   const prospectorContext = recentProspectorContext();
-  let collected: SDKResultMessage | undefined;
-  try {
-    for await (const message of query({
-      prompt: collectionKickoff({ resumeSeed: seed, prospectorContext: prospectorContext || undefined }),
-      options: {
-        model: INTERVIEWER_MODEL,
-        effort: INTERVIEWER_COLLECTION_EFFORT,
-        env: interviewerEnv(),
-        systemPrompt: COLLECTION_SYSTEM_PROMPT,
-        settingSources: [],
-        settings: { autoMemoryEnabled: false },
-        permissionMode: "bypassPermissions",
-        mcpServers: { interviewer: buildInterviewerServer(io) },
-        allowedTools: COLLECTION_TOOLS,
-        disallowedTools: INTERVIEWER_DISALLOWED,
-        // Every ask_user blocks on a human, so this can't run away; it only
-        // backstops a non-interactive tool loop. Kept well above a thorough
-        // conversation so the agent never rushes to wrap up before the cap — the
-        // invisible "hidden timer" that ended an earlier run at ~80%. No
-        // maxBudgetUsd: a mid-interview budget kill is a bad UX (Issue 6).
-        maxTurns: 200,
-      },
-    })) {
-      logMessage(message);
-      if (message.type === "result") collected = message;
-    }
-  } catch (err) {
-    console.error("\nInterview run ended early:", err instanceof Error ? err.message : err);
-  }
 
-  if (collected?.subtype !== "success") {
-    process.stdout.write(
-      "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
-    );
-    rl.close();
-    return;
-  }
+  const totalCycles = preliminaryCycles(depth) + 1;
+  let lastReview: ReviewResult | undefined;
+  let lastTranscript = "";
 
-  const transcript = renderTranscript(readJournal());
-  if (!transcript.trim()) {
-    process.stdout.write(
-      "\nNo answers were captured, so there's nothing to write. Re-run `npm run interview` to start over.\n",
-    );
-    rl.close();
-    return;
-  }
+  for (let c = 0; c < totalCycles; c++) {
+    const isFinal = c === totalCycles - 1;
+    const buildEffort: ReasoningEffort = isFinal ? "high" : "low";
+    const reviewEffort: ReasoningEffort = isFinal ? "high" : "low";
+    process.stdout.write(`\n===== Cycle ${c + 1} of ${totalCycles}${isFinal ? " (final)" : ""} =====\n`);
 
-  // --- Phase 2: synthesis — a deeper pass that writes the config from the
-  // transcript. The one slow step, confined to the end where a wait is expected. ---
-  process.stdout.write("\nThanks — writing up your targeting and ICP now. This part takes a moment…\n");
-  let written: SDKResultMessage | undefined;
-  try {
-    for await (const message of query({
-      prompt: synthesisKickoff(transcript),
-      options: {
-        model: INTERVIEWER_MODEL,
-        effort: INTERVIEWER_SYNTHESIS_EFFORT,
-        env: interviewerEnv(),
-        systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
-        settingSources: [],
-        settings: { autoMemoryEnabled: false },
-        permissionMode: "bypassPermissions",
-        mcpServers: { interviewer: buildInterviewerServer(io) },
-        allowedTools: SYNTHESIS_TOOLS,
-        disallowedTools: INTERVIEWER_DISALLOWED,
-        maxTurns: 60,
-      },
-    })) {
-      logMessage(message);
-      if (message.type === "result") written = message;
-    }
-  } catch (err) {
-    console.error("\nWriting the config ended early:", err instanceof Error ? err.message : err);
-  }
-
-  if (written?.subtype === "success") {
-    const keep = await reviewAndConfirm(rl, files, before);
-    if (keep) {
-      // Archive (not delete) the journal: the transcript survives under runs/ for
-      // later review, and moving it clears the live journal so the next interview
-      // still starts fresh.
-      const archived = archiveJournal(interviewRunId());
-      process.stdout.write("\nSaved. Run `npm run agent -- prospector` to generate your first leads.\n");
-      if (archived) {
-        process.stdout.write(`Transcript kept at ${path.relative(process.cwd(), archived)}\n`);
-      }
-    } else {
-      restore(files, before);
-      // Journal kept (not cleared) so a re-run resumes from your answers.
+    // ── CONVO ──
+    const convo = await runConvo(io, {
+      resumeSeed: c === 0 ? seed : undefined,
+      prospectorContext: prospectorContext || undefined,
+      reviewFindings: lastReview?.probes,
+    });
+    if (convo?.subtype !== "success") {
       process.stdout.write(
-        "\nReverted — your earlier config is unchanged. Re-run `npm run interview` to resume and adjust.\n",
+        "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
       );
+      discardStaging(staging);
+      rl.close();
+      return;
     }
-  } else {
-    // A failed/partial synthesis must not leave unconfirmed writes behind.
-    restore(files, before);
-    process.stdout.write(
-      "\nI couldn't finish writing the config from the interview — your earlier config is unchanged. Re-run `npm run interview` to try again (your answers are saved).\n",
+    lastTranscript = renderTranscript(readJournal());
+    if (!lastTranscript.trim()) {
+      process.stdout.write("\nNo answers were captured, so there's nothing to write.\n");
+      discardStaging(staging);
+      rl.close();
+      return;
+    }
+
+    // ── BUILD (writes to staging) ──
+    process.stdout.write("\nWriting up your targeting and ICP for this pass…\n");
+    setConfigDirOverride(staging);
+    let built: SDKResultMessage | undefined;
+    try {
+      built = await runBuild(io, lastTranscript, buildEffort);
+    } finally {
+      setConfigDirOverride(undefined);
+    }
+    if (built?.subtype !== "success") {
+      process.stdout.write("\nI couldn't write the config from the interview this pass.\n");
+      discardStaging(staging);
+      discardProvisionalFinds();
+      rl.close();
+      return;
+    }
+
+    // ── RUN (provisional leads; clear any from a prior cycle first) ──
+    discardProvisionalFinds();
+    const run = await runProspectorSample(staging);
+
+    // ── REVIEW ──
+    lastReview = await runReview(
+      io,
+      lastTranscript,
+      path.join(staging, "agents", "prospector"),
+      run,
+      reviewEffort,
+      isFinal,
     );
+  }
+
+  // ── FINAL GATE ──
+  const keep = await confirmStaging(rl, dataRoot, staging);
+  if (keep) {
+    promoteStaging(dataRoot, staging);
+    const promoted = promoteProvisionalFinds();
+    discardStaging(staging);
+    const archived = archiveJournal(runId);
+    process.stdout.write(
+      `\nSaved${promoted ? ` — ${promoted} lead(s) added to your feed` : ""}. ` +
+        "Run `npm run agent -- prospector` for a full pass.\n",
+    );
+    if (archived) process.stdout.write(`Transcript kept at ${path.relative(process.cwd(), archived)}\n`);
+  } else {
+    discardStaging(staging);
+    discardProvisionalFinds();
+    process.stdout.write("\nReverted — your earlier config is unchanged.\n");
   }
   rl.close();
 }
@@ -492,9 +571,9 @@ async function runPrepared(): Promise<void> {
 
 async function main(): Promise<void> {
   loadEnv();
-  const { prepared } = parseInterviewArgs(process.argv.slice(2));
+  const { prepared, depth } = parseInterviewArgs(process.argv.slice(2));
   if (prepared) await runPrepared();
-  else await runInteractive();
+  else await runInteractive(depth);
 }
 
 // Only launch when run as the entry point (`tsx src/interview.ts`); importing
