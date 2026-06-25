@@ -33,6 +33,20 @@ export function dataDir(): string {
   return repoDataDirCache;
 }
 
+// An optional override used by the interviewer to stage config + ICP writes in a
+// scratch directory until the user confirms. It deliberately does NOT affect
+// dbPath() or agentWorkspaceDir — leads still go to the real DB and agent run
+// logs to the real workspace. Single-threaded, sequential use only.
+let configDirOverride: string | undefined;
+
+export function setConfigDirOverride(dir: string | undefined): void {
+  configDirOverride = dir;
+}
+
+export function configDir(): string {
+  return configDirOverride ?? dataDir();
+}
+
 export function dbPath(): string {
   return path.join(dataDir(), "localfinds.db");
 }

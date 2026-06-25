@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { agentWorkspaceDir, dataDir } from "./paths";
+import { agentWorkspaceDir, configDir, dataDir } from "./paths";
 
 export interface RegionConfig {
   name: string;
@@ -9,7 +9,7 @@ export interface RegionConfig {
 }
 
 export function regionConfigPath(): string {
-  return path.join(dataDir(), "config", "region.md");
+  return path.join(configDir(), "config", "region.md");
 }
 
 export function readRegionConfig(): RegionConfig | null {
@@ -58,7 +58,7 @@ export interface CategoryConfig {
 }
 
 export function categoryConfigPath(): string {
-  return path.join(dataDir(), "config", "categories.json");
+  return path.join(configDir(), "config", "categories.json");
 }
 
 // Reads categories.json, falling back to the .example template, then to a
@@ -182,7 +182,7 @@ export interface TownsConfig {
 }
 
 export function townsConfigPath(): string {
-  return path.join(dataDir(), "config", "towns.json");
+  return path.join(configDir(), "config", "towns.json");
 }
 
 function isValidTownBox(t: unknown): t is TownBox {
@@ -271,13 +271,13 @@ export function writeTownsConfig(
 // can round-trip them with the other config writers.
 
 export function icpProfilePath(): string {
-  return path.join(agentWorkspaceDir("prospector"), "profile.md");
+  return path.join(configDir(), "agents", "prospector", "profile.md");
 }
 
 // Write the prospector's ICP, creating its workspace + notes/ first (the same
 // layout ensureWorkspace builds) so a cold machine doesn't need a prior run.
 export function writeIcpProfile(markdown: string): void {
-  const workspace = agentWorkspaceDir("prospector");
+  const workspace = path.join(configDir(), "agents", "prospector");
   fs.mkdirSync(path.join(workspace, "notes"), { recursive: true });
   fs.writeFileSync(icpProfilePath(), markdown);
 }
