@@ -10,7 +10,9 @@
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import fs from "node:fs";
+import path from "node:path";
 import {
+  listProvisionalFinds,
   readCategoryConfig,
   readIcpProfile,
   readRegionConfig,
@@ -207,6 +209,104 @@ export function currentConfig() {
     },
     icp: readIcpProfile(),
   };
+}
+
+export interface ReviewProbe {
+  topic: string;
+  observation: string;
+  askUser: string;
+}
+
+export interface ReviewResult {
+  report: string;
+  calibration: string;
+  probes: ReviewProbe[];
+}
+
+export interface ReviewSink {
+  value?: ReviewResult;
+}
+
+export interface ReviewContext {
+  runId: number;
+  /** The staged prospector workspace — where coverage.md was written. */
+  scratchDir: string;
+}
+
+// What the sample run produced: provisional leads (real DB) + the run's own
+// narrative coverage note (where it explains what it skipped and why).
+export function reviewRunResults(ctx: ReviewContext) {
+  const leads = listProvisionalFinds().map((f) => ({
+    title: f.title,
+    score: f.score,
+    url: f.url,
+    summary: f.summary,
+    tags: f.tags,
+  }));
+  let coverageNote: string | null = null;
+  try {
+    coverageNote = fs.readFileSync(path.join(ctx.scratchDir, "notes", "coverage.md"), "utf8");
+  } catch {
+    coverageNote = null; // run wrote no coverage
+  }
+  return { runId: ctx.runId, leads, coverageNote };
+}
+
+export function buildReviewServer(io: InterviewIO, ctx: ReviewContext, sink: ReviewSink) {
+  return createSdkMcpServer({
+    name: "interviewer",
+    version: "1.0.0",
+    tools: [
+      tool(
+        "say",
+        "Show the user a message (no answer expected).",
+        { message: z.string() },
+        async (args) => {
+          io.say(args.message);
+          return asText({ ok: true });
+        },
+      ),
+      tool(
+        "read_current_config",
+        "Read the just-staged region, towns, category tiers, and ICP. Nulls mean 'not set yet'.",
+        {},
+        async () => asText(currentConfig()),
+      ),
+      tool(
+        "read_run_results",
+        "Read what the sample prospector run produced: the provisional leads it saved " +
+          "(name, score, summary, tags) and the coverage note it wrote (its narrative — " +
+          "what it walked, what it SKIPPED and why). Use the narrative to catch ICP " +
+          "self-contradictions and mis-scoring, not just the leads it kept.",
+        {},
+        async () => asText(reviewRunResults(ctx)),
+      ),
+      tool(
+        "submit_review",
+        "Record your finished review. `report` is shown to the user; `probes` are the " +
+          "specific things the NEXT conversation should raise (empty on the final review). " +
+          "Call this exactly once, last.",
+        {
+          report: z.string().describe("Human-facing summary of this cycle."),
+          calibration: z.string().describe("Scoring-calibration notes (over/under-scoring)."),
+          probes: z
+            .array(
+              z.object({
+                topic: z.string(),
+                observation: z.string(),
+                askUser: z.string(),
+              }),
+            )
+            .describe("Findings to carry into the next conversation. Empty on the final cycle."),
+        },
+        async (args) => {
+          sink.value = { report: args.report, calibration: args.calibration, probes: args.probes };
+          io.say(args.report);
+          return asText({ ok: true });
+        },
+      ),
+    ],
+  });
 }
 
 export function buildInterviewerServer(io: InterviewIO, deps: InterviewerDeps = {}) {

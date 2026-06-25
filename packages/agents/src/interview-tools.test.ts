@@ -1,13 +1,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeRegionConfig, writeTownsConfig, type WritableTown } from "@localfinds/db";
+import { execSync } from "node:child_process";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { insertFind, writeRegionConfig, writeTownsConfig, type WritableTown } from "@localfinds/db";
 import type { GeocodeInput, GeocodeResult } from "./geocode";
 import {
   currentConfig,
   deriveState,
   resolveTowns,
+  reviewRunResults,
   runSetTowns,
   type InterviewIO,
   type SetTownsInput,
@@ -136,7 +138,10 @@ describe("with a data dir", () => {
 
   describe("runSetTowns", () => {
     beforeEach(() => {
-      writeRegionConfig({ name: "Rockland, Maine", coverageMarkdown: "## Coverage\n\nKnox County." });
+      writeRegionConfig({
+        name: "Rockland, Maine",
+        coverageMarkdown: "## Coverage\n\nKnox County.",
+      });
       writeTownsConfig([ROCKLAND], { comment: "hand-tuned — keep" });
     });
 
@@ -179,5 +184,39 @@ describe("with a data dir", () => {
       const geocode = async (): Promise<GeocodeResult[]> => [];
       await expect(runSetTowns([{ name: "Camden" }], io, geocode)).rejects.toThrow();
     });
+  });
+});
+
+describe("reviewRunResults", () => {
+  let reviewDir: string;
+
+  beforeAll(() => {
+    reviewDir = fs.mkdtempSync(path.join(os.tmpdir(), "localfinds-review-"));
+    process.env.LOCALFINDS_DATA_DIR = reviewDir;
+    // Push the schema to the fresh SQLite file so insertFind can write.
+    execSync("npx drizzle-kit push --force", {
+      cwd: path.resolve(import.meta.dirname, "../../db"),
+      env: { ...process.env, LOCALFINDS_DATA_DIR: reviewDir },
+      stdio: "ignore",
+    });
+  }, 60_000);
+
+  it("returns provisional leads and the scratch coverage note", () => {
+    insertFind({
+      title: "Provisional Co",
+      type: "lead",
+      agent: "prospector",
+      score: 0.7,
+      tags: ["maker"],
+      status: "provisional",
+    });
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "lf-scratch-"));
+    fs.mkdirSync(path.join(scratch, "notes"), { recursive: true });
+    fs.writeFileSync(path.join(scratch, "notes", "coverage.md"), "Walked Rockland. Skipped X.");
+
+    const out = reviewRunResults({ runId: 42, scratchDir: scratch });
+    expect(out.runId).toBe(42);
+    expect(out.leads.map((l) => l.title)).toContain("Provisional Co");
+    expect(out.coverageNote).toContain("Skipped X");
   });
 });
