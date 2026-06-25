@@ -39,7 +39,7 @@ export const finds = sqliteTable("finds", {
   expiresAt: text("expires_at"),
   publishedAt: text("published_at"),
   discoveredAt: text("discovered_at").notNull(),
-  status: text("status", { enum: ["new", "shown", "hidden", "starred"] })
+  status: text("status", { enum: ["new", "shown", "hidden", "starred", "provisional"] })
     .notNull()
     .default("new"),
   agent: text("agent").notNull(),

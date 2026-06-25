@@ -56,6 +56,8 @@ export interface NewFindInput {
   businessId?: number | null;
   // 0-1 fit/quality score. Persisted here (insertFind previously dropped it).
   score?: number | null;
+  /** Defaults to "new". Set "provisional" for an interview sample run's leads. */
+  status?: FindStatus;
 }
 
 export interface SaveFindResult {
@@ -94,6 +96,7 @@ export function insertFind(input: NewFindInput): SaveFindResult {
       type: input.type ?? "event",
       businessId: input.businessId ?? null,
       score: input.score ?? null,
+      status: input.status ?? "new",
     })
     .onConflictDoNothing({ target: finds.urlHash })
     .returning({ id: finds.id })
@@ -158,13 +161,19 @@ function notExpired() {
   return sql`(${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})`;
 }
 
+// Provisional leads belong to an in-progress interview's sample run and must
+// never surface in the feed until promoted to "new".
+function notProvisional() {
+  return ne(finds.status, "provisional");
+}
+
 // Shared WHERE-building for the feed, used by both getFeed (array) and
 // getFeedPage (paginated) so their filter semantics never drift.
 function feedConditions(filters: FeedFilters) {
   const conditions = [];
   const view = filters.view ?? "default";
   if (view === "default") {
-    conditions.push(ne(finds.status, "hidden"), notExpired());
+    conditions.push(ne(finds.status, "hidden"), notProvisional(), notExpired());
   }
   if (view === "starred") {
     conditions.push(eq(finds.status, "starred"), notExpired());
@@ -254,7 +263,7 @@ export function listActiveTags(limit = 30): string[] {
   const rows = db().all<{ tag: string; n: number }>(
     sql`select json_each.value as tag, count(*) as n
         from ${finds}, json_each(${finds.tags})
-        where ${finds.status} != 'hidden' and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${new Date().toISOString().slice(0, 10)})
+        where ${finds.status} not in ('hidden', 'provisional') and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${new Date().toISOString().slice(0, 10)})
         group by tag order by n desc limit ${limit}`,
   );
   return rows.map((r) => r.tag);
@@ -268,7 +277,7 @@ export function listFindTypes(): string[] {
   const rows = db().all<{ type: string; n: number }>(
     sql`select ${finds.type} as type, count(*) as n
         from ${finds}
-        where ${finds.status} != 'hidden' and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})
+        where ${finds.status} not in ('hidden', 'provisional') and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})
         group by ${finds.type} order by n desc`,
   );
   return rows.map((r) => r.type);
@@ -294,7 +303,7 @@ export function markFindsShown(ids: number[]): void {
     .run();
 }
 
-export type FindStatus = "new" | "shown" | "hidden" | "starred";
+export type FindStatus = "new" | "shown" | "hidden" | "starred" | "provisional";
 
 export function listRecentFinds(
   opts: { days?: number; status?: FindStatus; limit?: number } = {},
@@ -321,6 +330,22 @@ export function updateFindStatus(id: number, status: FindStatus): boolean {
 export function setFindExpiry(id: number, expiresAt: string): boolean {
   return db().update(finds).set({ expiresAt }).where(eq(finds.id, id)).run()
     .changes > 0;
+}
+
+export function listProvisionalFinds(): Find[] {
+  return db().select().from(finds).where(eq(finds.status, "provisional")).all() as Find[];
+}
+
+export function promoteProvisionalFinds(): number {
+  return db()
+    .update(finds)
+    .set({ status: "new" })
+    .where(eq(finds.status, "provisional"))
+    .run().changes;
+}
+
+export function discardProvisionalFinds(): number {
+  return db().delete(finds).where(eq(finds.status, "provisional")).run().changes;
 }
 
 // Bulk status changes for feed management. Status-only (no feedback rows) so a

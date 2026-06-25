@@ -832,3 +832,38 @@ describe("find type discriminator", () => {
     expect(types).toContain("lead");
   });
 });
+
+describe("provisional finds", () => {
+  it("are hidden from every user-facing view but listable directly", () => {
+    q.insertFind({ title: "Visible Lead", type: "lead", agent: "prospector", tags: ["maker"] });
+    q.insertFind({
+      title: "Provisional Lead",
+      type: "lead",
+      agent: "prospector",
+      tags: ["provisional-tag"],
+      status: "provisional",
+    });
+
+    const feedTitles = q.getFeed({}).map((f) => f.title);
+    expect(feedTitles).toContain("Visible Lead");
+    expect(feedTitles).not.toContain("Provisional Lead");
+    expect(q.listActiveTags()).not.toContain("provisional-tag");
+    expect(q.listFindTypes()).toContain("lead"); // from the visible lead only
+
+    expect(q.listProvisionalFinds().map((f) => f.title)).toEqual(["Provisional Lead"]);
+  });
+
+  it("promote flips provisional → new; discard deletes them", () => {
+    const beforeCount = q.listProvisionalFinds().length;
+    q.insertFind({ title: "P1", type: "lead", agent: "prospector", status: "provisional" });
+    q.insertFind({ title: "P2", type: "lead", agent: "prospector", status: "provisional" });
+
+    expect(q.promoteProvisionalFinds()).toBe(beforeCount + 2);
+    expect(q.listProvisionalFinds()).toHaveLength(0);
+    expect(q.getFeed({}).map((f) => f.title)).toEqual(expect.arrayContaining(["P1", "P2"]));
+
+    q.insertFind({ title: "P3", type: "lead", agent: "prospector", status: "provisional" });
+    expect(q.discardProvisionalFinds()).toBe(1);
+    expect(q.listProvisionalFinds()).toHaveLength(0);
+  });
+});
