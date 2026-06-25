@@ -134,6 +134,46 @@ Standing preferences, signals you care about, etc. (optional)
 Answer:
 `;
 
+// Phase 3 (review) is read-only: reads config + run results, submits a report.
+export const REVIEW_TOOLS = [
+  "mcp__interviewer__say",
+  "mcp__interviewer__read_current_config",
+  "mcp__interviewer__read_run_results",
+  "mcp__interviewer__submit_review",
+];
+
+export const REVIEW_SYSTEM_PROMPT = `${SYSTEM_CONTEXT}
+
+## Your mode: review — READ ONLY, you write NO config
+You are given the interview transcript so far. Call read_current_config (the just-staged region/towns/categories/ICP) and read_run_results (what a small live prospector run did against that staged ICP). Judge whether the ICP behaved the way the user intends, and surface the gaps for the next round.
+
+Hunt specifically for:
+- Self-contradiction: did the run SKIP a business the user would clearly want (or SAVE one they'd reject)? A single concrete miss is worth more than aggregate counts — look in the coverage narrative, not just the saved leads.
+- Mis-calibration: are scores bunched or inverted versus how the user described fit?
+- Thin coverage that hid signal (too few businesses reachable to judge anything).
+
+Then call submit_review ONCE: a short honest report, calibration notes, and — unless this is the final review — a few PROBES, each a concrete observation plus the exact question the next conversation should ask the user. Do NOT propose ICP edits yourself; the next build does that, from the user's answers. Keep probes few and high-signal.`;
+
+// Review kickoff: transcript inline (like synthesis), plus the run's static facts
+// the runner already holds.
+export function reviewKickoff(opts: {
+  transcript: string;
+  runId: number;
+  runStatus: string;
+  isFinal: boolean;
+}): string {
+  const finalNote = opts.isFinal
+    ? "This is the FINAL review — produce the closing report and submit empty probes."
+    : "This is a preliminary review — submit probes for the next conversation.";
+  return [
+    `${finalNote} The sample run was #${opts.runId} (status: ${opts.runStatus}).`,
+    "Call read_current_config and read_run_results, then submit_review.",
+    "----- INTERVIEW SO FAR -----",
+    opts.transcript,
+    "----- END -----",
+  ].join("\n\n");
+}
+
 // The collection (phase 1) kickoff. Optionally carries a prospector-activity
 // block (so a refinement interview is grounded in real run results) and a resume
 // seed (prior un-written answers, when re-entering an interrupted session).

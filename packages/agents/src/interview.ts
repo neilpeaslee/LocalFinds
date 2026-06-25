@@ -22,9 +22,16 @@ import {
   townsConfigPath,
 } from "@localfinds/db";
 import { loadEnv } from "./env";
-import { runAgent, sanitizedEnv, type RunOptions } from "./run-agent";
+import { runAgent, sanitizedEnv, type ReasoningEffort, type RunOptions } from "./run-agent";
 import { prospector } from "./agents/prospector";
-import { buildInterviewerServer, type InterviewIO } from "./interview-tools";
+import {
+  buildInterviewerServer,
+  buildReviewServer,
+  type InterviewIO,
+  type ReviewContext,
+  type ReviewResult,
+  type ReviewSink,
+} from "./interview-tools";
 import {
   appendEntry,
   archiveJournal,
@@ -41,9 +48,12 @@ import {
   INTERVIEWER_MODEL,
   INTERVIEWER_SYNTHESIS_EFFORT,
   QUESTIONNAIRE_TEMPLATE,
+  REVIEW_SYSTEM_PROMPT,
+  REVIEW_TOOLS,
   SYNTHESIS_SYSTEM_PROMPT,
   SYNTHESIS_TOOLS,
   collectionKickoff,
+  reviewKickoff,
   synthesisKickoff,
 } from "./agents/interviewer";
 
@@ -104,6 +114,44 @@ async function runProspectorSample(
   } finally {
     setConfigDirOverride(undefined);
   }
+}
+
+// Run the review phase: reads staged config + run results, submits a report with
+// probes for the next conversation (or an empty probe list on the final cycle).
+async function runReview(
+  io: InterviewIO,
+  transcript: string,
+  scratchDir: string,
+  run: { runId: number; status: string },
+  effort: ReasoningEffort,
+  isFinal: boolean,
+): Promise<ReviewResult> {
+  const sink: ReviewSink = {};
+  const ctx: ReviewContext = { runId: run.runId, scratchDir };
+  process.stdout.write("\nReviewing the run against your answers…\n");
+  try {
+    for await (const message of query({
+      prompt: reviewKickoff({ transcript, runId: run.runId, runStatus: run.status, isFinal }),
+      options: {
+        model: INTERVIEWER_MODEL,
+        effort,
+        env: interviewerEnv(),
+        systemPrompt: REVIEW_SYSTEM_PROMPT,
+        settingSources: [],
+        settings: { autoMemoryEnabled: false },
+        permissionMode: "bypassPermissions",
+        mcpServers: { interviewer: buildReviewServer(io, ctx, sink) },
+        allowedTools: REVIEW_TOOLS,
+        disallowedTools: INTERVIEWER_DISALLOWED,
+        maxTurns: 20,
+      },
+    })) {
+      logMessage(message);
+    }
+  } catch (err) {
+    console.error("\nReview ended early:", err instanceof Error ? err.message : err);
+  }
+  return sink.value ?? { report: "", calibration: "", probes: [] };
 }
 
 // --- The confirm-before-write diff gate ---

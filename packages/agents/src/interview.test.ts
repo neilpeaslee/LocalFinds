@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { QUESTIONNAIRE_TEMPLATE } from "./agents/interviewer";
+import { QUESTIONNAIRE_TEMPLATE, reviewKickoff } from "./agents/interviewer";
 import { isQuestionnaireFilled, lineDiff, parseInterviewArgs, sampleRunOptions } from "./interview";
 
 describe("parseInterviewArgs", () => {
@@ -53,5 +53,18 @@ describe("sampleRunOptions", () => {
     expect(opts.effort).toBe("low");
     expect(opts.findStatusOverride).toBe("provisional");
     expect(opts.workspaceDir).toBe("/data/.staging-x/agents/prospector");
+  });
+});
+
+describe("reviewKickoff", () => {
+  it("embeds the transcript + run facts and flags preliminary vs final", () => {
+    const prelim = reviewKickoff({ transcript: "Q: a\nA: b", runId: 7, runStatus: "success", isFinal: false });
+    expect(prelim).toContain("#7");
+    expect(prelim).toContain("Q: a");
+    expect(prelim).toContain("preliminary");
+
+    const final = reviewKickoff({ transcript: "x", runId: 9, runStatus: "capped", isFinal: true });
+    expect(final).toContain("FINAL");
+    expect(final).toContain("empty probes");
   });
 });
