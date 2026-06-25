@@ -59,8 +59,19 @@ import {
 
 // --- Pure helpers (unit-tested) ---
 
-export function parseInterviewArgs(argv: string[]): { prepared: boolean } {
-  return { prepared: argv.includes("--prepared") };
+export type InterviewDepth = "brief" | "medium" | "comprehensive";
+
+const DEPTHS: InterviewDepth[] = ["brief", "medium", "comprehensive"];
+
+export function parseInterviewArgs(argv: string[]): { prepared: boolean; depth: InterviewDepth } {
+  const depthArg = argv.find((a) => a.startsWith("--depth="))?.slice("--depth=".length);
+  const depth = DEPTHS.includes(depthArg as InterviewDepth) ? (depthArg as InterviewDepth) : "brief";
+  return { prepared: argv.includes("--prepared"), depth };
+}
+
+// brief = final cycle only; medium/comprehensive add 1/2 throwaway cycles first.
+export function preliminaryCycles(depth: InterviewDepth): number {
+  return { brief: 0, medium: 1, comprehensive: 2 }[depth];
 }
 
 // Filled = at least one "Answer:" line has text on the SAME line. [ \t]* (not

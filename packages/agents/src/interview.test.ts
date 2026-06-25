@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { QUESTIONNAIRE_TEMPLATE, reviewKickoff } from "./agents/interviewer";
-import { isQuestionnaireFilled, lineDiff, parseInterviewArgs, sampleRunOptions } from "./interview";
+import { QUESTIONNAIRE_TEMPLATE, collectionKickoff, reviewKickoff } from "./agents/interviewer";
+import { isQuestionnaireFilled, lineDiff, parseInterviewArgs, preliminaryCycles, sampleRunOptions } from "./interview";
 
 describe("parseInterviewArgs", () => {
   it("defaults to the interactive path", () => {
-    expect(parseInterviewArgs([])).toEqual({ prepared: false });
+    expect(parseInterviewArgs([])).toEqual({ prepared: false, depth: "brief" });
   });
 
   it("selects the prepared path on --prepared", () => {
-    expect(parseInterviewArgs(["--prepared"])).toEqual({ prepared: true });
+    expect(parseInterviewArgs(["--prepared"])).toEqual({ prepared: true, depth: "brief" });
   });
 });
 
@@ -53,6 +53,27 @@ describe("sampleRunOptions", () => {
     expect(opts.effort).toBe("low");
     expect(opts.findStatusOverride).toBe("provisional");
     expect(opts.workspaceDir).toBe("/data/.staging-x/agents/prospector");
+  });
+});
+
+describe("interview depth", () => {
+  it("parses --depth and maps to preliminary cycle counts", () => {
+    expect(parseInterviewArgs([]).depth).toBe("brief");
+    expect(parseInterviewArgs(["--depth=comprehensive"]).depth).toBe("comprehensive");
+    expect(parseInterviewArgs(["--depth=nonsense"]).depth).toBe("brief");
+    expect(preliminaryCycles("brief")).toBe(0);
+    expect(preliminaryCycles("medium")).toBe(1);
+    expect(preliminaryCycles("comprehensive")).toBe(2);
+  });
+
+  it("collectionKickoff folds review probes into the opening", () => {
+    const out = collectionKickoff({
+      reviewFindings: [
+        { topic: "modern-site", observation: "skipped a real maker on web grounds", askUser: "Should a modern site disqualify?" },
+      ],
+    });
+    expect(out).toContain("modern-site");
+    expect(out).toContain("Should a modern site disqualify?");
   });
 });
 

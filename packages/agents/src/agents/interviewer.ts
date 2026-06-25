@@ -20,6 +20,7 @@
 // cli.ts's roster so the scheduler never runs it.
 
 import type { ReasoningEffort } from "../run-agent";
+import type { ReviewProbe } from "../interview-tools";
 
 export const INTERVIEWER_MODEL = "claude-sonnet-4-6";
 // Collection turns stay snappy and cheap; synthesis gets real budget because
@@ -180,11 +181,20 @@ export function reviewKickoff(opts: {
 export function collectionKickoff(opts?: {
   resumeSeed?: string;
   prospectorContext?: string;
+  reviewFindings?: ReviewProbe[];
 }): string {
   const parts = [
     "Begin the interview. Call read_current_config first, then start the conversation about their business and targeting.",
   ];
   if (opts?.prospectorContext) parts.push(opts.prospectorContext);
+  if (opts?.reviewFindings?.length) {
+    parts.push(
+      "## A sample run just tested the current ICP — raise these with the user:\n" +
+        opts.reviewFindings
+          .map((p) => `- ${p.topic}: ${p.observation}\n  Ask: ${p.askUser}`)
+          .join("\n"),
+    );
+  }
   if (opts?.resumeSeed) parts.push(opts.resumeSeed);
   return parts.join("\n\n");
 }
