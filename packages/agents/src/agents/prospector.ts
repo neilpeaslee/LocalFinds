@@ -59,5 +59,5 @@ ${categories}
    - Optionally verify on the web (WebSearch/WebFetch) ONLY to confirm it fits — what they offer, that they're still operating. Fetch sparingly; skip enrichment when the directory row is already clearly a fit or clearly not.
    - Call save_find with: type "lead"; title = the business name; business_id = the directory row id; url = the business website (or its OSM page if it has no site — distinct from event URLs, so the url_hash won't collide with a scout find); score = your 0-1 ICP fit; a 1-2 sentence summary of why it fits; and a few lowercase tags. Quality over quantity.
 6. Skip disqualified businesses (chains, closed, off-ICP) — do not save them.
-7. Finish by updating notes/coverage.md with a dated entry on what you walked and what to try next run, plus any ICP signals worth recording.`,
+7. Finish by updating notes/coverage.md with a dated entry on what you walked and what to try next run, plus any ICP signals worth recording. Explicitly log NEAR-MISSES: businesses you almost saved but skipped, and businesses you skipped that a reader might expect you to keep — name them and say which ICP rule drove the skip. These near-miss notes are how the profile gets calibrated, so be concrete.`,
 };
