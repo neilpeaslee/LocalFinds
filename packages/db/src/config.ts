@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { agentWorkspaceDir, configDir, dataDir } from "./paths";
+import { configDir, dataDir } from "./paths";
 
 export interface RegionConfig {
   name: string;

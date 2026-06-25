@@ -15,7 +15,7 @@ import {
   writeRegionConfig,
   writeTownsConfig,
 } from "./config";
-import { agentWorkspaceDir, setConfigDirOverride, configDir, dbPath } from "./paths";
+import { agentWorkspaceDir, setConfigDirOverride, dbPath } from "./paths";
 
 // The repo's real, hand-tuned config files. The writers must round-trip these
 // without dropping or mutating anything (the central data-safety guarantee), so
