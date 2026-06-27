@@ -14,4 +14,15 @@ describe("cartographer definition", () => {
     expect(cartographer.systemPrompt).not.toMatch(/overpass/i);
     expect(cartographer.systemPrompt).not.toContain("area[");
   });
+
+  it("buildTaskPrompt contains no Overpass QL or 'overpass' references", () => {
+    const prompt = cartographer.buildTaskPrompt({
+      region: "Region briefing",
+      profile: "profile",
+      categories: "categories",
+    });
+    expect(prompt).not.toMatch(/overpass/i);
+    expect(prompt).not.toContain("area[");
+    expect(prompt).not.toContain("nwr[");
+  });
 });
