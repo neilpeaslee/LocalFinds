@@ -55,10 +55,13 @@ async def fetch_businesses(
         raise ValueError("exactly one of town/bbox is required")
 
     if keys:
-        safe = [k for k in keys if k in BUSINESS_KEYS]
-        if safe:
-            ors = " OR ".join(f"kind LIKE '{k}=%'" for k in safe)
-            where.append(f"({ors})")
+        # Validate against the allowlist and reject unknown keys outright — a
+        # silent drop would turn keys=["badkey"] into "return everything".
+        invalid = [k for k in keys if k not in BUSINESS_KEYS]
+        if invalid:
+            raise ValueError(f"unknown business key(s): {', '.join(invalid)}")
+        ors = " OR ".join(f"kind LIKE '{k}=%'" for k in keys)
+        where.append(f"({ors})")
 
     params.append(limit)
     sql = (
