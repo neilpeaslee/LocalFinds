@@ -78,6 +78,11 @@ async def test_businesses_requires_exactly_one_filter(client):
     ).status_code == 400
 
 
+async def test_businesses_bad_limit_400(client):
+    r = await client.get("/osm/businesses?town=rockland&limit=0", headers=AUTH)
+    assert r.status_code == 400
+
+
 async def test_businesses_db_down_503(client, monkeypatch):
     async def boom(*a, **k):
         raise asyncpg.PostgresError("db gone")

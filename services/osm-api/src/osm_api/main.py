@@ -41,10 +41,12 @@ async def businesses(
     town: str | None = Query(default=None),
     bbox: str | None = Query(default=None, description="'s,w,n,e' (WGS84)"),
     keys: str | None = Query(default=None, description="csv of business keys"),
-    limit: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None),
 ) -> list[Business]:
     if (town is None) == (bbox is None):
         raise HTTPException(400, "provide exactly one of 'town' or 'bbox'")
+    if limit is not None and limit < 1:
+        raise HTTPException(400, "limit must be >= 1")
 
     parsed_bbox = None
     if bbox is not None:

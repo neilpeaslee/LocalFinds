@@ -45,7 +45,7 @@ SELECT
     )                                                AS kind,
     -- tag chips: business-key values + cuisine, split on ';', lowercased,
     -- distinct, capped at 12 — the server-side equivalent of the old tagList.
-    (
+    COALESCE((
         SELECT array_agg(v)
         FROM (
             SELECT DISTINCT lower(trim(u)) AS v
@@ -57,7 +57,7 @@ SELECT
             WHERE trim(u) <> ''
             LIMIT 12
         ) chips
-    )                                                AS tags,
+    ), ARRAY[]::text[])                              AS tags,  -- never NULL
     NULLIF(trim(concat_ws(', ',
         NULLIF(trim(concat_ws(' ',
             s.tags->'addr:housenumber', s.tags->'addr:street')), ''),
