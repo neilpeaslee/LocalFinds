@@ -293,6 +293,25 @@ function rlQuestion(rl: readline.Interface, q: string): Promise<string> {
   return new Promise((resolve) => rl.question(q, resolve));
 }
 
+// Read a possibly multi-line answer. readline fires one "line" per newline, so a
+// pasted block from an editor arrives as N separate lines (each Enter/CR would
+// otherwise submit as its own answer — the paste bug). We accumulate lines until
+// a BLANK line, so a multi-line paste becomes a single answer with its newlines
+// preserved. `ask` is injected (one prompt -> one line) so this is unit-testable.
+// Caveat: a blank line WITHIN pasted prose ends the answer early — paste
+// paragraph blocks one at a time, or join them, if that bites.
+export async function readMultilineAnswer(
+  ask: (prompt: string) => Promise<string>,
+): Promise<string> {
+  const lines: string[] = [];
+  for (;;) {
+    const line = (await ask(lines.length === 0 ? "› " : "  ")).replace(/\r$/, "");
+    if (line === "") break; // blank line submits
+    lines.push(line);
+  }
+  return lines.join("\n");
+}
+
 // A filesystem-safe, sortable name for an archived interview transcript
 // (e.g. "2026-06-24T15-42-03Z"). Colons would be invalid on some filesystems.
 function interviewRunId(): string {
@@ -397,12 +416,17 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     ask: async (question, opts) => {
       appendEntry({ role: "agent", kind: "ask", text: question });
       const hint = opts?.choices?.length ? `  [${opts.choices.join(" / ")}]` : "";
-      // A framed input block: the question, a rule above the input, the typed
-      // answer (readline wraps it as it overflows — nothing is ever erased), and a
-      // rule below once submitted. Rule width tracks the terminal, capped at 80.
+      // A framed input block: the question, a rule above the input, the typed or
+      // pasted answer (readline wraps it as it overflows — nothing is ever erased),
+      // and a rule below once submitted. Rule width tracks the terminal, capped 80.
+      // Multi-line: paste freely, then press Enter on a blank line to send — so a
+      // pasted block's newlines don't each submit as a separate answer.
       const rule = "─".repeat(Math.min(process.stdout.columns || 80, 80));
-      process.stdout.write(`\n${question}${hint}\n${rule}\n`);
-      const answer = await rlQuestion(rl, "› ");
+      process.stdout.write(
+        `\n${question}${hint}\n${rule}\n` +
+          "(write or paste freely — press Enter on a blank line to send)\n",
+      );
+      const answer = await readMultilineAnswer((p) => rlQuestion(rl, p));
       process.stdout.write(`${rule}\n`);
       appendEntry({ role: "user", kind: "answer", text: answer });
       process.stdout.write("  · got it — thinking…\n");

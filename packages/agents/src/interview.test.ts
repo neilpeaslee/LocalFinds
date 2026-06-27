@@ -1,6 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { QUESTIONNAIRE_TEMPLATE, collectionKickoff, reviewKickoff } from "./agents/interviewer";
-import { isQuestionnaireFilled, lineDiff, parseInterviewArgs, preliminaryCycles, sampleRunOptions } from "./interview";
+import { isQuestionnaireFilled, lineDiff, parseInterviewArgs, preliminaryCycles, readMultilineAnswer, sampleRunOptions } from "./interview";
+
+describe("readMultilineAnswer", () => {
+  // Feed pre-set lines as if the user pressed Enter after each (last "" = blank submit).
+  const feed = (lines: string[]) => {
+    const q = [...lines];
+    return readMultilineAnswer(async () => q.shift() ?? "");
+  };
+
+  it("joins a multi-line paste into one answer, ending on a blank line", async () => {
+    expect(await feed(["line one", "line two", "line three", ""])).toBe(
+      "line one\nline two\nline three",
+    );
+  });
+
+  it("returns empty string on an immediate blank line", async () => {
+    expect(await feed([""])).toBe("");
+  });
+
+  it("strips a trailing CR left by \\r\\n paste on each line", async () => {
+    expect(await feed(["a\r", "b\r", ""])).toBe("a\nb");
+  });
+
+  it("preserves a single-line answer", async () => {
+    expect(await feed(["just one line", ""])).toBe("just one line");
+  });
+});
 
 describe("parseInterviewArgs", () => {
   it("defaults to the interactive path", () => {
