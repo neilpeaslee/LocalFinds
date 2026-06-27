@@ -1,7 +1,7 @@
 // iCal (RFC 5545) parsing + feed fetch for the fetch_ical tool. Pure logic +
 // HTTP only (no SDK/db imports beyond the shared ToolTextResult type), mirroring
 // overpass.ts so it stays unit-testable via an injected fetchImpl.
-import type { ToolTextResult } from "./overpass";
+import type { ToolTextResult } from "./osm-client";
 
 export interface ICalEvent {
   summary: string | null;

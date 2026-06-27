@@ -13,12 +13,7 @@ import {
 } from "@localfinds/db";
 import { z } from "zod";
 import { formatIcalResult, runIcalFetch } from "./ical";
-import {
-  formatOverpassResult,
-  isValidOsmId,
-  runOverpass,
-  wrapOverpassQL,
-} from "./overpass";
+import { formatOsmResult, isValidOsmId, runOsmQuery } from "./osm-client";
 
 export interface RunCounters {
   added: number;
@@ -302,20 +297,36 @@ export function buildLocalfindsServer(
         async (args) => formatIcalResult(await runIcalFetch(args.url), args.limit),
       ),
       tool(
-        "overpass_query",
-        "Query OpenStreetMap via the Overpass API for businesses in an area. Pass ONLY the QL statement body (the tool adds `[out:json][timeout:25];` and `out tags center;` itself). Query ONE business key per call (amenity | shop | tourism | office | craft | leisure) to keep results small. Returns a projected, named-only, capped list. If `truncated` is true, narrow the query (smaller area or a more specific tag) and call again.\n\nExamples of the statement body:\n  area[\"name\"=\"Rockland\"][\"admin_level\"~\"^(7|8)$\"]->.a; nwr[\"shop\"](area.a);\n  nwr[\"amenity\"](44.0,-69.2,44.2,-69.0);   // (south,west,north,east) bbox fallback",
+        "osm_query",
+        "Query the LocalFinds OSM directory (self-hosted PostGIS) for businesses in an area. Pass EITHER `town` (an admin area name) OR `bbox` ('s,w,n,e' in WGS84). Optionally narrow to specific business keys with `keys` (amenity | shop | tourism | office | craft | leisure); omit to return all. Returns a projected, named, capped array already in the exact shape upsert_businesses accepts — pass its `elements` straight through. If `truncated` is true, narrow (a smaller bbox or fewer keys) and call again.\n\nExamples:\n  { \"town\": \"Rockland\", \"keys\": [\"shop\"] }\n  { \"bbox\": \"44.0,-69.2,44.2,-69.0\", \"keys\": [\"amenity\"] }",
         {
-          statement: z
+          town: z
             .string()
-            .describe("Overpass QL statement body for one business key"),
+            .optional()
+            .describe("Admin area name (e.g. \"Rockland\"). Provide town OR bbox."),
+          bbox: z
+            .string()
+            .optional()
+            .describe("Bounding box 's,w,n,e' in WGS84. Provide town OR bbox."),
+          keys: z
+            .array(z.string())
+            .optional()
+            .describe(
+              "Business keys to include: amenity, shop, tourism, office, craft, leisure. Omit for all.",
+            ),
           limit: z
             .number()
             .optional()
-            .describe("Max named elements to return, default 80, capped at 150"),
+            .describe("Max elements to return, default 200."),
         },
         async (args) =>
-          formatOverpassResult(
-            await runOverpass(wrapOverpassQL(args.statement)),
+          formatOsmResult(
+            await runOsmQuery({
+              town: args.town,
+              bbox: args.bbox,
+              keys: args.keys,
+              limit: args.limit,
+            }),
             args.limit,
           ),
       ),
