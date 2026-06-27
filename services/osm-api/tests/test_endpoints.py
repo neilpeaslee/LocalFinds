@@ -90,3 +90,28 @@ async def test_businesses_db_down_503(client, monkeypatch):
     monkeypatch.setattr("osm_api.main.fetch_businesses", boom)
     r = await client.get("/osm/businesses?town=rockland", headers=AUTH)
     assert r.status_code == 503
+
+
+async def test_businesses_by_bbox_returns_array(client):
+    r = await client.get(
+        "/osm/businesses?bbox=44.05,-69.20,44.15,-69.05", headers=AUTH
+    )
+    assert r.status_code == 200
+    assert {b["osm_id"] for b in r.json()} == {"node/1", "way/2", "relation/3"}
+
+
+def test_lifespan_creates_own_pool(monkeypatch, pg_dsn):
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", pg_dsn)
+    monkeypatch.setenv("OSM_API_TOKEN", "secret-token")
+    get_settings.cache_clear()
+    app.state.pool = None  # ensure lifespan must create its own
+    try:
+        with TestClient(app) as c:  # context-manager form runs lifespan
+            r = c.get("/osm/businesses?town=rockland",
+                      headers={"Authorization": "Bearer secret-token"})
+            assert r.status_code == 200
+            assert len(r.json()) == 3
+    finally:
+        app.state.pool = None
+        get_settings.cache_clear()
