@@ -194,8 +194,22 @@ preserving prod-side `feedback` and `finds.status`).
 
 ## Open questions
 
-None blocking. Port number, exact nginx path/subdomain, and token storage are
-deployment details resolved during implementation (kept out of the public repo).
+None blocking implementation. Port number, exact nginx path/subdomain, and token
+storage are deployment details resolved during implementation (kept out of the
+public repo).
+
+**Town-query performance (validate at Track A import).** In the v1 `osm_businesses`
+view, `town` is a correlated `ST_Contains` subquery in the SELECT list, and the
+API filters a town request with `WHERE lower(town) = lower($1)` — i.e. on the
+*computed* column. Postgres must therefore evaluate the town subquery for every
+named business to resolve a town request, and town is the cartographer's primary
+access pattern (the bbox path is already index-friendly via `ST_Intersects` on
+geom). For an unattended, low-QPS agent this is expected to be tolerable, but it
+must be **benchmarked against the real Maine import during Track A bring-up** and
+either consciously accepted or optimized (resolve the named admin polygon first,
+then spatially filter businesses within it using the GiST-indexed raw geometry —
+optionally a materialized view + spatial index). This is a DB/import-side concern
+(Track A), not an API-code change.
 
 ## Security / repo hygiene
 
