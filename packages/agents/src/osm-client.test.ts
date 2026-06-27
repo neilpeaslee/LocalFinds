@@ -59,7 +59,20 @@ describe("runOsmQuery", () => {
       new Response("boom", { status: 503 })) as typeof fetch;
     const res = await runOsmQuery({ town: "Rockland" }, fakeFetch);
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.status).toBe(503);
+    if (!res.ok) {
+      expect(res.status).toBe(503);
+      expect(res.error).toContain("503");
+    }
+  });
+
+  it("returns a config error when env vars are absent", async () => {
+    delete process.env.OSM_API_BASE;
+    delete process.env.OSM_API_TOKEN;
+    const res = await runOsmQuery({});
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toBe("OSM_API_BASE / OSM_API_TOKEN not configured");
+    }
   });
 });
 
@@ -69,7 +82,7 @@ describe("formatOsmResult", () => {
     expect(out.isError).toBe(true);
     const body = JSON.parse(out.content[0].text);
     expect(body.error).toBe("HTTP 503");
-    expect(body.hint).toBeTruthy();
+    expect(body.hint).toContain("retry");
   });
 
   it("reports returned/truncated and passes elements through", () => {
