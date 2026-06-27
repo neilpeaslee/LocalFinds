@@ -1,7 +1,7 @@
 # LocalFinds PostGIS OSM-API — Design (v1)
 
 **Date:** 2026-06-25
-**Status:** Approved design, pre-implementation
+**Status:** Approved design, pre-implementation — refreshed 2026-06-27 against the live `udl` baseline (`~/Projects/cm/udl`)
 **Branch:** `feat/postgis-osm-api`
 
 ## Summary
@@ -12,10 +12,12 @@ Maine's OSM data, exposes a query endpoint shaped to what the cartographer
 already consumes, and is designed to grow into proximity search, server-side
 clustering, and full-text search over annotations.
 
-It co-locates on the `was` EC2 box (the "Web Application Server"; UniDataLog and
-LocalFinds are apps already running on it). The existing SQLite `businesses`
-table, closure sweep, read-time tiering, web app, and `deploy:sync-content` flow
-are **unchanged** — only the cartographer's data *source* changes.
+It co-locates on the **`udl`** EC2 box (the "Web Application Server", hostname
+finalized from `was` → `udl` on 2026-06-27; UniDataLog, LocalFinds, and other
+apps already run on it — a **shared production host**). The existing SQLite
+`businesses` table, closure sweep, read-time tiering, web app, and
+`deploy:sync-content` flow are **unchanged** — only the cartographer's data
+*source* changes.
 
 ## Motivation
 
@@ -53,23 +55,39 @@ Geofabrik (maine-latest.osm.pbf + daily diffs)
    deploy:sync-content  →  prod SQLite  (unchanged)
 ```
 
-Three new components, all on `was`: **PostGIS**, the **osm-api service**, and an
+Three new components, all on `udl`: **PostGIS**, the **osm-api service**, and an
 **osm2pgsql-replication update cron**. Everything downstream of the cartographer
 is untouched.
 
 ## Components
 
-### 1. Host & prerequisites (`was`)
+### 1. Host & prerequisites (`udl`, Ubuntu 24.04 noble)
+
+**Execution model.** `udl` is an internet-facing production host. Per its CM
+workspace (`~/Projects/cm/udl`), Claude has **read-only** SSH access and **drafts
+runbooks**; **Neil runs every `sudo` step** in his own session. The supervised
+runbooks and before/after inventory for this work belong in that CM workspace
+(git-tracked → gitudl, mirrored to Henry) — not in this repo. The host facts
+below come from its 2026-06-27 baseline.
 
 - **Resize root EBS volume 15 → 30 G**, grown online (`growpart` + `resize2fs`),
-  no downtime. The root volume is currently 15 G at ~80 % used with only ~3 G
-  free, and `/var/lib/postgresql` shares it with the OS and the running apps. A
-  database growing on that shared volume risks filling root and taking down all
-  apps; resizing removes the constraint and gives a full Maine import room to
-  spare (~18 G free after resize).
-- Install `postgresql-15-postgis-3`, `osm2pgsql`, `osm2pgsql-replication`
-  (PostgreSQL 15 is already installed from the pgdg repo; PostGIS is not).
-- Create a `gis` database; `CREATE EXTENSION postgis;` (and `hstore`).
+  no downtime. The root volume is currently **15 G at 77 % used, ~3.4 G free**
+  (2026-06-27 baseline), and `/var/lib/postgresql` shares it with the OS,
+  Postgres, and every other app on the box (`/var` alone is ~4 G). A database
+  growing on that shared volume risks filling root and taking down **every** app
+  on the host; resizing removes the constraint and leaves room for a full Maine
+  import (~18 G free after resize). **This resize is the hard prerequisite — do it
+  before any import.**
+- **PostgreSQL 15 is already installed and running** (`postgresql@15-main`, from
+  the pgdg repo) and is a **shared production cluster** — at least one co-tenant
+  app already uses it (the `postgresql-15-pgvector` extension is installed).
+  PostGIS is **not** yet present. Install `postgresql-15-postgis-3`, `osm2pgsql`,
+  and `osm2pgsql-replication` into the existing cluster.
+- Create a dedicated **`gis` database** (own database, own role, isolated from the
+  co-tenant DBs); `CREATE EXTENSION postgis;` (and `hstore`). The full Maine
+  import is I/O- and memory-heavy, so run it off-peak and cap
+  `maintenance_work_mem` / parallelism so it doesn't starve the co-tenant apps
+  sharing this cluster and disk.
 
 ### 2. Data — full Maine import
 
@@ -104,9 +122,12 @@ is untouched.
 - **Stack:** Python 3.12 + FastAPI + asyncpg, with PostGIS doing the spatial
   work. Lives in its own `services/osm-api/` (pyproject, ruff, pytest) — an
   independently deployed service, not a TS monorepo workspace.
-- **Run:** `uvicorn`/`gunicorn` under systemd, bound to `127.0.0.1:<port>`,
-  nginx-proxied with a token header (the box is public-facing; only the
-  cartographer calls it — no rate limit for our own token).
+- **Run:** `uvicorn`/`gunicorn` under systemd, bound to a **free loopback port**
+  on `127.0.0.1` — the box already runs several other services on assorted ports,
+  so the chosen port (plus the nginx path and token) are deployment details kept
+  in the gitignored deploy notes / `cm/udl`, not here. nginx-proxied with a token
+  header; the box is public-facing but only the cartographer calls it — no rate
+  limit on our own token.
 - **v1 endpoints:**
   - `GET /osm/businesses?town=<name>|bbox=s,w,n,e&keys=<csv>&limit=<n>` →
     JSON array in the exact projected shape `upsertBusinesses` accepts.
@@ -179,6 +200,9 @@ deployment details resolved during implementation (kept out of the public repo).
 ## Security / repo hygiene
 
 This repo is public. This document and all committed code keep the EC2 IP,
-hostnames-as-secrets, ports, and auth tokens **out of git** — service config is
-env-var driven; concrete values live only in the (gitignored) deploy skill and
-on the box.
+sensitive hostnames, ports, postgres credentials/bind, and auth tokens **out of
+git** — service config is env-var driven. Concrete operational values and the
+supervised runbooks (EBS resize, PostGIS install, the `gis` role/DB grants and
+access hardening, nginx token, chosen port) live in the **`udl` CM workspace**
+(`~/Projects/cm/udl`, private → gitudl, mirrored to Henry), the gitignored deploy
+skill, and on the box — never here.
