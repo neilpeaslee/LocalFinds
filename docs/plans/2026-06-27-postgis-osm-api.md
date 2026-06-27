@@ -772,7 +772,7 @@ git commit -m "feat(osm-api): query layer (town/bbox/keys/limit) over osm_busine
 
 **Interfaces:**
 - Produces (`db.py`): `async create_pool(dsn: str) -> asyncpg.Pool`, `async close_pool(pool) -> None`, and an app-state accessor `get_pool(request) -> asyncpg.Pool` (reads `request.app.state.pool`, raises `RuntimeError` if absent).
-- Produces (`auth.py`): `require_token(request, authorization: str | None = Header(None)) -> None` — a FastAPI dependency that raises `HTTPException(401)` unless the `Authorization: Bearer <token>` header matches `get_settings().osm_api_token`.
+- Produces (`auth.py`): `require_token(authorization: str | None = Header(None)) -> None` — a stateless FastAPI dependency (no `request` needed) that raises `HTTPException(401)` unless the `Authorization: Bearer <token>` header matches `get_settings().osm_api_token`.
 
 - [ ] **Step 1: Implement `db.py`**
 
