@@ -31,3 +31,15 @@ Production values (port, nginx path, token, DB bind) live in the `udl` CM
 workspace (`~/Projects/cm/udl`) and the gitignored deploy notes — never in this
 repo. The PostGIS import, view application, and systemd/nginx setup are Track A
 runbooks in that workspace.
+
+## Schema bring-up (local or box)
+
+Apply, in order, against the target `gis` DB:
+
+1. (box only) the osm2pgsql import — `--create --slim --hstore-all`, classic output.
+2. `sql/osm_businesses_view.sql`
+3. `sql/indexes.sql`
+
+Locally, `tests/conftest.py` does the equivalent (fixture schema + view + seed)
+inside a throwaway container, so you only need this sequence for a persistent
+`docker compose` DB you want to hit with `uvicorn`.
