@@ -32,7 +32,7 @@ describe("isValidOsmId", () => {
 
 describe("runOsmQuery", () => {
   it("calls /osm/businesses with the bearer token and returns elements", async () => {
-    process.env.OSM_API_BASE = "https://osm.example";
+    process.env.OSM_API_BASE_URL = "https://osm.example";
     process.env.OSM_API_TOKEN = "tok";
     let seenUrl = "";
     let seenAuth = "";
@@ -53,7 +53,7 @@ describe("runOsmQuery", () => {
   });
 
   it("returns an error result on a 5xx", async () => {
-    process.env.OSM_API_BASE = "https://osm.example";
+    process.env.OSM_API_BASE_URL = "https://osm.example";
     process.env.OSM_API_TOKEN = "tok";
     const fakeFetch = (async () =>
       new Response("boom", { status: 503 })) as typeof fetch;
@@ -66,12 +66,12 @@ describe("runOsmQuery", () => {
   });
 
   it("returns a config error when env vars are absent", async () => {
-    delete process.env.OSM_API_BASE;
+    delete process.env.OSM_API_BASE_URL;
     delete process.env.OSM_API_TOKEN;
     const res = await runOsmQuery({});
     expect(res.ok).toBe(false);
     if (!res.ok) {
-      expect(res.error).toBe("OSM_API_BASE / OSM_API_TOKEN not configured");
+      expect(res.error).toBe("OSM_API_BASE_URL / OSM_API_TOKEN not configured");
     }
   });
 });

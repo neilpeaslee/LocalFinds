@@ -63,10 +63,10 @@ export async function runOsmQuery(
   params: OsmQueryParams,
   fetchImpl: FetchLike = fetch,
 ): Promise<OsmResult> {
-  const base = process.env.OSM_API_BASE;
+  const base = process.env.OSM_API_BASE_URL;
   const token = process.env.OSM_API_TOKEN;
   if (!base || !token) {
-    return { ok: false, error: "OSM_API_BASE / OSM_API_TOKEN not configured" };
+    return { ok: false, error: "OSM_API_BASE_URL / OSM_API_TOKEN not configured" };
   }
   const qs = new URLSearchParams();
   if (params.town) qs.set("town", params.town);

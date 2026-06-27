@@ -72,7 +72,7 @@ These steps run on the `udl` box as supervised `sudo` runbooks authored in `~/Pr
 - Modify: `packages/agents/src/agents/cartographer.ts` — `allowedTools` + system/task prompt.
 - Modify: `packages/agents/src/mcp-tools.test.ts` — replace any `overpass_query` reference.
 - Delete: `packages/agents/src/overpass.ts`, `packages/agents/src/overpass.test.ts`.
-- Modify: `.env.example` — add `OSM_API_BASE`, `OSM_API_TOKEN` placeholders.
+- Modify: `.env.example` — add `OSM_API_BASE_URL`, `OSM_API_TOKEN` placeholders.
 
 ---
 
@@ -1190,7 +1190,7 @@ git commit -m "docs(osm-api): local-dev compose + schema bring-up notes"
   - `interface OsmBusiness` — the API row shape (`osm_id, name, lat, lng, kind, tags, address, town, website, phone, brand`).
   - `type ToolTextResult = { content: { type: "text"; text: string }[]; isError?: true }` (moved verbatim from `overpass.ts`).
   - `interface OsmQueryParams { town?: string; bbox?: string; keys?: string[]; limit?: number }`.
-  - `async runOsmQuery(params: OsmQueryParams, fetchImpl?): Promise<{ ok: true; elements: OsmBusiness[] } | { ok: false; error: string; status?: number }>` — calls `GET ${OSM_API_BASE}/osm/businesses` with `Authorization: Bearer ${OSM_API_TOKEN}`.
+  - `async runOsmQuery(params: OsmQueryParams, fetchImpl?): Promise<{ ok: true; elements: OsmBusiness[] } | { ok: false; error: string; status?: number }>` — calls `GET ${OSM_API_BASE_URL}/osm/businesses` with `Authorization: Bearer ${OSM_API_TOKEN}`.
   - `formatOsmResult(result, limit?): ToolTextResult` — success → `{ returned, truncated, elements }`; failure → `isError` with the retry hint.
 
 - [ ] **Step 1: Write the failing client test**
@@ -1231,7 +1231,7 @@ describe("isValidOsmId", () => {
 
 describe("runOsmQuery", () => {
   it("calls /osm/businesses with the bearer token and returns elements", async () => {
-    process.env.OSM_API_BASE = "https://osm.example";
+    process.env.OSM_API_BASE_URL = "https://osm.example";
     process.env.OSM_API_TOKEN = "tok";
     let seenUrl = "";
     let seenAuth = "";
@@ -1252,7 +1252,7 @@ describe("runOsmQuery", () => {
   });
 
   it("returns an error result on a 5xx", async () => {
-    process.env.OSM_API_BASE = "https://osm.example";
+    process.env.OSM_API_BASE_URL = "https://osm.example";
     process.env.OSM_API_TOKEN = "tok";
     const fakeFetch = (async () =>
       new Response("boom", { status: 503 })) as typeof fetch;
@@ -1356,10 +1356,10 @@ export async function runOsmQuery(
   params: OsmQueryParams,
   fetchImpl: FetchLike = fetch,
 ): Promise<OsmResult> {
-  const base = process.env.OSM_API_BASE;
+  const base = process.env.OSM_API_BASE_URL;
   const token = process.env.OSM_API_TOKEN;
   if (!base || !token) {
-    return { ok: false, error: "OSM_API_BASE / OSM_API_TOKEN not configured" };
+    return { ok: false, error: "OSM_API_BASE_URL / OSM_API_TOKEN not configured" };
   }
   const qs = new URLSearchParams();
   if (params.town) qs.set("town", params.town);
@@ -1679,7 +1679,7 @@ Append to `.env.example`:
 ```
 # Self-hosted PostGIS osm-api (cartographer data source). Real values live in
 # the udl CM workspace / gitignored deploy notes — never commit a real token.
-OSM_API_BASE=https://osm.example.internal
+OSM_API_BASE_URL=https://osm.example.internal
 OSM_API_TOKEN=replace-me
 ```
 
@@ -1734,4 +1734,4 @@ No spec requirement is left without a task. The three deferred endpoints and all
 
 ## Execution Handoff
 
-Plan complete. Track B is buildable/testable entirely locally (testcontainers PostGIS + httpx); Track C against stubbed fetch. Track A is a referenced prerequisite whose runbooks live in `~/Projects/cm/udl`. Production cutover (the API actually serving the cartographer) requires Track A done on the box and `OSM_API_BASE`/`OSM_API_TOKEN` set.
+Plan complete. Track B is buildable/testable entirely locally (testcontainers PostGIS + httpx); Track C against stubbed fetch. Track A is a referenced prerequisite whose runbooks live in `~/Projects/cm/udl`. Production cutover (the API actually serving the cartographer) requires Track A done on the box and `OSM_API_BASE_URL`/`OSM_API_TOKEN` set.
