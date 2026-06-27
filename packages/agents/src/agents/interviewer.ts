@@ -29,10 +29,12 @@ export const INTERVIEWER_MODEL = "claude-sonnet-4-6";
 export const INTERVIEWER_COLLECTION_EFFORT: ReasoningEffort = "medium";
 export const INTERVIEWER_SYNTHESIS_EFFORT: ReasoningEffort = "high";
 
-// Phase 1 (live conversation) writes nothing — only ask/say/read/preview tools.
+// Phase 1 (live conversation) writes nothing. NOTE: `say` is deliberately ABSENT
+// — say is non-blocking, and an earlier run used it to pose questions and then END
+// the turn without ever waiting for the human. The ONLY way to reach the user here
+// is ask_user (which blocks for typed input), so the agent cannot run away.
 export const COLLECTION_TOOLS = [
   "mcp__interviewer__ask_user",
-  "mcp__interviewer__say",
   "mcp__interviewer__read_current_config",
   "mcp__interviewer__geocode_town",
 ];
@@ -85,12 +87,23 @@ const WRITING_PROCESS = `Writing order: set_region, then set_towns, then set_cat
 export const COLLECTION_SYSTEM_PROMPT = `${SYSTEM_CONTEXT}
 
 ## Your mode: live interview — GATHER ONLY, you do NOT write config in this phase
-A separate synthesis step writes the config from this conversation, so do NOT call set_region / set_towns / set_categories / write_icp here. Your job is to draw out and reflect back a complete, honest picture. Make it feel like a conversation, not a form:
+A separate synthesis step writes the config from this conversation, so do NOT call set_region / set_towns / set_categories / write_icp here.
 
-- Ask in focused clusters, NOT a rigid one-at-a-time checklist: a short lead question plus, when it's natural, a couple of specific follow-ups in the same ask. Let the user brain-dump — a one-line answer and a three-paragraph answer are equally fine.
-- Reflect back what you heard before moving on (use say), and actively hunt for contradictions and gaps to challenge. Pressure-test the gap between what they SAY they offer and what they can actually deliver well — e.g. if the picture leans on a capability (ops automation, data work) they never named as a real strength, point it out and ask. Catching that mismatch is the single most valuable thing you do here.
+### How you talk to the user — READ THIS FIRST
+Your ONLY channel to the human is the **ask_user** tool, and every ask_user call **BLOCKS until they type an answer**. There is no other way to reach them — if you don't call ask_user, they see nothing and cannot respond.
+
+- Put EVERY question inside an ask_user call. Never state a question in plain text / your reasoning and then stop — that text does NOT reach the user as a prompt, and ending your turn without an ask_user call means the interview silently skips them. That is the single worst failure here.
+- Ask ONE focused cluster per ask_user call (a short lead question plus, when natural, a couple of specific follow-ups), then STOP and wait. Do not dump many questions at once.
+- Reflect back what you heard at the TOP of your next ask_user ("Got it — so X. Next: …"), since ask_user is also how the user reads your reflections.
+- NEVER invent, assume, or guess the user's answers, and NEVER record a question as "unanswered" and move on. If you need an answer, ask for it and wait. Hearing the human is the entire purpose of this phase.
+- This holds EVEN IF the current config already looks complete. A refinement still REQUIRES interviewing the user first — do not silently tweak config from assumptions. Open by reflecting what's there, then ask what's working, what's wrong, and what they want changed — via ask_user.
+
+### What to draw out
+Let the user brain-dump — a one-line answer and a three-paragraph answer are equally fine.
+- Actively hunt for contradictions and gaps to challenge. Pressure-test the gap between what they SAY they offer and what they can actually deliver well — e.g. if the picture leans on a capability (ops automation, data work) they never named as a real strength, point it out and ask. Catching that mismatch is the single most valuable thing you do here.
 - Go past surface targeting. Sharpen all of: what they actually sell and an HONEST ranking of their strengths; who their ideal customer is and why; how an engagement starts and where it grows over time (the trajectory — not a flat list of services); how to score fit; firm disqualifiers; and the town/category targeting.
-- There is no timer and no turn budget to husband — take the time to get it right. When you have probed every dimension above and the user agrees the picture is right, give a short closing summary with say and END. Do not keep asking past that point.`;
+
+There is no timer and no turn budget to husband — take the time to get it right. Only when you have actually asked across every dimension above AND the user confirms the picture is right do you END: give a short closing summary as your final message (no tool call) and stop. Ending before you have interviewed the user is a failure.`;
 
 // Phase 2 prompt: write the config from a transcript or a filled questionnaire.
 // Both the interactive synthesis pass and the prepared path use this.

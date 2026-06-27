@@ -396,10 +396,16 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
   const io: InterviewIO = {
     ask: async (question, opts) => {
       appendEntry({ role: "agent", kind: "ask", text: question });
-      const hint = opts?.choices?.length ? ` [${opts.choices.join(" / ")}]` : "";
-      const answer = await rlQuestion(rl, `\n${question}${hint}\n> `);
+      const hint = opts?.choices?.length ? `  [${opts.choices.join(" / ")}]` : "";
+      // A framed input block: the question, a rule above the input, the typed
+      // answer (readline wraps it as it overflows — nothing is ever erased), and a
+      // rule below once submitted. Rule width tracks the terminal, capped at 80.
+      const rule = "─".repeat(Math.min(process.stdout.columns || 80, 80));
+      process.stdout.write(`\n${question}${hint}\n${rule}\n`);
+      const answer = await rlQuestion(rl, "› ");
+      process.stdout.write(`${rule}\n`);
       appendEntry({ role: "user", kind: "answer", text: answer });
-      process.stdout.write("\n  · got it — thinking…\n");
+      process.stdout.write("  · got it — thinking…\n");
       return answer;
     },
     say: (message) => {
