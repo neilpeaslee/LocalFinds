@@ -35,3 +35,10 @@ async def test_view_kind_first_business_key(pg_conn):
     rows = {r["osm_id"]: r for r in await _rows(pg_conn)}
     assert rows["way/2"]["kind"] == "shop=supermarket"
     assert rows["relation/3"]["kind"] == "tourism=museum"
+
+
+async def test_view_geom_is_srid_3857(pg_conn):
+    srid = await pg_conn.fetchval(
+        "SELECT ST_SRID(geom) FROM osm_businesses WHERE osm_id = 'node/1'"
+    )
+    assert srid == 3857
