@@ -30,15 +30,18 @@ remote "npx tsx packages/db/src/sync-merge.ts '${INCOMING_REL}' '${DEPLOY_DB}'"
 
 # Ship the non-DB runtime files: agent run transcripts (data/agents/*/runs/*.jsonl)
 # and notes power prod's /agents pages. Exclude the DB (handled by the merge), the
-# temp snapshot, and config/deploy.env (local infra, not for prod). No --delete:
-# additive only, mirroring the prior deploy.
+# temp snapshot, and config/deploy.env (local infra, not for prod). Also exclude
+# data/'s own private git repo (data/.git + .gitignore — see the localfinds-data
+# repo: it mirrors to gitudl+henry, must never ship to prod) and the transient
+# .staging-* dirs the interviewer creates. No --delete: additive only.
 echo "sync-content: ship agent runtime files (transcripts, notes, config)"
 if [ "$DRY_RUN" = 1 ]; then
-  echo "DRY rsync> data/ (excl. localfinds.db*, .sync-incoming.db, config/deploy.env) -> $DEPLOY_HOST:$DEPLOY_PATH/data/"
+  echo "DRY rsync> data/ (excl. localfinds.db*, .sync-incoming.db, config/deploy.env, .git, .gitignore, .staging-*) -> $DEPLOY_HOST:$DEPLOY_PATH/data/"
 else
   rsync -az \
     --exclude='localfinds.db' --exclude='localfinds.db-wal' --exclude='localfinds.db-shm' \
     --exclude='.sync-incoming.db' --exclude='config/deploy.env' \
+    --exclude='.git' --exclude='.gitignore' --exclude='.staging-*' \
     data/ "$DEPLOY_HOST:$DEPLOY_PATH/data/"
 fi
 
