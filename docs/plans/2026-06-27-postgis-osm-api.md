@@ -603,7 +603,7 @@ git commit -m "feat(osm-api): osm_businesses view + test fixtures; spec --hstore
   - `BUSINESS_KEYS: tuple[str, ...]` = `("amenity", "shop", "tourism", "office", "craft", "leisure")`.
   - `class BboxError(ValueError)` — raised on a malformed bbox.
   - `parse_bbox(raw: str) -> tuple[float, float, float, float]` — parses `"s,w,n,e"`, validates ranges and `s<n`, `w<e`; raises `BboxError`.
-  - `async fetch_businesses(conn, *, town: str | None, bbox: tuple[float,float,float,float] | None, keys: list[str] | None, limit: int) -> list[dict]` — returns view rows (as dicts) filtered by town (exact, case-insensitive) OR bbox, optionally narrowed to `keys`, capped at `limit`. Exactly one of `town`/`bbox` must be set (caller enforces).
+  - `async fetch_businesses(conn, *, town: str | None, bbox: tuple[float,float,float,float] | None, keys: list[str] | None, limit: int) -> list[dict]` — returns view rows (as dicts) filtered by town (exact, case-insensitive) OR bbox, optionally narrowed to `keys`, capped at `limit`. Exactly one of `town`/`bbox` must be set (caller enforces). Raises `ValueError` if `keys` is non-empty and contains any value not in `BUSINESS_KEYS` (the B5 endpoint maps this to a 400) — never silently drops unknown keys.
 
 - [ ] **Step 1: Write the failing query tests**
 
@@ -726,10 +726,13 @@ async def fetch_businesses(
         raise ValueError("exactly one of town/bbox is required")
 
     if keys:
-        safe = [k for k in keys if k in BUSINESS_KEYS]
-        if safe:
-            ors = " OR ".join(f"kind LIKE '{k}=%'" for k in safe)
-            where.append(f"({ors})")
+        # Validate against the allowlist and reject unknown keys outright — a
+        # silent drop would turn keys=["badkey"] into "return everything".
+        invalid = [k for k in keys if k not in BUSINESS_KEYS]
+        if invalid:
+            raise ValueError(f"unknown business key(s): {', '.join(invalid)}")
+        ors = " OR ".join(f"kind LIKE '{k}=%'" for k in keys)
+        where.append(f"({ors})")
 
     params.append(limit)
     sql = (
@@ -976,6 +979,11 @@ async def test_businesses_bad_bbox_400(client):
     assert r.status_code == 400
 
 
+async def test_businesses_unknown_key_400(client):
+    r = await client.get("/osm/businesses?town=rockland&keys=badkey", headers=AUTH)
+    assert r.status_code == 400
+
+
 async def test_businesses_requires_exactly_one_filter(client):
     assert (await client.get("/osm/businesses", headers=AUTH)).status_code == 400
     assert (
@@ -1068,6 +1076,9 @@ async def businesses(
             rows = await fetch_businesses(
                 conn, town=town, bbox=parsed_bbox, keys=key_list, limit=effective
             )
+    except ValueError as exc:
+        # bad input surfaced by the query layer (e.g. an unknown business key)
+        raise HTTPException(400, str(exc)) from exc
     except (asyncpg.PostgresError, OSError) as exc:
         raise HTTPException(503, "database unavailable") from exc
 
