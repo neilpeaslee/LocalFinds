@@ -111,6 +111,35 @@ Watch a run live — or read any past run's full transcript — on `/agents`: ea
 run streams a structured event log to `data/agents/<agent>/runs/<id>.jsonl`,
 surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
+## Deploy
+
+The app is served as a snapshot from a single host behind nginx (public reads,
+auth-gated writes). Deploys run from this repo root on a clean tree — no sudo.
+The real infra values (host, path, process name) live in the gitignored
+`data/config/deploy.env`; the `deploy-localfinds` skill documents them.
+
+```sh
+npm run deploy                 # full: gate → migrate → deploy-code → sync-content
+npm run deploy -- --dry-run    # preview every remote action, change nothing
+npm run deploy:sync-content    # data only — refresh content after an agent run
+```
+
+Composable stages: `deploy:gate` (blocks unless on `main`, tree clean, tests +
+`tsc` pass), `deploy:migrate` (applies new Drizzle migrations, prod DB backed up
+first), `deploy:code` (rsyncs the tree, builds, reloads, verifies GET=200 /
+POST=401), `deploy:sync-content`.
+
+`sync-content` merges local discovery data into the prod DB **preserving
+prod-side activity** — the `feedback` table and `finds.status` (stars/hides/shown)
+are never overwritten — then ships agent runtime files and reloads. The prod DB
+is backed up first; deletes do **not** propagate (a find removed locally stays on
+prod). After it finishes, sanity-check the site:
+
+```sh
+curl -s -o /dev/null -w "%{http_code}\n" https://localfinds.peaslee.org/        # 200
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://localfinds.peaslee.org/ # 401
+```
+
 ## Using your own region
 
 The committed `data/config/*.example` files describe a sample region (Knox
