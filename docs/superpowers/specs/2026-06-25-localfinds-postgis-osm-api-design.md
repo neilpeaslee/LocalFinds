@@ -43,7 +43,7 @@ change) in exchange for that runway.
 
 ```
 Geofabrik (maine-latest.osm.pbf + daily diffs)
-        │  osm2pgsql (classic + --hstore + slim) + osm2pgsql-replication cron
+        │  osm2pgsql (classic + --hstore-all + slim) + osm2pgsql-replication cron
         ▼
    PostGIS (gis db)  ──  planet_osm_* (full tags) + osm_businesses view + admin
         │
@@ -91,9 +91,9 @@ below come from its 2026-06-27 baseline.
 
 ### 2. Data — full Maine import
 
-- osm2pgsql in **classic output + `--hstore` + slim** loads
+- osm2pgsql in **classic output + `--hstore-all` + slim** loads
   `maine-latest.osm.pbf` into `planet_osm_point / line / polygon / roads`, all
-  tags preserved in an hstore column. Slim tables are retained to enable
+  tags preserved in an hstore column (`--hstore-all`, so even column-promoted tags like name/amenity stay in the hstore the view reads). Slim tables are retained to enable
   incremental replication.
 - **`osm_businesses` view** over the imported tables: named features carrying a
   business key (`amenity, shop, tourism, office, craft, leisure` — widenable, it
