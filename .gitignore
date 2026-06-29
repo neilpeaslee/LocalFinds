@@ -29,3 +29,6 @@ docs/superpowers/plans/*deploy-localfinds*
 data/**
 !data/**/
 !data/**/*.example
+
+# quiet-track: docs/ lives in a nested repo (gitudl+Henry), see setup-git-remotes / git-publish-gate
+/docs/
