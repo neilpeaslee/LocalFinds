@@ -42,3 +42,17 @@ async def test_view_geom_is_srid_3857(pg_conn):
         "SELECT ST_SRID(geom) FROM osm_businesses WHERE osm_id = 'node/1'"
     )
     assert srid == 3857
+
+
+async def test_view_dedups_split_multipolygon_keeping_largest(pg_conn):
+    # relation -3 is seeded as TWO planet_osm_polygon rows (a split multipolygon,
+    # which osm2pgsql really produces). The view must collapse them to a single
+    # relation/3 row, or the unique osm_id index / cartographer upsert chokes.
+    rows = await pg_conn.fetch(
+        "SELECT lng, lat FROM osm_businesses WHERE osm_id = 'relation/3'"
+    )
+    assert len(rows) == 1  # deduped, not two rows
+    # ...and it keeps the LARGER part: point-on-surface near the center of the
+    # bigger square (-69.107, 44.104), not the tiny part near (-69.090, 44.120).
+    assert abs(rows[0]["lng"] - (-69.107)) < 0.001
+    assert abs(rows[0]["lat"] - 44.104) < 0.001

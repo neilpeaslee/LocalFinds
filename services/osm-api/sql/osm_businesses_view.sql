@@ -26,8 +26,32 @@
 -- (DROP MATERIALIZED VIEW IF EXISTS won't drop a plain view).
 DROP MATERIALIZED VIEW IF EXISTS osm_businesses;
 CREATE MATERIALIZED VIEW osm_businesses AS
-WITH src AS (
-    -- nodes (way is already a point)
+WITH poly AS (
+    -- ways / relations (areas). Negative osm_id in polygon = relation.
+    -- osm2pgsql can emit ONE feature as several planet_osm_polygon rows (a
+    -- multipolygon relation split into parts), so collapse to one row per osm_id
+    -- — keep the largest part as the representative point. osm_id MUST be unique:
+    -- it's the matview's PK (unique index below, required for REFRESH
+    -- CONCURRENTLY) and the cartographer upserts on it, so duplicates would be
+    -- both an index failure and duplicate map markers.
+    SELECT DISTINCT ON (osm_id) osm_id, tags, geom
+    FROM (
+        SELECT
+            CASE WHEN osm_id < 0
+                 THEN 'relation/' || (-osm_id)
+                 ELSE 'way/' || osm_id END AS osm_id,
+            tags,
+            ST_PointOnSurface(way)        AS geom,
+            ST_Area(way)                  AS area
+        FROM planet_osm_polygon
+        WHERE tags ? 'name'
+          AND (tags ? 'amenity' OR tags ? 'shop' OR tags ? 'tourism'
+               OR tags ? 'office' OR tags ? 'craft' OR tags ? 'leisure')
+    ) p
+    ORDER BY osm_id, area DESC NULLS LAST
+),
+src AS (
+    -- nodes (way is already a point). One row per node id — already unique.
     SELECT
         'node/' || osm_id            AS osm_id,
         tags,
@@ -37,17 +61,7 @@ WITH src AS (
       AND (tags ? 'amenity' OR tags ? 'shop' OR tags ? 'tourism'
            OR tags ? 'office' OR tags ? 'craft' OR tags ? 'leisure')
     UNION ALL
-    -- ways / relations (areas). Negative osm_id in polygon = relation.
-    SELECT
-        CASE WHEN osm_id < 0
-             THEN 'relation/' || (-osm_id)
-             ELSE 'way/' || osm_id END AS osm_id,
-        tags,
-        ST_PointOnSurface(way)        AS geom
-    FROM planet_osm_polygon
-    WHERE tags ? 'name'
-      AND (tags ? 'amenity' OR tags ? 'shop' OR tags ? 'tourism'
-           OR tags ? 'office' OR tags ? 'craft' OR tags ? 'leisure')
+    SELECT osm_id, tags, geom FROM poly
 )
 SELECT
     s.osm_id,

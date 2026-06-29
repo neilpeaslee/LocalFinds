@@ -40,6 +40,16 @@ INSERT INTO planet_osm_polygon (osm_id, tags, way) VALUES
  hstore(ARRAY['tourism','name'], ARRAY['museum','Farnsworth Art Museum']),
  ST_Transform(ST_MakeEnvelope(-69.108, 44.103, -69.106, 44.105, 4326), 3857));
 
+-- A SECOND part of the SAME museum relation (-3): osm2pgsql emits a split
+-- multipolygon as multiple planet_osm_polygon rows sharing one osm_id. The view
+-- must collapse these to ONE relation/3 row (the unique osm_id index requires it
+-- and the cartographer upserts on osm_id). This part is smaller than the one
+-- above, so the dedup must keep the one above.
+INSERT INTO planet_osm_polygon (osm_id, tags, way) VALUES
+(-3,
+ hstore(ARRAY['tourism','name'], ARRAY['museum','Farnsworth Art Museum']),
+ ST_Transform(ST_MakeEnvelope(-69.090, 44.120, -69.0895, 44.1205, 4326), 3857));
+
 -- An unnamed node (must be excluded by the view)
 INSERT INTO planet_osm_point (osm_id, tags, way) VALUES
 (4,
