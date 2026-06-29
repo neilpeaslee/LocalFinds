@@ -37,9 +37,17 @@ runbooks in that workspace.
 Apply, in order, against the target `gis` DB:
 
 1. (box only) the osm2pgsql import — `--create --slim --hstore-all`, classic output.
-2. `sql/osm_businesses_view.sql`
+2. `sql/osm_businesses_view.sql` — creates `osm_businesses` as a **materialized
+   view** (`WITH DATA`) plus its indexes. `town` is precomputed once per refresh
+   instead of per query; see the file header for why. If `osm_businesses` already
+   exists as a plain view, run `DROP VIEW IF EXISTS osm_businesses;` once first.
 3. `sql/indexes.sql`
 
-Locally, `tests/conftest.py` does the equivalent (fixture schema + view + seed)
-inside a throwaway container, so you only need this sequence for a persistent
-`docker compose` DB you want to hit with `uvicorn`.
+Because it is materialized, refresh it after every osm2pgsql-replication update
+(daily cron): `REFRESH MATERIALIZED VIEW CONCURRENTLY osm_businesses;` (the
+unique `osm_id` index makes CONCURRENTLY possible, so reads never block).
+
+Locally, `tests/conftest.py` does the equivalent (fixture schema + matview + seed,
+then `REFRESH MATERIALIZED VIEW osm_businesses`) inside a throwaway container, so
+you only need this sequence for a persistent `docker compose` DB you want to hit
+with `uvicorn`.

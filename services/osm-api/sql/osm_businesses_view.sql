@@ -6,7 +6,26 @@
 -- osm2pgsql import done with --hstore-all. Nodes come from planet_osm_point;
 -- ways/relations (areas) from planet_osm_polygon. Geometry is web-mercator
 -- (3857); lat/lng are transformed to 4326, containment math stays in 3857.
-CREATE OR REPLACE VIEW osm_businesses AS
+--
+-- MATERIALIZED (was a plain view through 2026-06-29): `town` is a per-row
+-- correlated ST_Contains lookup against the admin-boundary polygons, and the
+-- API's primary access pattern filters on it (lower(town)=lower($1)). As a plain
+-- view, one town query evaluated that subquery for EVERY candidate business —
+-- ~8.6 s on the full Maine import (EXPLAIN ANALYZE, 2026-06-29). Materializing
+-- precomputes town once per refresh; the lower(town) btree below then makes a
+-- town query an index lookup (sub-ms). The matview is refreshed after each daily
+-- osm2pgsql-replication update with REFRESH MATERIALIZED VIEW CONCURRENTLY
+-- (which requires the unique osm_id index below and never blocks reads).
+--
+-- Created WITH DATA: against a populated import it fills immediately. In the test
+-- fixture the base tables are empty at creation, so conftest loads seed.sql and
+-- then runs a (non-concurrent) REFRESH MATERIALIZED VIEW before querying.
+--
+-- One-time migration note (box): if osm_businesses already exists as a PLAIN
+-- view, DROP VIEW IF EXISTS osm_businesses; once before applying this file
+-- (DROP MATERIALIZED VIEW IF EXISTS won't drop a plain view).
+DROP MATERIALIZED VIEW IF EXISTS osm_businesses;
+CREATE MATERIALIZED VIEW osm_businesses AS
 WITH src AS (
     -- nodes (way is already a point)
     SELECT
@@ -75,4 +94,15 @@ SELECT
     COALESCE(s.tags->'phone',   s.tags->'contact:phone')   AS phone,
     s.tags->'brand'                                  AS brand,
     s.geom                                           AS geom
-FROM src s;
+FROM src s
+WITH DATA;
+
+-- Unique key on osm_id: the natural PK, and REQUIRED for REFRESH ... CONCURRENTLY.
+CREATE UNIQUE INDEX IF NOT EXISTS osm_businesses_osm_id_uidx
+    ON osm_businesses (osm_id);
+-- Primary access pattern: town filter lower(town)=lower($1) -> btree lookup.
+CREATE INDEX IF NOT EXISTS osm_businesses_town_idx
+    ON osm_businesses (lower(town));
+-- Secondary access pattern: bbox ST_Intersects(geom, ...) -> GiST.
+CREATE INDEX IF NOT EXISTS osm_businesses_geom_gist
+    ON osm_businesses USING gist (geom);

@@ -34,6 +34,9 @@ def _load_schema(dsn: str):
                 SEED,
             ):
                 await conn.execute(f.read_text())
+            # osm_businesses is a MATERIALIZED view created WITH DATA while the
+            # base tables were still empty; populate it now that seed.sql ran.
+            await conn.execute("REFRESH MATERIALIZED VIEW osm_businesses")
         finally:
             await conn.close()
 
