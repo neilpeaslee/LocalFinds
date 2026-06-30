@@ -3,7 +3,6 @@ import {
   agentWorkspaceDir,
   blockedHosts,
   countRunWarnings,
-  dedupeBusinesses,
   finishRun,
   formatCategoryPriorities,
   openRunLog,
@@ -281,19 +280,6 @@ export async function runAgent(
       sessionId: result?.session_id,
       error: status === "error" ? result?.subtype : undefined,
     });
-    // Deterministic post-run housekeeping: collapse OSM duplicate elements the
-    // scan may have introduced. Cartographer-only; never LLM-triggered. A
-    // failure here must not fail an otherwise-successful run.
-    if (status === "success" && def.name === "cartographer") {
-      try {
-        const summary = dedupeBusinesses();
-        console.log(
-          `[${def.name}] dedupe: marked ${summary.marked} duplicate(s) across ${summary.groups} group(s)`,
-        );
-      } catch (err) {
-        console.error(`[${def.name}] dedupe sweep failed:`, err);
-      }
-    }
   } catch (err) {
     // The SDK yields the terminal result message (e.g. error_max_budget_usd or
     // error_max_turns), then throws when the CLI process exits non-zero — keep

@@ -5,7 +5,6 @@ import type { Run } from "./schema";
 export const ROSTER = [
   "scout",
   "source-keeper",
-  "cartographer",
   "prospector",
   "curator",
 ] as const;

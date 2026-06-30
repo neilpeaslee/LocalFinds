@@ -7,7 +7,6 @@ import {
   readFeedbackForAgent,
   setFindExpiry,
   updateFindStatus,
-  upsertBusiness,
   upsertSource,
   type FindStatus,
 } from "@localfinds/db";
@@ -67,77 +66,6 @@ export function recordSourceUpsert(
 }
 
 const findStatus = z.enum(["new", "shown", "hidden", "starred"]);
-
-// Shared shape for one business row — used by both upsert_business (a single
-// row) and upsert_businesses (a batch), so their fields and validation stay
-// identical.
-const businessShape = {
-  osm_id: z
-    .string()
-    .describe('OSM stable id, e.g. "node/123" / "way/456" / "relation/789"'),
-  name: z.string().describe(PLAIN_TEXT),
-  kind: z
-    .string()
-    .optional()
-    .describe('Verbatim OSM primary tag, e.g. "amenity=cafe"'),
-  tags: z.array(z.string()).optional().describe("A few lowercase free-form tags"),
-  address: z.string().optional(),
-  town: z.string().optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  website: z.string().optional(),
-  phone: z.string().optional(),
-  brand: z
-    .string()
-    .optional()
-    .describe("OSM brand tag if present — marks a national/regional chain"),
-  status: z.enum(["active", "closed", "unknown"]).optional(),
-  notes_path: z
-    .string()
-    .optional()
-    .describe("Workspace-relative path to a note, e.g. notes/towns/rockland.md"),
-};
-const businessSchema = z.object(businessShape);
-type BusinessInput = z.infer<typeof businessSchema>;
-
-// Validate + coerce one business row and write it. Returns the upsert result,
-// or an { osm_id, error } object the caller can surface without aborting a batch.
-function upsertOneBusiness(
-  item: BusinessInput,
-  agent: string,
-  counters: RunCounters,
-) {
-  // osm_id is the unique dedupe key and is rendered into an OSM URL — reject
-  // free text rather than storing a junk key / broken link.
-  if (!isValidOsmId(item.osm_id)) {
-    return {
-      osm_id: item.osm_id,
-      error: `invalid osm_id "${item.osm_id}" — expected "node/<n>", "way/<n>", or "relation/<n>"`,
-    };
-  }
-  // Drop out-of-range coordinates instead of persisting a bad pin.
-  const lat = item.lat != null && Math.abs(item.lat) <= 90 ? item.lat : undefined;
-  const lng = item.lng != null && Math.abs(item.lng) <= 180 ? item.lng : undefined;
-  const result = upsertBusiness({
-    osmId: item.osm_id.trim(),
-    name: item.name,
-    kind: item.kind,
-    tags: item.tags,
-    address: item.address,
-    town: item.town,
-    lat,
-    lng,
-    website: item.website,
-    phone: item.phone,
-    brand: item.brand,
-    status: item.status,
-    notesPath: item.notes_path,
-    addedBy: agent,
-  });
-  if (result.outcome === "created") counters.added++;
-  else counters.updated++;
-  return result;
-}
 
 // All tools are defined on one server; each agent's allowedTools picks its subset.
 export function buildLocalfindsServer(
@@ -329,46 +257,6 @@ export function buildLocalfindsServer(
             }),
             args.limit,
           ),
-      ),
-      tool(
-        "upsert_business",
-        "Save or update one business in the directory (matched by osm_id). Store exact facts only — put any judgment in your workspace note. Returns whether it was 'created' or 'updated'. To save many at once, prefer upsert_businesses.",
-        businessShape,
-        async (args) => asText(upsertOneBusiness(args, agent, counters)),
-      ),
-      tool(
-        "upsert_businesses",
-        "Save or update MANY businesses in one call — each matched by osm_id, same fields as upsert_business. PREFER THIS when saving the results of a scan: one call per (town × category) cell instead of one call per business cuts turns and budget. Returns counts of created/updated plus any per-item errors (e.g. an invalid osm_id) — a bad row is skipped, the rest still save.",
-        {
-          items: z
-            .array(businessSchema)
-            .min(1)
-            .max(200)
-            .describe(
-              "Businesses to upsert; skip unnamed elements and Tier 4 kinds before calling.",
-            ),
-        },
-        async (args) => {
-          const results = args.items.map((item) =>
-            upsertOneBusiness(item, agent, counters),
-          );
-          const errors = results.filter(
-            (r): r is { osm_id: string; error: string } => "error" in r,
-          );
-          const created = results.filter(
-            (r) => "outcome" in r && r.outcome === "created",
-          ).length;
-          const updated = results.filter(
-            (r) => "outcome" in r && r.outcome === "updated",
-          ).length;
-          return asText({
-            count: args.items.length,
-            created,
-            updated,
-            errors: errors.length,
-            ...(errors.length ? { errorDetails: errors } : {}),
-          });
-        },
       ),
       tool(
         "list_businesses",
