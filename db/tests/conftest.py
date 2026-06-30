@@ -39,39 +39,13 @@ async def _setup(dsn: str):
         await conn.close()
 
 
-class SavepointConnection:
-    """Wrapper around asyncpg.Connection that uses savepoints for each operation.
-
-    This allows tests to continue executing after an error is caught,
-    since errors only rollback the savepoint, not the entire transaction.
-    """
-
-    def __init__(self, conn):
-        self._conn = conn
-
-    async def execute(self, query, *args):
-        async with self._conn.transaction():
-            return await self._conn.execute(query, *args)
-
-    async def fetchval(self, query, *args):
-        async with self._conn.transaction():
-            return await self._conn.fetchval(query, *args)
-
-    async def fetchrow(self, query, *args):
-        async with self._conn.transaction():
-            return await self._conn.fetchrow(query, *args)
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-
 @pytest_asyncio.fixture
 async def conn(pg_dsn):
     c = await asyncpg.connect(pg_dsn)
     tx = c.transaction()
     await tx.start()
     try:
-        yield SavepointConnection(c)
+        yield c
     finally:
         await tx.rollback()
         await c.close()

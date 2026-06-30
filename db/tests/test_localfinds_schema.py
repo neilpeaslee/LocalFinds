@@ -43,11 +43,14 @@ async def test_finds_defaults(conn):
     assert list(row["tags"]) == []
 
 
-async def test_lead_fk_requires_an_annotation_anchor(conn):
+async def test_lead_fk_rejects_orphan_place(conn):
     # a lead pointing at a place with no annotation row is rejected
     with pytest.raises(asyncpg.ForeignKeyViolationError):
         await _insert_find(conn, url_hash="orphan-lead", type="lead", place_osm_id="node/999")
-    # once the anchor exists, the lead is accepted
+
+
+async def test_lead_with_anchor_is_accepted(conn):
+    # once the anchor exists, the lead is accepted and links to it
     await conn.execute(
         "INSERT INTO localfinds.place_annotations (osm_id) VALUES ('node/1')"
     )
