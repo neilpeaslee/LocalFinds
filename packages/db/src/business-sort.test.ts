@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Business } from "./schema";
+import type { Place } from "./schema";
 import {
   parseBusinessSort,
   parseDir,
@@ -8,27 +8,24 @@ import {
 
 // Build a RankedBusiness; only the fields the comparator reads need to vary.
 function rb(
-  over: Partial<Business> & { tier?: number; isChain?: boolean },
-): { business: Business; tier: number; isChain: boolean } {
+  over: Partial<Place> & { tier?: number; isChain?: boolean },
+): { business: Place; tier: number; isChain: boolean } {
   const { tier = 1, isChain = false, ...bo } = over;
-  const business: Business = {
-    id: 1,
+  const business: Place = {
     osmId: "node/1",
     name: "Business",
     kind: null,
-    tags: [],
-    address: null,
-    town: null,
     lat: null,
     lng: null,
+    town: null,
+    address: null,
     website: null,
     phone: null,
     brand: null,
+    tags: [],
     status: "active",
-    notesPath: null,
-    addedBy: "test",
-    discoveredAt: "2026-01-01T00:00:00.000Z",
-    lastSeenAt: "2026-01-01T00:00:00.000Z",
+    statusOverride: null,
+    annotationNote: null,
     duplicateOf: null,
     ...bo,
   };

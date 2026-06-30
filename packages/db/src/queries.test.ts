@@ -1,118 +1,209 @@
-import { execSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { resetDb, setupPgDatabase, teardownPgDatabase } from "../test/harness";
+import * as q from "./queries";
 
-// Point the whole db package at a throwaway data dir BEFORE importing it.
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localfinds-test-"));
-process.env.LOCALFINDS_DATA_DIR = tmp;
-
-let q: typeof import("./queries");
-let cfg: typeof import("./config");
+beforeAll(setupPgDatabase, 120_000);
+afterAll(teardownPgDatabase);
+afterEach(resetDb);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-beforeAll(async () => {
-  execSync("npx drizzle-kit push --force", {
-    cwd: path.resolve(import.meta.dirname, ".."),
-    env: { ...process.env, LOCALFINDS_DATA_DIR: tmp },
-    stdio: "ignore",
+describe("insertFind", () => {
+  it("creates then reports a duplicate on the same url+title", async () => {
+    const a = await q.insertFind({
+      title: "Fair",
+      url: "https://x.test/e",
+      agent: "scout",
+      tags: ["fair"],
+    });
+    expect(a.outcome).toBe("created");
+    const b = await q.insertFind({ title: "Fair", url: "https://x.test/e", agent: "scout" });
+    expect(b).toEqual({ outcome: "duplicate", id: a.id });
   });
-  q = await import("./queries");
-  cfg = await import("./config");
-}, 60_000);
 
-describe("insertFind dedupe", () => {
-  it("dedupes url variants of the same item", () => {
-    const first = q.insertFind({
+  it("dedupes url variants (utm/scheme/www) of the same titled item", async () => {
+    const first = await q.insertFind({
       title: "Concert at the park",
       url: "https://www.example.com/concert/?utm_source=newsletter",
-      agent: "test",
+      agent: "scout",
     });
     expect(first.outcome).toBe("created");
-
-    const second = q.insertFind({
+    const second = await q.insertFind({
       title: "Concert at the park",
       url: "http://example.com/concert",
-      agent: "test",
+      agent: "scout",
     });
     expect(second).toEqual({ outcome: "duplicate", id: first.id });
   });
 
-  it("keeps distinct events that share one listing URL", () => {
-    const ecologyWalk = q.insertFind({
-      title: "Free Family Fridays: Summer Ecology Walk",
+  it("keeps distinct events that share one listing URL", async () => {
+    const walk = await q.insertFind({
+      title: "Summer Ecology Walk",
       url: "https://merryspring.org/calendar/",
-      agent: "test",
+      agent: "scout",
     });
-    const roseDay = q.insertFind({
-      title: "Merryspring Rose Day: Lecture & Garden Walk",
+    const rose = await q.insertFind({
+      title: "Rose Day: Lecture & Garden Walk",
       url: "https://merryspring.org/calendar/",
-      agent: "test",
+      agent: "scout",
     });
-    expect(ecologyWalk.outcome).toBe("created");
-    expect(roseDay.outcome).toBe("created");
-    expect(roseDay.id).not.toBe(ecologyWalk.id);
+    expect(walk.outcome).toBe("created");
+    expect(rose.outcome).toBe("created");
+    expect(rose.id).not.toBe(walk.id);
+  });
+
+  it("links a find to its source and bumps the source's finds_count", async () => {
+    const url = "https://src.example.org";
+    const { id: sourceId } = await q.upsertSource({ url, name: "Src", addedBy: "test" });
+    const f = await q.insertFind({
+      title: "From a source",
+      url: `${url}/a`,
+      agent: "scout",
+      sourceUrl: url,
+    });
+    expect(f.outcome).toBe("created");
+    const rows = await q.listFindsBySource(sourceId);
+    expect(rows.map((r) => r.id)).toEqual([f.id]);
+    const src = await q.getSourceById(sourceId);
+    expect(src?.findsCount).toBe(1);
+    expect(src?.lastFindAt).not.toBeNull();
+  });
+
+  it("persists type/score and defaults type to 'event'", async () => {
+    const ev = await q.insertFind({ title: "ev", url: "u-ev", agent: "scout" });
+    const lead = await q.insertFind({
+      title: "lead",
+      url: "u-lead",
+      agent: "prospector",
+      type: "lead",
+      score: 0.9,
+    });
+    const all = await q.getFeed({ view: "all" });
+    const evRow = all.find((r) => r.id === ev.id);
+    const leadRow = all.find((r) => r.id === lead.id);
+    expect(evRow?.type).toBe("event");
+    expect(evRow?.placeOsmId).toBeNull();
+    expect(leadRow?.type).toBe("lead");
+    expect(leadRow?.score).toBe(0.9);
+  });
+
+  it("a lead with a new placeOsmId creates the annotation anchor so the FK holds", async () => {
+    const r = await q.insertFind({
+      title: "Lead Co",
+      url: "https://lead.test",
+      agent: "prospector",
+      type: "lead",
+      placeOsmId: "node/424242",
+    });
+    expect(r.outcome).toBe("created");
+    const { queryOne } = await import("./client");
+    const anchor = await queryOne(
+      `SELECT osm_id FROM localfinds.place_annotations WHERE osm_id = $1`,
+      ["node/424242"],
+    );
+    expect(anchor).toBeTruthy();
+
+    const all = await q.getFeed({ view: "all" });
+    expect(all.find((f) => f.id === r.id)?.placeOsmId).toBe("node/424242");
   });
 });
 
-describe("feed expiry filtering", () => {
-  it("hides expired items from default and starred views, keeps them in 'all'", () => {
-    const expired = q.insertFind({
-      title: "Past event",
-      url: "https://example.com/past",
-      expiresAt: "2020-01-01",
-      agent: "test",
+describe("getFeed views + filters", () => {
+  it("default feed hides hidden + provisional + expired and sorts newest-first", async () => {
+    await q.insertFind({ title: "old", url: "u1", agent: "scout" });
+    await sleep(2);
+    await q.insertFind({ title: "new", url: "u2", agent: "scout" });
+    const prov = await q.insertFind({
+      title: "prov",
+      url: "u3",
+      agent: "scout",
+      status: "provisional",
     });
-    const current = q.insertFind({
-      title: "Current event",
-      url: "https://example.com/current",
-      expiresAt: "2999-01-01",
-      agent: "test",
-    });
-    const undated = q.insertFind({
-      title: "Undated item",
-      url: "https://example.com/undated",
-      agent: "test",
-    });
-
-    const defaultIds = q.getFeed().map((f) => f.id);
-    expect(defaultIds).not.toContain(expired.id);
-    expect(defaultIds).toContain(current.id);
-    expect(defaultIds).toContain(undated.id);
-
-    const allIds = q.getFeed({ view: "all" }).map((f) => f.id);
-    expect(allIds).toContain(expired.id);
+    const rows = await q.getFeed();
+    expect(rows.map((r) => r.title)).toEqual(["new", "old"]);
+    expect(rows.find((r) => r.id === prov.id)).toBeUndefined();
   });
 
-  it("filters by tag", () => {
-    const tagged = q.insertFind({
-      title: "Tagged item",
-      url: "https://example.com/tagged",
-      tags: ["music", "free"],
-      agent: "test",
+  it("hides expired from default + starred, keeps them in 'all'", async () => {
+    const expired = await q.insertFind({
+      title: "past",
+      url: "u-past",
+      expiresAt: "2020-01-01",
+      agent: "scout",
     });
-    const ids = q.getFeed({ tag: "music" }).map((f) => f.id);
-    expect(ids).toContain(tagged.id);
-    expect(q.getFeed({ tag: "nope" })).toHaveLength(0);
+    const current = await q.insertFind({
+      title: "current",
+      url: "u-cur",
+      expiresAt: "2999-01-01",
+      agent: "scout",
+    });
+    const undated = await q.insertFind({ title: "undated", url: "u-und", agent: "scout" });
+
+    const def = (await q.getFeed()).map((f) => f.id);
+    expect(def).not.toContain(expired.id);
+    expect(def).toContain(current.id);
+    expect(def).toContain(undated.id);
+
+    const all = (await q.getFeed({ view: "all" })).map((f) => f.id);
+    expect(all).toContain(expired.id);
+  });
+
+  it("starred view shows only starred, hidden view only hidden", async () => {
+    const a = await q.insertFind({ title: "a", url: "ua", agent: "scout" });
+    const b = await q.insertFind({ title: "b", url: "ub", agent: "scout" });
+    await q.updateFindStatus(a.id, "starred");
+    await q.updateFindStatus(b.id, "hidden");
+    expect((await q.getFeed({ view: "starred" })).map((f) => f.id)).toEqual([a.id]);
+    expect((await q.getFeed({ view: "hidden" })).map((f) => f.id)).toEqual([b.id]);
+  });
+
+  it("tag filter uses array membership and listActiveTags unnests", async () => {
+    await q.insertFind({ title: "t", url: "u", agent: "scout", tags: ["music", "free"] });
+    expect((await q.getFeed({ tag: "music" })).length).toBe(1);
+    expect((await q.getFeed({ tag: "nope" })).length).toBe(0);
+    expect(await q.listActiveTags()).toEqual(expect.arrayContaining(["music", "free"]));
+  });
+
+  it("filters by type and excludeTypes", async () => {
+    const ev = await q.insertFind({
+      title: "ev",
+      url: "u-ev",
+      tags: ["tf"],
+      agent: "scout",
+    });
+    const lead = await q.insertFind({
+      title: "lead",
+      url: "u-lead",
+      tags: ["tf"],
+      agent: "prospector",
+      type: "lead",
+    });
+    expect((await q.getFeed({ tag: "tf", type: "lead" })).map((f) => f.id)).toEqual([lead.id]);
+    const noLead = (await q.getFeed({ tag: "tf", excludeTypes: ["lead"] })).map((f) => f.id);
+    expect(noLead).toContain(ev.id);
+    expect(noLead).not.toContain(lead.id);
+  });
+
+  it("days filter restricts to recently-discovered finds", async () => {
+    await q.insertFind({ title: "recent", url: "u-recent", agent: "scout" });
+    expect((await q.getFeed({ days: 1 })).length).toBe(1);
+    expect((await q.getFeed({ days: 0 })).length).toBe(1); // 0 is falsy -> no day filter
   });
 });
 
 describe("getFeedPage", () => {
   it("paginates a tag-scoped set and supports newest/oldest sort", async () => {
     for (const n of ["A", "B", "C", "D", "E"]) {
-      q.insertFind({
+      await q.insertFind({
         title: `Page ${n}`,
         url: `https://example.com/feedpage-${n}`,
         tags: ["feedpage"],
-        agent: "test",
+        agent: "scout",
       });
-      await sleep(2); // distinct discoveredAt so the order is deterministic
+      await sleep(2); // distinct discovered_at so the order is deterministic
     }
 
-    // Unpaged: the whole set, newest discovered first (E was inserted last).
-    const all = q.getFeedPage({ tag: "feedpage" });
+    const all = await q.getFeedPage({ tag: "feedpage" });
     expect(all.rows.map((f) => f.title)).toEqual([
       "Page E",
       "Page D",
@@ -124,20 +215,17 @@ describe("getFeedPage", () => {
     expect(all.page).toBe(1);
     expect(all.pageCount).toBe(1);
 
-    // Page 2 of size 2 -> third + fourth newest; total/pageCount span the set.
-    const p2 = q.getFeedPage({ tag: "feedpage", page: 2, pageSize: 2 });
+    const p2 = await q.getFeedPage({ tag: "feedpage", page: 2, pageSize: 2 });
     expect(p2.rows.map((f) => f.title)).toEqual(["Page C", "Page B"]);
     expect(p2.total).toBe(5);
     expect(p2.pageCount).toBe(3);
     expect(p2.page).toBe(2);
 
-    // Out-of-range page clamps to the last (partial) page.
-    const last = q.getFeedPage({ tag: "feedpage", page: 99, pageSize: 2 });
+    const last = await q.getFeedPage({ tag: "feedpage", page: 99, pageSize: 2 });
     expect(last.page).toBe(3);
     expect(last.rows.map((f) => f.title)).toEqual(["Page A"]);
 
-    // sort "oldest" reverses the discovered order.
-    const oldest = q.getFeedPage({ tag: "feedpage", sort: "oldest" });
+    const oldest = await q.getFeedPage({ tag: "feedpage", sort: "oldest" });
     expect(oldest.rows.map((f) => f.title)).toEqual([
       "Page A",
       "Page B",
@@ -147,751 +235,178 @@ describe("getFeedPage", () => {
     ]);
   });
 
-  it("sort 'soonest' orders by event start ascending, undated finds last", () => {
-    q.insertFind({ title: "Soon B", url: "https://example.com/soon-b", eventStart: "2026-09-15", tags: ["soonsort"], agent: "test" });
-    q.insertFind({ title: "Soon A", url: "https://example.com/soon-a", eventStart: "2026-09-01", tags: ["soonsort"], agent: "test" });
-    q.insertFind({ title: "Soon Undated", url: "https://example.com/soon-u", tags: ["soonsort"], agent: "test" });
-    q.insertFind({ title: "Soon C", url: "https://example.com/soon-c", eventStart: "2026-09-20T18:00:00Z", tags: ["soonsort"], agent: "test" });
+  it("sort 'soonest' orders by event start ascending, undated finds last", async () => {
+    await q.insertFind({ title: "Soon B", url: "u-b", eventStart: "2026-09-15", tags: ["ss"], agent: "scout" });
+    await q.insertFind({ title: "Soon A", url: "u-a", eventStart: "2026-09-01", tags: ["ss"], agent: "scout" });
+    await q.insertFind({ title: "Soon Undated", url: "u-u", tags: ["ss"], agent: "scout" });
+    await q.insertFind({ title: "Soon C", url: "u-c", eventStart: "2026-09-20T18:00:00Z", tags: ["ss"], agent: "scout" });
 
-    const rows = q.getFeedPage({ tag: "soonsort", sort: "soonest" }).rows.map((f) => f.title);
+    const rows = (await q.getFeedPage({ tag: "ss", sort: "soonest" })).rows.map((f) => f.title);
     expect(rows).toEqual(["Soon A", "Soon B", "Soon C", "Soon Undated"]);
   });
 
-  it("filters by an inclusive event-date range, excluding undated finds", () => {
-    q.insertFind({ title: "July 10", url: "https://example.com/ev-10", eventStart: "2026-07-10", tags: ["evrange"], agent: "test" });
-    q.insertFind({ title: "July 15 evening", url: "https://example.com/ev-15", eventStart: "2026-07-15T19:00:00Z", tags: ["evrange"], agent: "test" });
-    q.insertFind({ title: "July 20", url: "https://example.com/ev-20", eventStart: "2026-07-20", tags: ["evrange"], agent: "test" });
-    q.insertFind({ title: "Undated", url: "https://example.com/ev-undated", tags: ["evrange"], agent: "test" });
+  it("filters by an inclusive event-date range, excluding undated finds", async () => {
+    await q.insertFind({ title: "July 10", url: "u-10", eventStart: "2026-07-10", tags: ["er"], agent: "scout" });
+    await q.insertFind({ title: "July 15 evening", url: "u-15", eventStart: "2026-07-15T19:00:00Z", tags: ["er"], agent: "scout" });
+    await q.insertFind({ title: "July 20", url: "u-20", eventStart: "2026-07-20", tags: ["er"], agent: "scout" });
+    await q.insertFind({ title: "Undated", url: "u-und", tags: ["er"], agent: "scout" });
 
-    // from/to filter on eventStart; the undated find drops out entirely.
-    const inRange = q.getFeedPage({ tag: "evrange", from: "2026-07-10", to: "2026-07-15" });
+    const inRange = await q.getFeedPage({ tag: "er", from: "2026-07-10", to: "2026-07-15" });
     expect(inRange.rows.map((f) => f.title).sort()).toEqual(["July 10", "July 15 evening"]);
 
-    // `to` includes the whole end day, so the evening event on the 15th is kept.
-    const endDay = q.getFeedPage({ tag: "evrange", from: "2026-07-15", to: "2026-07-15" });
+    const endDay = await q.getFeedPage({ tag: "er", from: "2026-07-15", to: "2026-07-15" });
     expect(endDay.rows.map((f) => f.title)).toEqual(["July 15 evening"]);
   });
 });
 
-describe("businesses", () => {
-  it("creates then updates on the same osmId without nulling omitted fields", async () => {
-    const created = q.upsertBusiness({
-      osmId: "node/1",
-      name: "Rock City Coffee",
-      kind: "amenity=cafe",
-      tags: ["cafe", "coffee"],
-      address: "316 Main St, Rockland",
-      town: "Rockland",
-      website: "https://rockcitycoffee.com",
-      phone: "207-555-0100",
-      addedBy: "test",
-    });
-    expect(created.outcome).toBe("created");
-
-    const before = q.listBusinesses({ q: "Rock City" })[0];
-    await sleep(5);
-
-    // A sparse re-scan that only re-confirms name/town must not wipe phone/website.
-    const updated = q.upsertBusiness({
-      osmId: "node/1",
-      name: "Rock City Coffee",
-      town: "Rockland",
-      addedBy: "test",
-    });
-    expect(updated).toEqual({ id: created.id, outcome: "updated" });
-
-    const after = q.listBusinesses({ q: "Rock City" })[0];
-    expect(after.phone).toBe("207-555-0100");
-    expect(after.website).toBe("https://rockcitycoffee.com");
-    expect(after.discoveredAt).toBe(before.discoveredAt);
-    expect(after.lastSeenAt > before.lastSeenAt).toBe(true);
-  });
-
-  it("filters by town, tag, status, and name substring", () => {
-    q.upsertBusiness({
-      osmId: "way/10",
-      name: "Camden Hardware",
-      tags: ["hardware", "doityourself"],
-      town: "Camden",
-      status: "active",
-      addedBy: "test",
-    });
-    q.upsertBusiness({
-      osmId: "way/11",
-      name: "Closed Diner",
-      tags: ["restaurant"],
-      town: "Camden",
-      status: "closed",
-      addedBy: "test",
-    });
-
-    expect(q.listBusinesses({ town: "Camden" }).map((b) => b.osmId).sort()).toEqual([
-      "way/10",
-      "way/11",
-    ]);
-    expect(q.listBusinesses({ tag: "hardware" }).map((b) => b.osmId)).toEqual(["way/10"]);
-    expect(q.listBusinesses({ status: "closed" }).map((b) => b.osmId)).toEqual(["way/11"]);
-    expect(q.listBusinesses({ q: "hardware" }).map((b) => b.osmId)).toEqual(["way/10"]);
-    expect(q.listBusinesses({ town: "Nowhere" })).toHaveLength(0);
-  });
-
-  it("stores and returns the brand (chain signal)", () => {
-    q.upsertBusiness({
-      osmId: "node/200",
-      name: "Hannaford",
-      kind: "shop=supermarket",
-      brand: "Hannaford",
-      town: "Rockland",
-      addedBy: "test",
-    });
-    const b = q.listBusinesses({ q: "Hannaford" })[0];
-    expect(b.brand).toBe("Hannaford");
-  });
-
-  it("filters to rows with a non-empty website when hasWebsite is set", () => {
-    q.upsertBusiness({
-      osmId: "node/w1",
-      name: "Has Website",
-      town: "WebFilter",
-      website: "https://has-site.example.com",
-      addedBy: "test",
-    });
-    q.upsertBusiness({
-      osmId: "node/w2",
-      name: "No Website",
-      town: "WebFilter",
-      addedBy: "test",
-    });
-    q.upsertBusiness({
-      osmId: "node/w3",
-      name: "Empty Website",
-      town: "WebFilter",
-      website: "",
-      addedBy: "test",
-    });
-
-    // Without the filter, all three are returned.
-    expect(
-      q.listBusinesses({ town: "WebFilter" }).map((b) => b.osmId).sort(),
-    ).toEqual(["node/w1", "node/w2", "node/w3"]);
-
-    // With it, only the row that actually has a website (null and "" excluded).
-    expect(
-      q.listBusinesses({ town: "WebFilter", hasWebsite: true }).map((b) => b.osmId),
-    ).toEqual(["node/w1"]);
-  });
-
-  it("lists distinct towns with counts, alphabetically, excluding null towns", () => {
-    q.upsertBusiness({ osmId: "node/100", name: "A", town: "Owls Head", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/101", name: "B", town: "Owls Head", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/102", name: "C", town: "Vinalhaven", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/103", name: "D", addedBy: "test" }); // no town
-
-    const towns = q.listBusinessTowns();
-    expect(towns).toContainEqual({ town: "Owls Head", n: 2 });
-    expect(towns).toContainEqual({ town: "Vinalhaven", n: 1 });
-    expect(towns.some((t) => t.town === null)).toBe(false);
-    const names = towns.map((t) => t.town);
-    expect(names).toEqual([...names].sort());
-  });
-});
-
-describe("upsertSource", () => {
-  it("reports created for a new URL and updated for an existing one", () => {
-    const first = q.upsertSource({
-      url: "https://src-outcome.example.com",
-      name: "Source",
-      addedBy: "test",
-    });
-    expect(first.outcome).toBe("created");
-
-    const second = q.upsertSource({
-      url: "https://src-outcome.example.com",
-      name: "Source renamed",
-      addedBy: "test",
-    });
-    expect(second).toEqual({ id: first.id, outcome: "updated" });
-  });
-});
-
-describe("category priorities", () => {
-  it("maps categories to tiers, honoring wildcards and the default", () => {
-    const cfgDir = path.join(tmp, "config");
-    fs.mkdirSync(cfgDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cfgDir, "categories.json"),
-      JSON.stringify({
-        default_tier: 3,
-        tiers: {
-          "1": ["amenity=townhall"],
-          "2": ["craft=*"],
-          "4": ["amenity=parking"],
-        },
-      }),
-    );
-    const c = cfg.readCategoryConfig();
-    expect(c.tierOf("amenity=townhall")).toBe(1); // exact
-    expect(c.tierOf("craft=boatbuilder")).toBe(2); // wildcard key=*
-    expect(c.tierOf("amenity=parking")).toBe(4); // excluded
-    expect(c.tierOf("shop=anything")).toBe(3); // default
-    expect(c.tierOf(null)).toBe(3); // no kind
-  });
-});
-
-describe("feedback cursor", () => {
-  it("returns only feedback newer than the agent's last successful run", async () => {
-    const find = q.insertFind({
-      title: "Feedback target",
-      url: "https://example.com/feedback-target",
-      agent: "cursor-test",
-    });
-
-    q.recordFeedback(find.id, "thumbs_up");
-    await sleep(5);
-
-    // No successful run yet → everything is unread
-    expect(q.readFeedbackForAgent("cursor-test").length).toBe(1);
-
-    const runId = q.startRun("cursor-test");
-    q.finishRun(runId, { status: "success" });
-    await sleep(5);
-
-    // Old feedback predates the run cursor
-    expect(q.readFeedbackForAgent("cursor-test").length).toBe(0);
-
-    q.recordFeedback(find.id, "star");
-    const unread = q.readFeedbackForAgent("cursor-test");
-    expect(unread.length).toBe(1);
-    expect(unread[0].action).toBe("star");
-    expect(unread[0].findTitle).toBe("Feedback target");
-  });
-
-  it("failed runs do not advance the cursor", async () => {
-    const find = q.insertFind({
-      title: "Cursor failure case",
-      url: "https://example.com/cursor-failure",
-      agent: "cursor-test-2",
-    });
-    q.recordFeedback(find.id, "hide");
-    await sleep(5);
-
-    const runId = q.startRun("cursor-test-2");
-    q.finishRun(runId, { status: "error", error: "boom" });
-
-    // Feedback is global by design; the point here is that the failed run
-    // did not advance this agent's cursor past the pre-run 'hide'.
-    const unread = q.readFeedbackForAgent("cursor-test-2");
-    expect(
-      unread.some((r) => r.findId === find.id && r.action === "hide"),
-    ).toBe(true);
-  });
-});
-
-describe("category config fallback", () => {
-  const cfgDir = path.join(tmp, "config");
-  const live = path.join(cfgDir, "categories.json");
-  const example = path.join(cfgDir, "categories.json.example");
-
-  it("falls back to the .example template when categories.json is present but malformed", () => {
-    fs.mkdirSync(cfgDir, { recursive: true });
-    fs.writeFileSync(live, "{ not valid json,, ");
-    fs.writeFileSync(
-      example,
-      JSON.stringify({ default_tier: 3, tiers: { "1": ["amenity=library"] } }),
-    );
-
-    const c = cfg.readCategoryConfig();
-    // The real tier from the template must survive, not collapse to default.
-    expect(c.tierOf("amenity=library")).toBe(1);
-
-    fs.rmSync(live);
-    fs.rmSync(example);
-  });
-
-  it("coerces a non-numeric default_tier to a finite number instead of NaN", () => {
-    fs.mkdirSync(cfgDir, { recursive: true });
-    fs.writeFileSync(live, JSON.stringify({ default_tier: "oops", tiers: {} }));
-
-    const c = cfg.readCategoryConfig();
-    expect(Number.isFinite(c.tierOf("shop=whatever"))).toBe(true);
-
-    fs.rmSync(live);
-  });
-});
-
-describe("listBusinesses name search escaping", () => {
-  it("treats % and _ in the query as literal characters, not SQL wildcards", () => {
-    q.upsertBusiness({ osmId: "node/900", name: "50% Off Outlet", town: "Esc", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/901", name: "5000 Club", town: "Esc", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/902", name: "a_b shop", town: "Esc", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/903", name: "axb shop", town: "Esc", addedBy: "test" });
-
-    // '%' is literal: matches "50% Off Outlet", NOT "5000 Club"
-    expect(q.listBusinesses({ q: "50%" }).map((b) => b.osmId)).toEqual(["node/900"]);
-    // '_' is literal: matches "a_b shop", NOT "axb shop"
-    expect(q.listBusinesses({ q: "a_b" }).map((b) => b.osmId)).toEqual(["node/902"]);
-  });
-});
-
-describe("readAgentNote", () => {
-  it("reads a note inside the workspace but refuses paths that escape it", async () => {
-    const { readAgentNote } = await import("./paths");
-    const dir = path.join(tmp, "agents", "cartographer", "notes");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "rockland.md"), "# Rockland note");
-
-    expect(readAgentNote("cartographer", "notes/rockland.md")).toBe("# Rockland note");
-    expect(readAgentNote("cartographer", "../../../etc/passwd")).toBeNull();
-    expect(readAgentNote("cartographer", null)).toBeNull();
-  });
-});
-
-describe("listBusinessesRanked", () => {
-  it("annotates tier + isChain, hides tier4/chains by default, and ranks chains last", () => {
-    const cfgDir = path.join(tmp, "config");
-    fs.mkdirSync(cfgDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cfgDir, "categories.json"),
-      JSON.stringify({
-        default_tier: 3,
-        hide_in_directory: { tier4: true, chains: true },
-        tiers: {
-          "1": ["amenity=library"],
-          "2": ["shop=hardware"],
-          "4": ["amenity=parking"],
-        },
-      }),
-    );
-    q.upsertBusiness({ osmId: "node/r1", name: "Library", kind: "amenity=library", town: "Rank", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/r2", name: "Hardware", kind: "shop=hardware", town: "Rank", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/r3", name: "Parking Lot", kind: "amenity=parking", town: "Rank", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/r4", name: "Chain Store", kind: "shop=hardware", brand: "BigCo", town: "Rank", addedBy: "test" });
-
-    const def = q.listBusinessesRanked({ town: "Rank" });
-    const byId = Object.fromEntries(def.rows.map((r) => [r.business.osmId, r]));
-    expect(byId["node/r1"].tier).toBe(1);
-    // default visibility: tier4 (parking) and chains hidden
-    expect(def.rows.map((r) => r.business.osmId)).toEqual(["node/r1", "node/r2"]);
-    expect(def.total).toBe(4);
-    expect(def.tier4Count).toBe(1);
-    expect(def.chainCount).toBe(1);
-
-    // agent-style: Tier 1-2 only, no chains
-    const t12 = q.listBusinessesRanked({ town: "Rank", maxTier: 2, includeChains: false });
-    expect(t12.rows.map((r) => r.business.osmId)).toEqual(["node/r1", "node/r2"]);
-
-    // show everything: non-chains first (by tier), chain last
-    const full = q.listBusinessesRanked({
-      town: "Rank",
-      includeTier4: true,
-      includeChains: true,
-    });
-    expect(full.rows.map((r) => r.business.osmId)).toEqual([
-      "node/r1",
-      "node/r2",
-      "node/r3",
-      "node/r4",
-    ]);
-    const fullById = Object.fromEntries(
-      full.rows.map((r) => [r.business.osmId, r]),
-    );
-    expect(fullById["node/r4"].isChain).toBe(true);
-    expect(fullById["node/r3"].tier).toBe(4);
-  });
-});
-
-describe("dedupeBusinesses", () => {
-  it("collapses same-name same-coord OSM elements into one canonical row", () => {
-    const a = q.upsertBusiness({
-      osmId: "way/900001",
-      name: "Dedup Test Cafe",
-      lat: 44.2,
-      lng: -69.2,
-      website: "https://dedup-a.example.com",
-      addedBy: "test",
-    });
-    const b = q.upsertBusiness({
-      osmId: "way/900002",
-      name: "Dedup Test Cafe",
-      lat: 44.2,
-      lng: -69.2,
-      phone: "207-555-0101",
-      addedBy: "test",
-    });
-    expect(a.outcome).toBe("created");
-    expect(b.outcome).toBe("created");
-
-    const summary = q.dedupeBusinesses();
-    expect(summary.groups).toBeGreaterThanOrEqual(1);
-
-    // Default view hides the duplicate and keeps one canonical row.
-    const visible = q.listBusinesses({ q: "Dedup Test Cafe" });
-    expect(visible).toHaveLength(1);
-    const canonical = visible[0];
-    expect(canonical.osmId).toBe("way/900001"); // older row wins the richness tie
-    expect(canonical.website).toBe("https://dedup-a.example.com");
-    expect(canonical.phone).toBe("207-555-0101"); // merged up from the duplicate
-
-    // includeDuplicates shows both; the loser points at the canonical osm_id.
-    const all = q.listBusinesses({
-      q: "Dedup Test Cafe",
-      includeDuplicates: true,
-    });
-    expect(all).toHaveLength(2);
-    const dup = all.find((r) => r.osmId === "way/900002");
-    expect(dup?.duplicateOf).toBe("way/900001");
-  });
-});
-
-describe("listMapPins / countBusinesses", () => {
-  it("returns only coordinate-bearing, non-duplicate rows, annotated", () => {
-    q.upsertBusiness({ osmId: "node/9001", name: "Has Coords", kind: "amenity=cafe",
-      town: "Rockland", lat: 44.1, lng: -69.11, addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/9002", name: "No Coords", kind: "amenity=cafe",
-      town: "Rockland", addedBy: "test" }); // lat/lng null -> excluded from pins
-    q.upsertBusiness({ osmId: "node/9003", name: "Chain", kind: "shop=supermarket",
-      town: "Rockland", lat: 44.2, lng: -69.2, brand: "Hannaford", addedBy: "test" });
-
-    const pins = q.listMapPins();
-    const byName = Object.fromEntries(pins.map((p) => [p.name, p]));
-    expect(byName["No Coords"]).toBeUndefined();        // no coords -> not a pin
-    expect(byName["Has Coords"]).toMatchObject({
-      kind: "amenity=cafe", lat: 44.1, lng: -69.11, isChain: false,
-      theme: "other", subtype: null, subtypeKey: null,
-    });
-    expect(typeof byName["Has Coords"].tier).toBe("number");
-    expect(byName["Chain"].isChain).toBe(true);          // brand present
-  });
-
-  it("countBusinesses counts non-duplicate rows including coordinate-less ones", () => {
-    const total = q.countBusinesses();
-    const pins = q.listMapPins().length;
-    expect(pins).toBeGreaterThanOrEqual(2); // "Has Coords" + "Chain" from the previous test
-    expect(total).toBeGreaterThan(pins);    // "No Coords" is counted but not pinned
-  });
-
-  it("returns all rows with no cap (regression: the old 500-row limit dropped towns)", () => {
-    for (let i = 0; i < 600; i++) {
-      q.upsertBusiness({
-        osmId: `node/7${i}`, name: `Bulk ${i}`, kind: "amenity=cafe", town: "Bulkville",
-        lat: 44 + i / 100000, lng: -69 - i / 100000, addedBy: "test",
-      });
-    }
-    const bulk = q.listMapPins().filter((p) => p.town === "Bulkville");
-    expect(bulk.length).toBe(600); // capped at 500 under the old listBusinesses() path
-  });
-});
-
-describe("listBusinessesRanked pagination", () => {
-  it("returns only the requested page plus matched/pageCount, full set when unpaged", () => {
-    const cfgDir = path.join(tmp, "config");
-    fs.mkdirSync(cfgDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cfgDir, "categories.json"),
-      JSON.stringify({
-        default_tier: 3,
-        hide_in_directory: { tier4: false, chains: false },
-        tiers: {},
-      }),
-    );
-    for (const n of ["A", "B", "C", "D", "E"]) {
-      q.upsertBusiness({
-        osmId: `node/pg-${n}`,
-        name: `Pager ${n}`,
-        town: "Pager",
-        addedBy: "test",
-      });
-    }
-
-    // Unpaged (no pageSize): the full sorted set, page/pageCount default to 1.
-    const all = q.listBusinessesRanked({ town: "Pager" });
-    expect(all.rows.map((r) => r.business.name)).toEqual([
-      "Pager A",
-      "Pager B",
-      "Pager C",
-      "Pager D",
-      "Pager E",
-    ]);
-    expect(all.total).toBe(5);
-    expect(all.matched).toBe(5);
-    expect(all.page).toBe(1);
-    expect(all.pageCount).toBe(1);
-
-    // Page 2 of size 2 -> third + fourth rows; matched/pageCount span the full set.
-    const p2 = q.listBusinessesRanked({ town: "Pager", page: 2, pageSize: 2 });
-    expect(p2.rows.map((r) => r.business.name)).toEqual(["Pager C", "Pager D"]);
-    expect(p2.matched).toBe(5);
-    expect(p2.pageCount).toBe(3);
-    expect(p2.page).toBe(2);
-
-    // Out-of-range page clamps to the last (partial) page.
-    const last = q.listBusinessesRanked({ town: "Pager", page: 99, pageSize: 2 });
-    expect(last.page).toBe(3);
-    expect(last.rows.map((r) => r.business.name)).toEqual(["Pager E"]);
-  });
-});
-
-describe("getSourceById / listFindsBySource", () => {
-  it("returns a source by id, or undefined for an unknown id", () => {
-    const { id } = q.upsertSource({
-      url: "https://t1-library.example.org",
-      name: "T1 Library",
-      addedBy: "test",
-    });
-    const found = q.getSourceById(id);
-    expect(found?.id).toBe(id);
-    expect(found?.name).toBe("T1 Library");
-    expect(q.getSourceById(999_999)).toBeUndefined();
-  });
-
-  it("lists a source's finds newest-first, capped by limit", async () => {
-    const url = "https://t1-news.example.org";
-    const { id: sourceId } = q.upsertSource({ url, name: "T1 News", addedBy: "test" });
-
-    const older = q.insertFind({ title: "T1 older", url: `${url}/a`, agent: "test", sourceUrl: url });
-    await sleep(5);
-    const newer = q.insertFind({ title: "T1 newer", url: `${url}/b`, agent: "test", sourceUrl: url });
-
-    const rows = q.listFindsBySource(sourceId);
-    expect(rows.map((f) => f.id)).toEqual([newer.id, older.id]);
-
-    const capped = q.listFindsBySource(sourceId, 1);
-    expect(capped.map((f) => f.id)).toEqual([newer.id]);
-  });
-});
-
-describe("listBusinessesRanked sort + getBusinessById", () => {
-  it("getBusinessById returns a row or undefined", () => {
-    const { id } = q.upsertBusiness({
-      osmId: "node/bz-1",
-      name: "BizById",
-      town: "Rockland",
-      addedBy: "test",
-    });
-    expect(q.getBusinessById(id)?.name).toBe("BizById");
-    expect(q.getBusinessById(999_999)).toBeUndefined();
-  });
-
-  it("sort=name reorders relative to the default ranking", () => {
-    q.upsertBusiness({ osmId: "node/sz-z", name: "Sortby ZZZ", kind: "amenity=cafe", town: "SortTown", addedBy: "test" });
-    q.upsertBusiness({ osmId: "node/sz-a", name: "Sortby AAA", kind: "amenity=cafe", town: "SortTown", addedBy: "test" });
-    // includeTier4 keeps the rows visible regardless of how the config tiers cafes.
-    const opts = { town: "SortTown", includeTier4: true } as const;
-    const asc = q.listBusinessesRanked({ ...opts, sort: "name", dir: "asc" }).rows.map((r) => r.business.name);
-    const desc = q.listBusinessesRanked({ ...opts, sort: "name", dir: "desc" }).rows.map((r) => r.business.name);
-    expect(asc).toEqual(["Sortby AAA", "Sortby ZZZ"]);
-    expect(desc).toEqual(["Sortby ZZZ", "Sortby AAA"]);
-  });
-});
-
-describe("blockedHosts", () => {
-  let runId: number;
-  beforeAll(() => { runId = q.startRun("scout"); });
-
-  const rec = (host: string, klass: "ok" | "blocked" | "truncated" | "error") =>
-    q.recordFetch({ runId, agent: "scout", host, url: `https://${host}/x`, status: klass === "blocked" ? 403 : 200, klass });
-
-  it("blocks a host after N consecutive blocked outcomes", () => {
-    rec("blocked3.org", "blocked");
-    rec("blocked3.org", "blocked");
-    rec("blocked3.org", "blocked");
-    expect(q.blockedHosts(3)).toContain("blocked3.org");
-  });
-
-  it("does not block with only N-1 strikes", () => {
-    rec("twice.org", "blocked");
-    rec("twice.org", "blocked");
-    expect(q.blockedHosts(3)).not.toContain("twice.org");
-  });
-
-  it("a non-blocked outcome breaks the streak (newest-first)", () => {
-    rec("recovered.org", "blocked");
-    rec("recovered.org", "blocked");
-    rec("recovered.org", "blocked");
-    rec("recovered.org", "ok"); // newest
-    expect(q.blockedHosts(3)).not.toContain("recovered.org");
-  });
-
-  it("error (429/5xx) does not count as a strike and breaks the streak", () => {
-    rec("flaky.org", "blocked");
-    rec("flaky.org", "blocked");
-    rec("flaky.org", "error"); // newest — transient, not a strike
-    expect(q.blockedHosts(3)).not.toContain("flaky.org");
-  });
-});
-
-describe("recordFetch / clearFetchHistory", () => {
-  let runId: number;
-  beforeAll(() => { runId = q.startRun("scout"); });
-
-  it("inserts a fetch row with defaults and reads it back", () => {
-    q.recordFetch({
-      runId,
-      agent: "scout",
-      host: "example.org",
-      url: "https://example.org/a",
-      status: 200,
-      klass: "ok",
-    });
-    const rows = q.listFetchesForHost("example.org");
-    expect(rows.length).toBe(1);
-    expect(rows[0].method).toBe("GET");
-    expect(rows[0].via).toBe("webfetch");
-    expect(rows[0].klass).toBe("ok");
-  });
-
-  it("clearFetchHistory deletes a host's rows and returns the count", () => {
-    q.recordFetch({ runId, agent: "scout", host: "wipe.org", url: "https://wipe.org/1", status: 403, klass: "blocked" });
-    q.recordFetch({ runId, agent: "scout", host: "wipe.org", url: "https://wipe.org/2", status: 403, klass: "blocked" });
-    const deleted = q.clearFetchHistory("wipe.org");
-    expect(deleted).toBe(2);
-    expect(q.listFetchesForHost("wipe.org").length).toBe(0);
-  });
-});
-
-describe("upsertSource ical_url", () => {
-  it("stores and updates ical_url", () => {
-    q.upsertSource({ url: "https://venue.org/", addedBy: "test" });
-    q.upsertSource({
-      url: "https://venue.org/",
-      icalUrl: "https://venue.org/events/?ical=1",
-      status: "active",
-      addedBy: "test",
-    });
-    const row = q.listSources().find((s) => s.url === "https://venue.org/");
-    expect(row?.icalUrl).toBe("https://venue.org/events/?ical=1");
-    expect(row?.status).toBe("active");
-  });
-});
-
-describe("find type discriminator", () => {
-  it("defaults type to 'event' and round-trips an explicit type/business_id/score", () => {
-    const biz = q.upsertBusiness({
-      osmId: "node/typetest",
-      name: "Type Test Cafe",
-      addedBy: "cartographer",
-    });
-    const event = q.insertFind({
-      title: "Type default event",
-      url: "https://example.com/type-default",
-      agent: "test",
-    });
-    const lead = q.insertFind({
-      title: "Type explicit lead",
-      url: "https://example.com/type-lead",
-      type: "lead",
-      businessId: biz.id,
-      score: 0.9,
-      agent: "prospector",
-    });
-
-    const all = q.getFeed({ view: "all" });
-    const eventRow = all.find((f) => f.id === event.id);
-    const leadRow = all.find((f) => f.id === lead.id);
-    expect(eventRow?.type).toBe("event");
-    expect(eventRow?.businessId).toBeNull();
-    expect(leadRow?.type).toBe("lead");
-    expect(leadRow?.businessId).toBe(biz.id);
-    expect(leadRow?.score).toBe(0.9);
-  });
-
-  it("filters by type and excludeTypes", () => {
-    const event = q.insertFind({
-      title: "Filter event",
-      url: "https://example.com/filter-event",
-      tags: ["typefilter"],
-      agent: "test",
-    });
-    const lead = q.insertFind({
-      title: "Filter lead",
-      url: "https://example.com/filter-lead",
-      type: "lead",
-      tags: ["typefilter"],
-      agent: "prospector",
-    });
-
-    const leadIds = q.getFeed({ tag: "typefilter", type: "lead" }).map((f) => f.id);
-    expect(leadIds).toEqual([lead.id]);
-
-    const noLeadIds = q
-      .getFeed({ tag: "typefilter", excludeTypes: ["lead"] })
-      .map((f) => f.id);
-    expect(noLeadIds).toContain(event.id);
-    expect(noLeadIds).not.toContain(lead.id);
-  });
-
-  it("listFindTypes reports the distinct visible types", () => {
-    q.insertFind({
-      title: "Types facet lead",
-      url: "https://example.com/types-facet-lead",
+describe("find facets", () => {
+  it("listActiveTags / listFindTypes exclude hidden + provisional + expired", async () => {
+    await q.insertFind({ title: "vis", url: "u-vis", tags: ["shown-tag"], agent: "scout" });
+    await q.insertFind({
+      title: "prov",
+      url: "u-prov",
+      tags: ["prov-tag"],
       type: "lead",
       agent: "prospector",
+      status: "provisional",
     });
-    const types = q.listFindTypes();
+    const hidden = await q.insertFind({ title: "hid", url: "u-hid", tags: ["hid-tag"], agent: "scout" });
+    await q.updateFindStatus(hidden.id, "hidden");
+
+    const tags = await q.listActiveTags();
+    expect(tags).toContain("shown-tag");
+    expect(tags).not.toContain("prov-tag");
+    expect(tags).not.toContain("hid-tag");
+
+    const types = await q.listFindTypes();
     expect(types).toContain("event");
-    expect(types).toContain("lead");
+    expect(types).not.toContain("lead"); // only the provisional lead exists
   });
 });
 
 describe("provisional finds", () => {
-  it("are hidden from every user-facing view but listable directly", () => {
-    q.insertFind({ title: "Visible Lead", type: "lead", agent: "prospector", tags: ["maker"] });
-    q.insertFind({
-      title: "Provisional Lead",
-      type: "lead",
+  it("are hidden from views but listable, and promote/discard work", async () => {
+    await q.insertFind({ title: "Visible", url: "u-vis", agent: "prospector" });
+    await q.insertFind({
+      title: "Prov",
+      url: "u-prov",
       agent: "prospector",
-      tags: ["provisional-tag"],
       status: "provisional",
     });
 
-    const feedTitles = q.getFeed({}).map((f) => f.title);
-    expect(feedTitles).toContain("Visible Lead");
-    expect(feedTitles).not.toContain("Provisional Lead");
-    expect(q.listActiveTags()).not.toContain("provisional-tag");
-    expect(q.listFindTypes()).toContain("lead"); // from the visible lead only
+    expect((await q.getFeed()).map((f) => f.title)).toEqual(["Visible"]);
+    expect((await q.listProvisionalFinds()).map((f) => f.title)).toEqual(["Prov"]);
 
-    expect(q.listProvisionalFinds().map((f) => f.title)).toEqual(["Provisional Lead"]);
+    expect(await q.promoteProvisionalFinds()).toBe(1);
+    expect(await q.listProvisionalFinds()).toHaveLength(0);
+    expect((await q.getFeed()).map((f) => f.title).sort()).toEqual(["Prov", "Visible"]);
+
+    await q.insertFind({ title: "Prov2", url: "u-prov2", agent: "prospector", status: "provisional" });
+    expect(await q.discardProvisionalFinds()).toBe(1);
+    expect(await q.listProvisionalFinds()).toHaveLength(0);
   });
 
-  it("promote flips provisional → new; discard deletes them", () => {
-    const beforeCount = q.listProvisionalFinds().length;
-    q.insertFind({ title: "P1", type: "lead", agent: "prospector", status: "provisional" });
-    q.insertFind({ title: "P2", type: "lead", agent: "prospector", status: "provisional" });
+  it("listRecentFinds excludes provisional by default, includes them when explicit", async () => {
+    const normal = await q.insertFind({ title: "normal", url: "u-n", agent: "prospector", type: "lead" });
+    const prov = await q.insertFind({
+      title: "prov",
+      url: "u-p",
+      agent: "prospector",
+      type: "lead",
+      status: "provisional",
+    });
 
-    expect(q.promoteProvisionalFinds()).toBe(beforeCount + 2);
-    expect(q.listProvisionalFinds()).toHaveLength(0);
-    expect(q.getFeed({}).map((f) => f.title)).toEqual(expect.arrayContaining(["P1", "P2"]));
+    const def = (await q.listRecentFinds({})).map((f) => f.id);
+    expect(def).toContain(normal.id);
+    expect(def).not.toContain(prov.id);
 
-    q.insertFind({ title: "P3", type: "lead", agent: "prospector", status: "provisional" });
-    expect(q.discardProvisionalFinds()).toBe(1);
-    expect(q.listProvisionalFinds()).toHaveLength(0);
+    const provOnly = (await q.listRecentFinds({ status: "provisional" })).map((f) => f.id);
+    expect(provOnly).toContain(prov.id);
+    expect(provOnly).not.toContain(normal.id);
   });
 });
 
-describe("listRecentFinds provisional exclusion", () => {
-  it("excludes provisional rows by default, but includes them when status is explicit", () => {
-    const normal = q.insertFind({
-      title: "Dedup Normal Lead",
-      url: "https://example.com/dedup-normal-lead",
-      type: "lead",
-      agent: "prospector",
-    });
-    const provisional = q.insertFind({
-      title: "Dedup Provisional Lead",
-      url: "https://example.com/dedup-provisional-lead",
-      type: "lead",
-      agent: "prospector",
-      status: "provisional",
-    });
+describe("status mutations", () => {
+  it("markFindsShown flips only 'new' rows to 'shown'", async () => {
+    const a = await q.insertFind({ title: "a", url: "ua", agent: "scout" });
+    const b = await q.insertFind({ title: "b", url: "ub", agent: "scout" });
+    await q.updateFindStatus(b.id, "starred");
+    await q.markFindsShown([a.id, b.id]);
+    const byId = Object.fromEntries((await q.getFeed({ view: "all" })).map((r) => [r.id, r.status]));
+    expect(byId[a.id]).toBe("shown");
+    expect(byId[b.id]).toBe("starred"); // not 'new' -> untouched
+  });
 
-    // Default (no status) — provisional rows must be excluded.
-    const defaultIds = q.listRecentFinds({}).map((f) => f.id);
-    expect(defaultIds).toContain(normal.id);
-    expect(defaultIds).not.toContain(provisional.id);
+  it("updateFindStatus returns false for an unknown id", async () => {
+    expect(await q.updateFindStatus(999_999, "hidden")).toBe(false);
+  });
 
-    // Explicit status filter — only provisional rows returned.
-    const provIds = q.listRecentFinds({ status: "provisional" }).map((f) => f.id);
-    expect(provIds).toContain(provisional.id);
-    expect(provIds).not.toContain(normal.id);
+  it("updateFindStatuses + unhideAll bulk-update and return counts", async () => {
+    const a = await q.insertFind({ title: "a", url: "ua", agent: "scout" });
+    const b = await q.insertFind({ title: "b", url: "ub", agent: "scout" });
+    expect(await q.updateFindStatuses([a.id, b.id], "hidden")).toBe(2);
+    expect((await q.getFeed()).length).toBe(0);
+    expect(await q.unhideAll()).toBe(2);
+    expect((await q.getFeed()).length).toBe(2);
+  });
+
+  it("setFindExpiry hides a find once its expiry passes", async () => {
+    const a = await q.insertFind({ title: "a", url: "ua", agent: "scout" });
+    expect(await q.setFindExpiry(a.id, "2020-01-01")).toBe(true);
+    expect((await q.getFeed()).map((r) => r.id)).not.toContain(a.id);
+    expect(await q.setFindExpiry(999_999, "2020-01-01")).toBe(false);
+  });
+});
+
+describe("feedback", () => {
+  it("records feedback and round-trips it via readFeedbackForAgent", async () => {
+    const find = await q.insertFind({
+      title: "Feedback target",
+      url: "u-fb",
+      agent: "cursor-test",
+      tags: ["fb"],
+    });
+    await q.recordFeedback(find.id, "thumbs_up", "nice");
+    const rows = await q.readFeedbackForAgent("cursor-test");
+    expect(rows.length).toBe(1);
+    expect(rows[0]).toMatchObject({
+      action: "thumbs_up",
+      note: "nice",
+      findId: find.id,
+      findTitle: "Feedback target",
+      foundBy: "cursor-test",
+    });
+    expect(rows[0].findTags).toEqual(["fb"]);
+  });
+
+  it("returns only feedback newer than the agent's last successful run", async () => {
+    const find = await q.insertFind({ title: "t", url: "u-fb2", agent: "cursor-test" });
+    await q.recordFeedback(find.id, "thumbs_up");
+    await sleep(5);
+
+    // No successful run yet -> everything is unread.
+    expect((await q.readFeedbackForAgent("cursor-test")).length).toBe(1);
+
+    const runId = await q.startRun("cursor-test");
+    await q.finishRun(runId, { status: "success" });
+    await sleep(5);
+
+    // Old feedback predates the run cursor.
+    expect((await q.readFeedbackForAgent("cursor-test")).length).toBe(0);
+
+    await q.recordFeedback(find.id, "star");
+    const unread = await q.readFeedbackForAgent("cursor-test");
+    expect(unread.length).toBe(1);
+    expect(unread[0].action).toBe("star");
+  });
+
+  it("a failed run does not advance the cursor", async () => {
+    const find = await q.insertFind({ title: "t", url: "u-fb3", agent: "cursor-test-2" });
+    await q.recordFeedback(find.id, "hide");
+    await sleep(5);
+    const runId = await q.startRun("cursor-test-2");
+    await q.finishRun(runId, { status: "error", error: "boom" });
+    const unread = await q.readFeedbackForAgent("cursor-test-2");
+    expect(unread.some((r) => r.findId === find.id && r.action === "hide")).toBe(true);
   });
 });
