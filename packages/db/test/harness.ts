@@ -41,6 +41,7 @@ export async function setupPgDatabase(): Promise<void> {
 export async function teardownPgDatabase(): Promise<void> {
   await container?.stop();
   container = undefined;
+  MIGRATIONS_APPLIED.length = 0;
 }
 
 const LOCALFINDS_TABLES = ["place_annotations", "sources", "finds", "feedback", "runs", "fetches"];
