@@ -4,7 +4,8 @@
 -- (natural/historic + trails from planet_osm_line) is a deliberate follow-on.
 -- Materialized so the per-row ST_Contains town lookup is computed once per
 -- refresh; refreshed daily after osm2pgsql-replication with REFRESH ... CONCURRENTLY.
-CREATE MATERIALIZED VIEW osm_places AS
+-- Explicit public schema: a deploy role's search_path must not silently misplace the matview.
+CREATE MATERIALIZED VIEW public.osm_places AS
 WITH feat AS (
     -- nodes (way is already a point; geom and point coincide)
     SELECT 'node/' || osm_id AS osm_id, tags, way AS geom, way AS point
@@ -63,13 +64,13 @@ FROM feat f
 WITH DATA;
 
 -- Unique key on osm_id: natural PK; REQUIRED for REFRESH ... CONCURRENTLY.
-CREATE UNIQUE INDEX osm_places_osm_id_uidx ON osm_places (osm_id);
+CREATE UNIQUE INDEX osm_places_osm_id_uidx ON public.osm_places (osm_id);
 -- Primary access pattern: town filter lower(town) = lower($1).
-CREATE INDEX osm_places_town_idx  ON osm_places (lower(town));
+CREATE INDEX osm_places_town_idx  ON public.osm_places (lower(town));
 -- Spatial: representative point (pins/distance/clustering) + real shape (rendering).
-CREATE INDEX osm_places_point_gist ON osm_places USING gist (point);
-CREATE INDEX osm_places_geom_gist  ON osm_places USING gist (geom);
+CREATE INDEX osm_places_point_gist ON public.osm_places USING gist (point);
+CREATE INDEX osm_places_geom_gist  ON public.osm_places USING gist (geom);
 -- Tag filters over the full jsonb tag set.
-CREATE INDEX osm_places_tags_gin   ON osm_places USING gin (tags jsonb_path_ops);
+CREATE INDEX osm_places_tags_gin   ON public.osm_places USING gin (tags jsonb_path_ops);
 -- Name search (seeds the future search endpoint).
-CREATE INDEX osm_places_name_trgm  ON osm_places USING gin (name gin_trgm_ops);
+CREATE INDEX osm_places_name_trgm  ON public.osm_places USING gin (name gin_trgm_ops);

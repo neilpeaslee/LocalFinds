@@ -9,5 +9,5 @@ SELECT
     COALESCE(a.status_override, 'active') AS status,
     a.note                                AS annotation_note,
     a.duplicate_of
-FROM osm_places p
+FROM public.osm_places p
 LEFT JOIN localfinds.place_annotations a USING (osm_id);

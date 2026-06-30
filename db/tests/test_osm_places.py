@@ -9,7 +9,10 @@ async def _ids(conn):
 async def test_includes_only_named_business_features(conn):
     # the bench (unnamed) and the street (no business key) are excluded;
     # the negative polygon id -3 renders as relation/3
-    assert await _ids(conn) == {"node/1", "way/2", "relation/3"}
+    assert await _ids(conn) == {
+        "node/1", "way/2", "relation/3",
+        "node/10", "node/11", "way/12", "relation/6",
+    }
 
 
 async def test_osm_id_forms(conn):
@@ -59,3 +62,20 @@ async def test_relation_kind(conn):
     assert await conn.fetchval(
         "SELECT kind FROM osm_places WHERE osm_id = 'relation/3'"
     ) == "tourism=museum"
+
+
+async def test_all_six_business_keys_project_kind(conn):
+    rows = {r["osm_id"]: r["kind"] for r in await conn.fetch("SELECT osm_id, kind FROM osm_places")}
+    assert rows["node/1"] == "amenity=cafe"
+    assert rows["way/2"] == "shop=supermarket"
+    assert rows["relation/3"] == "tourism=museum"
+    assert rows["node/10"] == "office=lawyer"
+    assert rows["node/11"] == "craft=sawmill"
+    assert rows["way/12"] == "leisure=park"
+
+
+async def test_multipolygon_split_collapses_to_one_row(conn):
+    # osm_id -6 was seeded as TWO planet_osm_polygon parts; the matview must
+    # collapse them to a single relation/6 row (largest part wins).
+    n = await conn.fetchval("SELECT count(*) FROM osm_places WHERE osm_id = 'relation/6'")
+    assert n == 1
