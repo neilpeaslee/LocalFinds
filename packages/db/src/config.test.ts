@@ -15,7 +15,7 @@ import {
   writeRegionConfig,
   writeTownsConfig,
 } from "./config";
-import { agentWorkspaceDir, setConfigDirOverride, dbPath } from "./paths";
+import { agentWorkspaceDir, setConfigDirOverride } from "./paths";
 
 // The repo's real, hand-tuned config files. The writers must round-trip these
 // without dropping or mutating anything (the central data-safety guarantee), so
@@ -328,8 +328,7 @@ describe("readIcpProfile / writeIcpProfile", () => {
 describe("config-dir staging override", () => {
   afterEach(() => setConfigDirOverride(undefined));
 
-  it("routes config + ICP writes to the override dir, leaving the DB path alone", () => {
-    const realDb = dbPath();
+  it("routes config + ICP writes to the override dir", () => {
     const staging = fs.mkdtempSync(path.join(os.tmpdir(), "lf-staging-"));
     setConfigDirOverride(staging);
 
@@ -340,9 +339,6 @@ describe("config-dir staging override", () => {
     expect(fs.existsSync(path.join(staging, "agents", "prospector", "profile.md"))).toBe(true);
     expect(readRegionConfig()?.name).toBe("Testville, Maine");
     expect(readIcpProfile()).toBe("# Staged ICP\n");
-
-    // The DB path must NOT move with the config override.
-    expect(dbPath()).toBe(realDb);
 
     setConfigDirOverride(undefined);
     // Back to the real dir → the staged region is no longer what we read.

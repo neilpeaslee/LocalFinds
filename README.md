@@ -76,9 +76,9 @@ npm run db:push && npm run db:seed
 npm run dev                                           # http://localhost:3000
 ```
 
-The schema is applied with `drizzle-kit push` (no migration files). After
-pulling changes that touch `packages/db/src/schema.ts` (e.g. a new table),
-re-run `npm run db:push` to apply them to your existing database.
+The schema is applied from the canonical SQL migrations in `db/migrations/*.sql`.
+After pulling changes that add a new migration, re-run `npm run db:migrate` to
+apply them to your existing database.
 
 ## Running agents
 
