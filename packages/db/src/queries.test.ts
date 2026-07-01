@@ -555,3 +555,140 @@ describe("feedback", () => {
     expect(unread.some((r) => r.findId === find.id && r.action === "hide")).toBe(true);
   });
 });
+
+describe("sources", () => {
+  it("upsertSource creates a new source and reports created", async () => {
+    const { id, outcome } = await q.upsertSource({ url: "https://a.test", name: "A", addedBy: "test" });
+    expect(outcome).toBe("created");
+    expect(id).toBeGreaterThan(0);
+    const src = await q.getSourceById(id);
+    expect(src?.url).toBe("https://a.test");
+    expect(src?.name).toBe("A");
+    expect(src?.lastCheckedAt).not.toBeNull();
+  });
+
+  it("upsertSource reports updated + updates name on second call", async () => {
+    const first = await q.upsertSource({ url: "https://b.test", name: "B", addedBy: "test" });
+    const second = await q.upsertSource({ url: "https://b.test", name: "B updated", addedBy: "test" });
+    expect(second.outcome).toBe("updated");
+    expect(second.id).toBe(first.id);
+    const after = await q.getSourceById(second.id);
+    expect(after?.name).toBe("B updated");
+  });
+
+  it("listSources returns all rows ordered by url", async () => {
+    await q.upsertSource({ url: "https://z.test", name: "Z", addedBy: "test" });
+    await q.upsertSource({ url: "https://a.test", name: "A", addedBy: "test" });
+    await q.upsertSource({ url: "https://m.test", name: "M", addedBy: "test" });
+    const sources = await q.listSources();
+    const urls = sources.map((s) => s.url);
+    expect(urls).toEqual([...urls].sort());
+    expect(urls).toContain("https://a.test");
+    expect(urls).toContain("https://m.test");
+    expect(urls).toContain("https://z.test");
+  });
+
+  it("getSourceById returns undefined for unknown id", async () => {
+    expect(await q.getSourceById(999_999)).toBeUndefined();
+  });
+
+  it("listFindsBySource returns finds linked to a source newest-first", async () => {
+    const { id: sourceId } = await q.upsertSource({ url: "https://src2.test", name: "Src2", addedBy: "test" });
+    const f1 = await q.insertFind({ title: "F1", url: "https://src2.test/1", agent: "scout", sourceUrl: "https://src2.test" });
+    await sleep(5);
+    const f2 = await q.insertFind({ title: "F2", url: "https://src2.test/2", agent: "scout", sourceUrl: "https://src2.test" });
+    const rows = await q.listFindsBySource(sourceId);
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(f1.id);
+    expect(ids).toContain(f2.id);
+    // newest-first: f2 discovered after f1
+    expect(ids.indexOf(f2.id)).toBeLessThan(ids.indexOf(f1.id));
+  });
+});
+
+describe("runs + fetches", () => {
+  it("startRun/finishRun round-trip with usageJson serialised through jsonb", async () => {
+    const id = await q.startRun("scout");
+    expect(id).toBeGreaterThan(0);
+    const usageJson = JSON.stringify({ input: 100, output: 200 });
+    await q.finishRun(id, {
+      status: "success",
+      costUsd: 0.42,
+      usageJson,
+      numTurns: 5,
+      itemsAdded: 3,
+      itemsUpdated: 1,
+      sessionId: "sess-abc",
+    });
+    const run = await q.getRun(id);
+    expect(run).toBeDefined();
+    expect(run!.agent).toBe("scout");
+    expect(run!.status).toBe("success");
+    expect(run!.costUsd).toBeCloseTo(0.42);
+    expect(run!.numTurns).toBe(5);
+    expect(run!.itemsAdded).toBe(3);
+    expect(run!.itemsUpdated).toBe(1);
+    expect(run!.sessionId).toBe("sess-abc");
+    // usageJson round-trips: stored as jsonb, read back as text
+    expect(JSON.parse(run!.usageJson!)).toEqual({ input: 100, output: 200 });
+    expect(run!.finishedAt).not.toBeNull();
+  });
+
+  it("finishRun sets status + cost; costLastNDays sums", async () => {
+    const id = await q.startRun("scout");
+    await q.finishRun(id, { status: "success", costUsd: 0.5, usageJson: JSON.stringify({ a: 1 }) });
+    expect(await q.costLastNDays(1)).toBeCloseTo(0.5);
+  });
+
+  it("costLastNDays returns 0 when no runs have costs", async () => {
+    expect(await q.costLastNDays(1)).toBe(0);
+  });
+
+  it("costLastNDays sums multiple runs", async () => {
+    const r1 = await q.startRun("scout");
+    const r2 = await q.startRun("scout");
+    await q.finishRun(r1, { status: "success", costUsd: 0.3 });
+    await q.finishRun(r2, { status: "success", costUsd: 0.2 });
+    expect(await q.costLastNDays(1)).toBeCloseTo(0.5);
+  });
+
+  it("listRuns returns runs newest-first", async () => {
+    const r1 = await q.startRun("scout");
+    await sleep(5);
+    const r2 = await q.startRun("scout");
+    const runs = await q.listRuns();
+    const ids = runs.map((r) => r.id);
+    expect(ids.indexOf(r2)).toBeLessThan(ids.indexOf(r1));
+  });
+
+  it("blockedHosts flags a host after 3 consecutive blocks, reset by a non-block", async () => {
+    const run = await q.startRun("scout");
+    for (let i = 0; i < 3; i++)
+      await q.recordFetch({ runId: run, agent: "scout", host: "x.test", url: "u", status: 403, klass: "blocked" });
+    expect(await q.blockedHosts()).toContain("x.test");
+    await q.recordFetch({ runId: run, agent: "scout", host: "x.test", url: "u", status: 200, klass: "ok" });
+    expect(await q.blockedHosts()).not.toContain("x.test");
+  });
+
+  it("blockedHosts does not flag a host with fewer than 3 consecutive blocks", async () => {
+    const run = await q.startRun("scout");
+    await q.recordFetch({ runId: run, agent: "scout", host: "y.test", url: "u", status: 403, klass: "blocked" });
+    await q.recordFetch({ runId: run, agent: "scout", host: "y.test", url: "u", status: 403, klass: "blocked" });
+    expect(await q.blockedHosts()).not.toContain("y.test");
+  });
+
+  it("recordFetch + listFetchesForHost + clearFetchHistory", async () => {
+    const run = await q.startRun("scout");
+    await q.recordFetch({ runId: run, agent: "scout", host: "foo.test", url: "https://foo.test/a", status: 200, klass: "ok" });
+    await q.recordFetch({ runId: run, agent: "scout", host: "foo.test", url: "https://foo.test/b", status: 403, klass: "blocked" });
+    const fetches = await q.listFetchesForHost("foo.test");
+    expect(fetches.length).toBe(2);
+    expect(fetches[0].url).toBe("https://foo.test/a");
+    expect(fetches[1].url).toBe("https://foo.test/b");
+    expect(fetches[0].klass).toBe("ok");
+    expect(fetches[1].klass).toBe("blocked");
+    const cleared = await q.clearFetchHistory("foo.test");
+    expect(cleared).toBe(2);
+    expect((await q.listFetchesForHost("foo.test")).length).toBe(0);
+  });
+});
