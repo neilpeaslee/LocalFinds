@@ -13,15 +13,22 @@ function migrationDir(): string {
   return path.join(findRepoRoot(), "db", "migrations");
 }
 
-export function migrationFilenames(): string[] {
-  return readdirSync(migrationDir())
+function listMigrations(dir: string): string[] {
+  return readdirSync(dir)
     .filter((n) => n.endsWith(".sql"))
     .sort();
 }
 
+export function migrationFilenames(): string[] {
+  return listMigrations(migrationDir());
+}
+
 // Apply every db/migrations/*.sql not already recorded in public.schema_migrations,
 // each file in its own transaction (SQL + bookkeeping insert together). Idempotent:
-// a re-run applies nothing. Aborts on the first failing file (its txn rolls back).
+// a re-run applies nothing. Each file applies inside tx() (client.ts): if its SQL
+// throws, tx() rolls back that file's statements — including the bookkeeping
+// insert — before rethrowing, so a partially-applied migration is never recorded,
+// and the throw stops the loop before any later file runs.
 export async function runMigrations(): Promise<MigrationResult> {
   await query(
     `CREATE TABLE IF NOT EXISTS public.schema_migrations (
@@ -38,7 +45,7 @@ export async function runMigrations(): Promise<MigrationResult> {
   const applied: string[] = [];
   const skipped: string[] = [];
   const dir = migrationDir();
-  for (const name of migrationFilenames()) {
+  for (const name of listMigrations(dir)) {
     if (done.has(name)) {
       skipped.push(name);
       continue;
