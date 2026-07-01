@@ -57,3 +57,29 @@ export async function resetDb(): Promise<void> {
     await client.end();
   }
 }
+
+// Fixture-only setup: extensions + planet_osm fixtures, but NO migrations — for
+// exercising the migration runner against a fresh schema. Deliberately standalone
+// (a few lines duplicated) to keep the migrated-DB setupPgDatabase byte-identical.
+export async function setupPgFixtureOnly(): Promise<void> {
+  container = await new PostgreSqlContainer("postgis/postgis:15-3.4").start();
+  const url = container.getConnectionUri();
+  process.env.LOCALFINDS_DATABASE_URL = url;
+
+  const files = [path.join(FIXTURES, "planet_osm.sql")];
+  const seed = path.join(FIXTURES, "seed_osm.sql");
+  try {
+    readFileSync(seed);
+    files.push(seed);
+  } catch {
+    /* optional */
+  }
+
+  const admin = new pg.Client({ connectionString: url });
+  await admin.connect();
+  try {
+    for (const f of files) await admin.query(readFileSync(f, "utf8"));
+  } finally {
+    await admin.end();
+  }
+}
