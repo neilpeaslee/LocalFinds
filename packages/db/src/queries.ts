@@ -522,11 +522,12 @@ export async function listBusinesses(filters: BusinessFilters = {}): Promise<Pla
   if (filters.town) where.push(`pl.town = ${p(filters.town)}`);
   if (filters.status) where.push(`pl.status = ${p(filters.status)}`);
   if (filters.tag) {
-    // tags is the OSM jsonb tag set; match the derived key=value form (C7).
-    where.push(
-      `EXISTS (SELECT 1 FROM jsonb_each_text(pl.tags) AS kv
-               WHERE kv.key || '=' || kv.value = ${p(filters.tag)})`,
-    );
+    // The catalog tags column is the raw OSM jsonb set. The filter is an OSM
+    // key existence check (e.g. "amenity" → any amenity place). This matches
+    // the old SQLite "array contains key" semantics while letting PLACE_TAGS_SQL
+    // still return the full derived key=value[] for display (C7). To filter by
+    // a specific value, callers should use BusinessFilters.kind (TODO).
+    where.push(`pl.tags ? ${p(filters.tag)}`);
   }
   if (filters.q) where.push(`pl.name ILIKE ${p(likeContains(filters.q))} ESCAPE '\\'`);
   if (filters.hasWebsite) where.push(`pl.website IS NOT NULL AND pl.website <> ''`);
@@ -560,8 +561,8 @@ export async function dedupeBusinesses(): Promise<{ groups: number; marked: numb
       for (const dup of group) {
         if (dup.osmId === canonical.osmId) continue;
         await c.query(
-          `INSERT INTO localfinds.place_annotations (osm_id, duplicate_of, updated_at)
-           VALUES ($1, $2, now())
+          `INSERT INTO localfinds.place_annotations (osm_id, duplicate_of, added_by)
+           VALUES ($1, $2, 'dedupe')
            ON CONFLICT (osm_id) DO UPDATE SET duplicate_of = EXCLUDED.duplicate_of, updated_at = now()`,
           [dup.osmId, canonical.osmId],
         );
