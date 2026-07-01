@@ -57,9 +57,9 @@ export function formatProspectorActivity(
 // db-backed wrapper (not unit-tested): pull the last few prospector runs and the
 // lead tally, then format. Any failure (no DB yet on a fresh install, etc.)
 // yields "" so a cold-start interview simply omits the section.
-export function recentProspectorContext(): string {
+export async function recentProspectorContext(): Promise<string> {
   try {
-    const runs = listRuns(50)
+    const runs = (await listRuns(50))
       .filter((r) => r.agent === "prospector")
       .slice(0, 3)
       .map((r) => ({
@@ -70,8 +70,8 @@ export function recentProspectorContext(): string {
         itemsUpdated: r.itemsUpdated,
         warnings: r.warnings,
       }));
-    const leadCount = getFeedPage({ type: "lead", pageSize: 1 }).total;
-    const recentLeadTitles = getFeed({ type: "lead", limit: 6 }).map((f) => f.title);
+    const leadCount = (await getFeedPage({ type: "lead", pageSize: 1 })).total;
+    const recentLeadTitles = (await getFeed({ type: "lead", limit: 6 })).map((f) => f.title);
     return formatProspectorActivity(runs, leadCount, recentLeadTitles);
   } catch {
     return "";

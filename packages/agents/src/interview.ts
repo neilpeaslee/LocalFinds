@@ -446,7 +446,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
   const runId = interviewRunId();
   const staging = createStagingDir(dataRoot, runId);
   seedStaging(dataRoot, staging);
-  const prospectorContext = recentProspectorContext();
+  const prospectorContext = await recentProspectorContext();
 
   const totalCycles = preliminaryCycles(depth) + 1;
   let lastReview: ReviewResult | undefined;
@@ -468,7 +468,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
       process.stdout.write(
         "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
       );
-      discardProvisionalFinds();
+      await discardProvisionalFinds();
       discardStaging(staging);
       rl.close();
       return;
@@ -476,7 +476,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     lastTranscript = renderTranscript(readJournal());
     if (!lastTranscript.trim()) {
       process.stdout.write("\nNo answers were captured, so there's nothing to write.\n");
-      discardProvisionalFinds();
+      await discardProvisionalFinds();
       discardStaging(staging);
       rl.close();
       return;
@@ -494,7 +494,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     if (built?.subtype !== "success") {
       process.stdout.write("\nI couldn't write the config from the interview this pass.\n");
       discardStaging(staging);
-      discardProvisionalFinds();
+      await discardProvisionalFinds();
       rl.close();
       return;
     }
@@ -523,7 +523,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
   const keep = await confirmStaging(rl, dataRoot, staging);
   if (keep) {
     promoteStaging(dataRoot, staging);
-    const promoted = promoteProvisionalFinds();
+    const promoted = await promoteProvisionalFinds();
     discardStaging(staging);
     const archived = archiveJournal(runId);
     process.stdout.write(

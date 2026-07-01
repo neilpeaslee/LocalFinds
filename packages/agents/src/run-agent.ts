@@ -175,7 +175,7 @@ export async function runAgent(
   // Scout-only: skip hosts that have repeatedly 403/401'd. The prompt note avoids
   // wasting a turn on a denial; the PreToolUse guard (below) is the hard backstop.
   const isScout = def.name === "scout";
-  const blocked = isScout ? blockedHosts(STRIKE_THRESHOLD) : [];
+  const blocked = isScout ? await blockedHosts(STRIKE_THRESHOLD) : [];
   if (blocked.length > 0) {
     prompt +=
       "\n\n## Hosts to skip\n" +
@@ -185,7 +185,7 @@ export async function runAgent(
   const blockedSet = new Set(blocked);
 
   const model = def.model ?? DEFAULT_MODEL;
-  const runId = startRun(def.name);
+  const runId = await startRun(def.name);
   const log = openRunLog(def.name, runId);
   log.write({
     kind: "run_start",
@@ -255,7 +255,7 @@ export async function runAgent(
             // Logging must never fail a run.
             try {
               const { klass, status } = classifyWebFetchResult(webFetchResultText(ev.content));
-              recordFetch({ runId, agent: def.name, host, url, status, klass });
+              await recordFetch({ runId, agent: def.name, host, url, status, klass });
             } catch (err) {
               console.error(`[${def.name}] recordFetch failed:`, err);
             }
@@ -269,7 +269,7 @@ export async function runAgent(
     const status = statusFromResult(result);
     log.write({ kind: "run_end", status });
     log.close();
-    finishRun(runId, {
+    await finishRun(runId, {
       status,
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,
@@ -290,7 +290,7 @@ export async function runAgent(
     if (status === "error") log.write({ kind: "error", message });
     log.write({ kind: "run_end", status });
     log.close();
-    finishRun(runId, {
+    await finishRun(runId, {
       status,
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,

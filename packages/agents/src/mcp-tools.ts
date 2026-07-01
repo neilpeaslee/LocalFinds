@@ -46,12 +46,12 @@ export interface SourceUpsertArgs {
 
 // Upsert a source and tally it against the run counters. Mirrors
 // upsertOneBusiness: a brand-new URL is `added`, an existing one is `updated`.
-export function recordSourceUpsert(
+export async function recordSourceUpsert(
   args: SourceUpsertArgs,
   agent: string,
   counters: RunCounters,
 ) {
-  const result = upsertSource({
+  const result = await upsertSource({
     url: args.url,
     name: args.name,
     status: args.status,
@@ -109,17 +109,17 @@ export function buildLocalfindsServer(
             .string()
             .optional()
             .describe('Find type — omit for an event (default), or "lead" for a qualified business lead.'),
-          business_id: z
-            .number()
+          place_osm_id: z
+            .string()
             .optional()
-            .describe("For a lead: the id of the linked business (from list_businesses)."),
+            .describe("For a lead: the osm_id of the linked place (from list_businesses)."),
           score: z
             .number()
             .optional()
             .describe("0-1 fit/quality score (e.g. a lead's ICP fit)."),
         },
         async (args) => {
-          const result = insertFind({
+          const result = await insertFind({
             title: args.title,
             url: args.url,
             summary: args.summary,
@@ -130,7 +130,7 @@ export function buildLocalfindsServer(
             tags: args.tags,
             sourceUrl: args.source_url,
             type: args.type,
-            businessId: args.business_id,
+            placeOsmId: args.place_osm_id,
             score: args.score,
             agent,
             status: resolveFindStatus(opts.findStatusOverride),
@@ -147,7 +147,7 @@ export function buildLocalfindsServer(
           status: findStatus.optional(),
           limit: z.number().optional().describe("Default 100"),
         },
-        async (args) => asText(listRecentFinds(args)),
+        async (args) => asText(await listRecentFinds(args)),
       ),
       tool(
         "update_find_status",
@@ -161,7 +161,7 @@ export function buildLocalfindsServer(
             .describe("One line on why — also record it in your notes"),
         },
         async (args) => {
-          const ok = updateFindStatus(args.id, args.status);
+          const ok = await updateFindStatus(args.id, args.status);
           if (ok) counters.updated++;
           return asText({ ok, id: args.id, status: args.status });
         },
@@ -174,7 +174,7 @@ export function buildLocalfindsServer(
           expires_at: z.string().describe("ISO 8601"),
         },
         async (args) => {
-          const ok = setFindExpiry(args.id, args.expires_at);
+          const ok = await setFindExpiry(args.id, args.expires_at);
           if (ok) counters.updated++;
           return asText({ ok, id: args.id });
         },
@@ -185,13 +185,13 @@ export function buildLocalfindsServer(
         {
           limit: z.number().optional().describe("Default 200"),
         },
-        async (args) => asText(readFeedbackForAgent(agent, args.limit)),
+        async (args) => asText(await readFeedbackForAgent(agent, args.limit)),
       ),
       tool(
         "list_sources",
         "List the registered sources (local sites worth checking) with status and quality signals.",
         {},
-        async () => asText(listSources()),
+        async () => asText(await listSources()),
       ),
       tool(
         "upsert_source",
@@ -213,7 +213,7 @@ export function buildLocalfindsServer(
             .optional()
             .describe("iCal feed URL for this source, if it has one (e.g. The Events Calendar ?ical=1)"),
         },
-        async (args) => asText(recordSourceUpsert(args, agent, counters)),
+        async (args) => asText(await recordSourceUpsert(args, agent, counters)),
       ),
       tool(
         "fetch_ical",
@@ -281,7 +281,7 @@ export function buildLocalfindsServer(
           limit: z.number().optional().describe("Default 500"),
         },
         async (args) => {
-          const { rows, total } = listBusinessesRanked({
+          const { rows, total } = await listBusinessesRanked({
             town: args.town,
             tag: args.tag,
             status: args.status,
@@ -300,7 +300,6 @@ export function buildLocalfindsServer(
             // phone, and timestamps keeps a tier-wide list from blowing the token
             // budget. The full record is available via the /businesses page.
             businesses: rows.map((r) => ({
-              id: r.business.id,
               osmId: r.business.osmId,
               name: r.business.name,
               kind: r.business.kind,
