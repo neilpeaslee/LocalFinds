@@ -97,7 +97,6 @@ describe("insertFind", () => {
       placeOsmId: "node/424242",
     });
     expect(r.outcome).toBe("created");
-    const { queryOne } = await import("./client");
     const anchor = await queryOne(
       `SELECT osm_id FROM localfinds.place_annotations WHERE osm_id = $1`,
       ["node/424242"],

@@ -12,6 +12,8 @@ import {
   readRegionConfig,
   startRun,
   type FindStatus,
+  type RunEvent,
+  type RunLogWriter,
 } from "@localfinds/db";
 import fs from "node:fs";
 import path from "node:path";
@@ -121,6 +123,17 @@ export function ensureWorkspace(workspace: string): string {
   return workspace;
 }
 
+// Transcript writes are pure observability and, since SP4, a remote DB call
+// over the SSH tunnel. A failed write must never abort or wedge a run
+// (mirrors the recordFetch guard below) — log and continue.
+async function safeWrite(log: RunLogWriter, event: RunEvent): Promise<void> {
+  try {
+    await log.write(event);
+  } catch (err) {
+    console.error(`run-events write failed (non-fatal):`, err);
+  }
+}
+
 function logMessage(message: { type: string } & Record<string, any>): void {
   if (message.type !== "assistant") return;
   for (const block of message.message?.content ?? []) {
@@ -187,7 +200,7 @@ export async function runAgent(
   const model = def.model ?? DEFAULT_MODEL;
   const runId = await startRun(def.name);
   const log = openRunLog(def.name, runId);
-  await log.write({
+  await safeWrite(log, {
     kind: "run_start",
     agent: def.name,
     runId,
@@ -243,7 +256,7 @@ export async function runAgent(
       logMessage(message as never);
       const events = projectMessage(message);
       for (const ev of events) {
-        await log.write(ev);
+        await safeWrite(log, ev);
         if (isScout && ev.kind === "tool_use" && ev.name === "WebFetch") {
           const url = (ev.input as { url?: unknown })?.url;
           if (typeof url === "string") fetchUrls.set(ev.id, url);
@@ -267,7 +280,7 @@ export async function runAgent(
     }
 
     const status = statusFromResult(result);
-    await log.write({ kind: "run_end", status });
+    await safeWrite(log, { kind: "run_end", status });
     await log.close();
     await finishRun(runId, {
       status,
@@ -287,8 +300,8 @@ export async function runAgent(
     // here as a "capped" (non-error) run that already persisted its finds.
     const status = statusFromResult(result);
     const message = err instanceof Error ? err.message : String(err);
-    if (status === "error") await log.write({ kind: "error", message });
-    await log.write({ kind: "run_end", status });
+    if (status === "error") await safeWrite(log, { kind: "error", message });
+    await safeWrite(log, { kind: "run_end", status });
     await log.close();
     await finishRun(runId, {
       status,
