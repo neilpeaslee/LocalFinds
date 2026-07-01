@@ -33,11 +33,11 @@ export default async function SourceDetailPage({
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const source = getSourceById(id);
+  const source = await getSourceById(id);
   if (!source) notFound();
 
   const note = readAgentNote("source-keeper", source.notesPath);
-  const finds = listFindsBySource(source.id, 10);
+  const finds = await listFindsBySource(source.id, 10);
 
   const meta = [
     source.qualityScore != null ? `quality ${source.qualityScore.toFixed(1)}` : null,

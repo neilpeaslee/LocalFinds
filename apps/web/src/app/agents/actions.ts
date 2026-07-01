@@ -29,7 +29,7 @@ export async function triggerRun(target: string): Promise<void> {
 
   // Concurrency guard — agents share the DB and profiles and the roster is
   // sequential, so refuse to start while a live run is in progress.
-  if (runInProgress(listRuns(50), Date.now())) return;
+  if (runInProgress(await listRuns(50), Date.now())) return;
 
   const repoRoot = findRepoRoot();
   const logPath = path.join(repoRoot, "data", "agents", "web.log");
@@ -55,7 +55,7 @@ export async function triggerRun(target: string): Promise<void> {
   // it (and the live transcript panel takes over from there).
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (runInProgress(listRuns(20), Date.now())) break;
+    if (runInProgress(await listRuns(20), Date.now())) break;
     await sleep(POLL_MS);
   }
 

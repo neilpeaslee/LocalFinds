@@ -102,9 +102,9 @@ function RunRow({ run, now }: { run: Run; now: number }) {
   );
 }
 
-export default function AgentsPage() {
-  const allRuns = listRuns(200);
-  const cost30 = costLastNDays(30);
+export default async function AgentsPage() {
+  const allRuns = await listRuns(200);
+  const cost30 = await costLastNDays(30);
   const now = Date.now();
   const inProgress = runInProgress(allRuns, now);
   const activeRun = allRuns.find(

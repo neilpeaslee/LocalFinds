@@ -55,7 +55,7 @@ export async function saveSettings(formData: FormData): Promise<void> {
 // ---- Bulk feed management (status-only; no feedback rows). ----
 
 export async function unhideAllAction(): Promise<void> {
-  unhideAll();
+  await unhideAll();
   revalidatePath("/feed");
   revalidatePath("/");
 }
@@ -72,7 +72,7 @@ export async function bulkUpdateStatus(formData: FormData): Promise<void> {
     .map((s) => Number(s))
     .filter((n) => Number.isInteger(n) && n > 0);
   if (ids.length === 0) return;
-  updateFindStatuses(ids, status);
+  await updateFindStatuses(ids, status);
   revalidatePath("/feed");
   revalidatePath("/");
 }

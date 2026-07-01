@@ -72,7 +72,7 @@ export default async function SourcesPage({
   const sort = parseSort(first(params.sort));
   const dir = parseDir(first(params.dir));
 
-  const all = listSources();
+  const all = await listSources();
 
   if (all.length === 0) {
     return (

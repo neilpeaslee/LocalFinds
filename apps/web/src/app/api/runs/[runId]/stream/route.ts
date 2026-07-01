@@ -11,7 +11,7 @@ export async function GET(
 ): Promise<Response> {
   const { runId: runIdStr } = await ctx.params;
   const runId = Number(runIdStr);
-  const run = Number.isInteger(runId) ? getRun(runId) : undefined;
+  const run = Number.isInteger(runId) ? await getRun(runId) : undefined;
   if (!run) return new Response("run not found", { status: 404 });
 
   const file = runLogPath(run.agent, runId);
@@ -22,11 +22,12 @@ export async function GET(
       let offset = 0;
       let buffer = "";
       let closed = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const finish = () => {
         if (closed) return;
         closed = true;
-        clearInterval(timer);
+        if (timer) clearTimeout(timer);
         try {
           controller.close();
         } catch {
@@ -34,7 +35,9 @@ export async function GET(
         }
       };
 
-      const poll = () => {
+      // Self-scheduling async poll (setTimeout recursion): getRun is async now,
+      // and a setInterval callback can't await it. Each pass schedules the next.
+      const poll = async () => {
         if (closed) return;
 
         let size = 0;
@@ -71,13 +74,17 @@ export async function GET(
         }
 
         // Fallback close: the run is no longer live and we've drained the file.
-        const fresh = getRun(runId);
+        const fresh = await getRun(runId);
         const ended = !fresh || fresh.status !== "running" || isRunStale(fresh, Date.now());
-        if (ended && size <= offset) finish();
+        if (ended && size <= offset) {
+          finish();
+          return;
+        }
+
+        if (!closed) timer = setTimeout(poll, POLL_MS);
       };
 
-      const timer = setInterval(poll, POLL_MS);
-      poll(); // immediate first read (catch-up)
+      void poll(); // immediate first read (catch-up); schedules subsequent polls
       req.signal.addEventListener("abort", finish);
     },
   });

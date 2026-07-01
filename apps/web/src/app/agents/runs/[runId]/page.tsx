@@ -18,7 +18,7 @@ export default async function RunDetailPage({
 }) {
   const { runId: runIdStr } = await params;
   const runId = Number(runIdStr);
-  const run = Number.isInteger(runId) ? getRun(runId) : undefined;
+  const run = Number.isInteger(runId) ? await getRun(runId) : undefined;
   if (!run) notFound();
 
   const events = readRunEvents(run.agent, runId);
