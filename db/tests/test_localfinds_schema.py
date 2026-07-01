@@ -77,3 +77,30 @@ async def test_feedback_action_check(conn):
         await conn.execute(
             "INSERT INTO localfinds.feedback (find_id, action) VALUES ($1, 'shrug')", fid
         )
+
+
+async def test_run_events_fk_requires_a_run(conn):
+    # a transcript row for a non-existent run is rejected
+    with pytest.raises(asyncpg.ForeignKeyViolationError):
+        await conn.execute(
+            "INSERT INTO localfinds.run_events (run_id, seq, kind, payload) "
+            "VALUES (999999, 0, 'run_start', '{}'::jsonb)"
+        )
+
+
+async def test_run_events_pk_rejects_duplicate_seq(conn):
+    # (run_id, seq) is the primary key — the same seq twice in one run is rejected
+    run_id = await conn.fetchval(
+        "INSERT INTO localfinds.runs (agent) VALUES ('scout') RETURNING id"
+    )
+    await conn.execute(
+        "INSERT INTO localfinds.run_events (run_id, seq, kind, payload) "
+        "VALUES ($1, 0, 'run_start', '{}'::jsonb)",
+        run_id,
+    )
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await conn.execute(
+            "INSERT INTO localfinds.run_events (run_id, seq, kind, payload) "
+            "VALUES ($1, 0, 'assistant_text', '{}'::jsonb)",
+            run_id,
+        )
