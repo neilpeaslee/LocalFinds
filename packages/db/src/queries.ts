@@ -101,67 +101,73 @@ export interface SaveFindResult {
 export async function insertFind(input: NewFindInput): Promise<SaveFindResult> {
   const urlHash = findKey({ url: input.url, title: input.title });
 
-  let sourceId: number | undefined;
-  if (input.sourceUrl) {
-    sourceId = (
-      await queryOne<{ id: number }>(`SELECT id FROM localfinds.sources WHERE url = $1`, [
-        input.sourceUrl,
-      ])
-    )?.id;
-  }
+  return tx(async (c) => {
+    let sourceId: number | undefined;
+    if (input.sourceUrl) {
+      sourceId = (
+        await c.query<{ id: number }>(`SELECT id FROM localfinds.sources WHERE url = $1`, [
+          input.sourceUrl,
+        ])
+      ).rows[0]?.id;
+    }
 
-  // Lead→place link contract (SP1): ensure the annotation anchor exists before
-  // the FK insert so place_osm_id always resolves. No-op for non-lead finds.
-  if (input.placeOsmId) {
-    await execute(
-      `INSERT INTO localfinds.place_annotations (osm_id, added_by) VALUES ($1, $2)
-       ON CONFLICT (osm_id) DO NOTHING`,
-      [input.placeOsmId, input.agent],
-    );
-  }
-
-  const inserted = await queryOne<{ id: number }>(
-    `INSERT INTO localfinds.finds
-       (title, url, url_hash, summary, event_start, event_end, expires_at, published_at,
-        agent, source_id, tags, score, type, place_osm_id, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-     ON CONFLICT (url_hash) DO NOTHING
-     RETURNING id`,
-    [
-      input.title,
-      input.url ?? null,
-      urlHash,
-      input.summary ?? null,
-      input.eventStart ?? null,
-      input.eventEnd ?? null,
-      input.expiresAt ?? null,
-      input.publishedAt ?? null,
-      input.agent,
-      sourceId ?? null,
-      input.tags ?? [],
-      input.score ?? null,
-      input.type ?? "event",
-      input.placeOsmId ?? null,
-      input.status ?? "new",
-    ],
-  );
-
-  if (inserted) {
-    if (sourceId !== undefined) {
-      await execute(
-        `UPDATE localfinds.sources SET finds_count = finds_count + 1, last_find_at = now()
-         WHERE id = $1`,
-        [sourceId],
+    // Lead→place link contract (SP1): ensure the annotation anchor exists before
+    // the FK insert so place_osm_id always resolves. No-op for non-lead finds.
+    if (input.placeOsmId) {
+      await c.query(
+        `INSERT INTO localfinds.place_annotations (osm_id, added_by) VALUES ($1, $2)
+         ON CONFLICT (osm_id) DO NOTHING`,
+        [input.placeOsmId, input.agent],
       );
     }
-    return { outcome: "created", id: inserted.id };
-  }
 
-  const existing = await queryOne<{ id: number }>(
-    `SELECT id FROM localfinds.finds WHERE url_hash = $1`,
-    [urlHash],
-  );
-  return { outcome: "duplicate", id: existing!.id };
+    const inserted = (
+      await c.query<{ id: number }>(
+        `INSERT INTO localfinds.finds
+           (title, url, url_hash, summary, event_start, event_end, expires_at, published_at,
+            agent, source_id, tags, score, type, place_osm_id, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         ON CONFLICT (url_hash) DO NOTHING
+         RETURNING id`,
+        [
+          input.title,
+          input.url ?? null,
+          urlHash,
+          input.summary ?? null,
+          input.eventStart ?? null,
+          input.eventEnd ?? null,
+          input.expiresAt ?? null,
+          input.publishedAt ?? null,
+          input.agent,
+          sourceId ?? null,
+          input.tags ?? [],
+          input.score ?? null,
+          input.type ?? "event",
+          input.placeOsmId ?? null,
+          input.status ?? "new",
+        ],
+      )
+    ).rows[0];
+
+    if (inserted) {
+      if (sourceId !== undefined) {
+        await c.query(
+          `UPDATE localfinds.sources SET finds_count = finds_count + 1, last_find_at = now()
+           WHERE id = $1`,
+          [sourceId],
+        );
+      }
+      return { outcome: "created" as const, id: inserted.id };
+    }
+
+    const existing = (
+      await c.query<{ id: number }>(
+        `SELECT id FROM localfinds.finds WHERE url_hash = $1`,
+        [urlHash],
+      )
+    ).rows[0];
+    return { outcome: "duplicate" as const, id: existing!.id };
+  });
 }
 
 export type FeedView = "default" | "starred" | "hidden" | "all";

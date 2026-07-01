@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { resetDb, setupPgDatabase, teardownPgDatabase } from "../test/harness";
+import { execute, queryOne } from "./client";
 import * as q from "./queries";
 
 beforeAll(setupPgDatabase, 120_000);
@@ -105,6 +106,58 @@ describe("insertFind", () => {
 
     const all = await q.getFeed({ view: "all" });
     expect(all.find((f) => f.id === r.id)?.placeOsmId).toBe("node/424242");
+  });
+
+  it("is atomic — a failed finds insert rolls back the annotation anchor", async () => {
+    // An invalid status trips the finds.status CHECK *after* the place_annotations
+    // anchor upsert. With the tx wrapper the whole call rolls back, so no orphan
+    // anchor and no find are left behind. (Pre-fix, the anchor would persist.)
+    const bad = {
+      title: "Atomic",
+      url: "https://x.test/atomic",
+      agent: "scout",
+      placeOsmId: "way/424242",
+      status: "not-a-real-status",
+    } as unknown as q.NewFindInput;
+
+    await expect(q.insertFind(bad)).rejects.toThrow();
+
+    const anchor = await queryOne<{ osm_id: string }>(
+      `SELECT osm_id FROM localfinds.place_annotations WHERE osm_id = $1`,
+      ["way/424242"],
+    );
+    expect(anchor).toBeUndefined();
+
+    const count = await queryOne<{ n: number }>(
+      `SELECT count(*)::int AS n FROM localfinds.finds`,
+    );
+    expect(count?.n).toBe(0);
+  });
+
+  it("re-discovery preserves finds.status (never overwrites stars/hides)", async () => {
+    const first = await q.insertFind({
+      title: "Market",
+      url: "https://x.test/market",
+      agent: "scout",
+    });
+    expect(first.outcome).toBe("created");
+
+    // A curator stars it (status lives on finds; feedback is a separate table).
+    await execute(`UPDATE localfinds.finds SET status = 'starred' WHERE id = $1`, [first.id]);
+
+    // Re-running an agent re-discovers the same item.
+    const again = await q.insertFind({
+      title: "Market",
+      url: "https://x.test/market",
+      agent: "prospector",
+    });
+    expect(again).toEqual({ outcome: "duplicate", id: first.id });
+
+    const row = await queryOne<{ status: string }>(
+      `SELECT status FROM localfinds.finds WHERE id = $1`,
+      [first.id],
+    );
+    expect(row?.status).toBe("starred");
   });
 });
 
