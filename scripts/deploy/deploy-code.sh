@@ -20,6 +20,14 @@ else
   rsync -az --files-from=<(git ls-files) ./ "$DEPLOY_HOST:$DEPLOY_PATH/"
 fi
 
+echo "deploy-code: rsync gitignored config reals (region/categories/towns/boundaries)"
+CONFIG_REALS=(data/config/region.md data/config/categories.json data/config/towns.json data/config/town-boundaries.json)
+if [ "$DRY_RUN" = 1 ]; then
+  echo "DRY rsync> ${CONFIG_REALS[*]} -> $DEPLOY_HOST:$DEPLOY_PATH/data/config/"
+else
+  rsync -az "${CONFIG_REALS[@]}" "$DEPLOY_HOST:$DEPLOY_PATH/data/config/"
+fi
+
 if [ "$LOCAL_LOCK" != "$REMOTE_LOCK" ]; then
   echo "deploy-code: package-lock changed — npm ci"
   remote "npm ci"
