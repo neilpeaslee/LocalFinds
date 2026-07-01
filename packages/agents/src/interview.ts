@@ -240,11 +240,13 @@ async function runBuild(
 // This snapshot/restore machinery backs the PREPARED path (runPrepared); the
 // interactive path uses a staging dir instead.
 //
-// The four target files are hand-tuned and production-bound (sync-content.sh
-// rsyncs data/ to the live site), so a silent drop/rename must be visible before
-// the user commits. set_towns needs a written region to derive its state, so a
-// pure "buffer all, commit on confirm" can't work; instead we snapshot the files,
-// let the agent write live, then show one cumulative diff and revert on reject.
+// The four target files are hand-tuned and drive live behavior — region.md is
+// injected verbatim into every agent prompt, the category tiers and prospector ICP
+// steer runs, and deploy-code ships data/config/* to the live site — so a silent
+// drop/rename must be visible before the user commits. set_towns needs a written
+// region to derive its state, so a pure "buffer all, commit on confirm" can't work;
+// instead we snapshot the files, let the agent write live, then show one cumulative
+// diff and revert on reject.
 
 interface TargetFile {
   label: string;

@@ -108,7 +108,7 @@ prompt-level search caps. Per-run cost is logged to the `runs` table and
 totaled on `/agents`.
 
 Watch a run live — or read any past run's full transcript — on `/agents`: each
-run streams a structured event log to `data/agents/<agent>/runs/<id>.jsonl`,
+run streams a structured event log into the `localfinds.run_events` table (Postgres),
 surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
 ## Deploy
