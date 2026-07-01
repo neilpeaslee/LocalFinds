@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Dump ONLY the localfinds schema (precious, non-rebuildable data) from the shared
 # gis DB. OSM data (planet_osm_*, matviews) is intentionally NOT dumped — it rebuilds
-# from Geofabrik. Runs ON THE BOX as the deploy user; the osm_api DSN is sourced from
-# ~/localfinds-db.env (chmod 600, never a committed secret). Args: <prefix> <keep>.
+# from Geofabrik. Runs ON THE BOX as the deploy user; a PASSWORD-FREE osm_api DSN is
+# sourced from ~/localfinds-db.env — the password comes from ~/.pgpass (chmod 600), so
+# it never reaches argv or the environment. Args: <prefix> <keep>.
 set -euo pipefail
 PREFIX="${1:-nightly}"
 KEEP="${2:-14}"

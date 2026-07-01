@@ -2,8 +2,8 @@
 # Migrate stage: dump the precious localfinds schema, apply versioned SQL migrations
 # via the tracked runner, then reload the app. Runs AFTER deploy-code (the migration
 # files + pg-backup.sh must be on the box first). Connects to the shared `gis` DB as
-# the osm_api role; the DSN (with password) is sourced ON THE BOX from ~/localfinds-db.env
-# (chmod 600) — never in a committed script or a process argument.
+# the osm_api role via a PASSWORD-FREE DSN sourced ON THE BOX from ~/localfinds-db.env;
+# the password comes from ~/.pgpass (chmod 600) — never in a committed script, argv, or env.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
