@@ -12,7 +12,6 @@ import {
 } from "@localfinds/db";
 import { z } from "zod";
 import { formatIcalResult, runIcalFetch } from "./ical";
-import { formatOsmResult, isValidOsmId, runOsmQuery } from "./osm-client";
 
 export interface RunCounters {
   added: number;
@@ -223,40 +222,6 @@ export function buildLocalfindsServer(
           limit: z.number().optional().describe("Max upcoming events to return, default 30, capped at 60"),
         },
         async (args) => formatIcalResult(await runIcalFetch(args.url), args.limit),
-      ),
-      tool(
-        "osm_query",
-        "Query the LocalFinds OSM directory (self-hosted PostGIS) for businesses in an area. Pass EITHER `town` (an admin area name) OR `bbox` ('s,w,n,e' in WGS84). Optionally narrow to specific business keys with `keys` (amenity | shop | tourism | office | craft | leisure); omit to return all. Returns a projected, named, capped array already in the exact shape upsert_businesses accepts — pass its `elements` straight through. If `truncated` is true, narrow (a smaller bbox or fewer keys) and call again.\n\nExamples:\n  { \"town\": \"Rockland\", \"keys\": [\"shop\"] }\n  { \"bbox\": \"44.0,-69.2,44.2,-69.0\", \"keys\": [\"amenity\"] }",
-        {
-          town: z
-            .string()
-            .optional()
-            .describe("Admin area name (e.g. \"Rockland\"). Provide town OR bbox."),
-          bbox: z
-            .string()
-            .optional()
-            .describe("Bounding box 's,w,n,e' in WGS84. Provide town OR bbox."),
-          keys: z
-            .array(z.string())
-            .optional()
-            .describe(
-              "Business keys to include: amenity, shop, tourism, office, craft, leisure. Omit for all.",
-            ),
-          limit: z
-            .number()
-            .optional()
-            .describe("Max elements to return, default 200."),
-        },
-        async (args) =>
-          formatOsmResult(
-            await runOsmQuery({
-              town: args.town,
-              bbox: args.bbox,
-              keys: args.keys,
-              limit: args.limit,
-            }),
-            args.limit,
-          ),
       ),
       tool(
         "list_businesses",
