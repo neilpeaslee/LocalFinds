@@ -64,13 +64,19 @@ def _build_sqlite(path: Path) -> None:
         "INSERT INTO businesses (osm_id,name,status,added_by,discovered_at,last_seen_at) "
         "VALUES ('node/205','Truly Clean Place','active','etl','2024-01-01','2024-01-01')"
     )
+    # biz6: clean, only referenced by a non-lead find (event type) → anchor must be created
+    conn.execute(
+        "INSERT INTO businesses (osm_id,name,status,added_by,discovered_at,last_seen_at) "
+        "VALUES ('node/206','Event Venue','active','etl','2024-01-01','2024-01-01')"
+    )
 
     # Grab ids for FK wiring
     biz1_id = conn.execute("SELECT id FROM businesses WHERE osm_id='node/201'").fetchone()[0]
     biz4_id = conn.execute("SELECT id FROM businesses WHERE osm_id='node/204'").fetchone()[0]
+    biz6_id = conn.execute("SELECT id FROM businesses WHERE osm_id='node/206'").fetchone()[0]
     src_id  = conn.execute("SELECT id FROM sources").fetchone()[0]
 
-    # Four finds --------------------------------------------------------
+    # Five finds --------------------------------------------------------
     # find1: lead → biz4 (clean biz, so anchor must be created)
     conn.execute(
         "INSERT INTO finds (title,url_hash,agent,discovered_at,type,business_id) "
@@ -91,6 +97,11 @@ def _build_sqlite(path: Path) -> None:
     conn.execute(
         "INSERT INTO finds (title,url_hash,agent,discovered_at,type) "
         "VALUES ('Plain Event','etl-hash-4','scout','2024-01-01T00:00:00','event')"
+    )
+    # find5: non-lead (event) with business_id → must get anchor + place_osm_id without FK violation
+    conn.execute(
+        "INSERT INTO finds (title,url_hash,agent,discovered_at,type,business_id) "
+        "VALUES ('Event at Venue','etl-hash-5','scout','2024-01-01T00:00:00','event'," + str(biz6_id) + ")"
     )
 
     find2_id = conn.execute("SELECT id FROM finds WHERE url_hash='etl-hash-2'").fetchone()[0]
@@ -149,7 +160,7 @@ def test_source_count(etl_counts):
 
 
 def test_finds_count(etl_counts):
-    assert etl_counts["finds"] == 4
+    assert etl_counts["finds"] == 5
 
 
 def test_feedback_count(etl_counts):
@@ -165,9 +176,10 @@ def test_fetches_count(etl_counts):
 
 
 def test_place_annotations_count(etl_counts):
-    # biz1 (closed) + biz2 (noted) + biz3 (duplicate_of) + biz4 (lead anchor) = 4
+    # biz1 (closed) + biz2 (noted) + biz3 (duplicate_of) + biz4 (lead anchor)
+    # + biz6 (event anchor, find5) = 5
     # biz5 (node/205) is truly clean — no lead, no note, no dup — produces zero rows
-    assert etl_counts["place_annotations"] == 4
+    assert etl_counts["place_annotations"] == 5
 
 
 # -- structural assertions --------------------------------------------------
@@ -275,3 +287,18 @@ async def test_truly_clean_business_no_annotation(check):
         "SELECT osm_id FROM localfinds.place_annotations WHERE osm_id = 'node/205'"
     )
     assert row is None, "clean business with no lead must not produce an annotation"
+
+
+async def test_non_lead_find_with_business_id_migrates(check):
+    # find5 is type='event' with a business_id pointing at biz6 (node/206).
+    # The ETL must not FK-violate: place_osm_id must resolve and anchor must exist.
+    row = await check.fetchrow(
+        "SELECT place_osm_id FROM localfinds.finds WHERE url_hash='etl-hash-5'"
+    )
+    assert row is not None, "event find with business_id must be migrated"
+    assert row["place_osm_id"] == "node/206", "place_osm_id must resolve to biz6's osm_id"
+
+    anchor = await check.fetchrow(
+        "SELECT osm_id FROM localfinds.place_annotations WHERE osm_id='node/206'"
+    )
+    assert anchor is not None, "anchor row for event-find venue must exist"

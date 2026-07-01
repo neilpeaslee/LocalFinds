@@ -98,9 +98,11 @@ export default async function BusinessDetailPage({
         {place.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {place.tags.map((t) => (
+              // Link uses the bare key (before "=") so it matches the jsonb key-existence
+              // filter in listBusinesses. SP5 will add server-side value-level tag filtering.
               <Link
                 key={t}
-                href={`/businesses?tag=${encodeURIComponent(t)}`}
+                href={`/businesses?tag=${encodeURIComponent(t.split("=")[0])}`}
                 className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
               >
                 {t}

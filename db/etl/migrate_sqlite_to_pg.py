@@ -196,10 +196,11 @@ async def migrate(sqlite_path: str, dsn: str) -> dict[str, int]:
                     b["duplicate_of"],
                 )
 
-            # 4. For every lead find with a business_id, ensure an anchor row
+            # 4. For every find (any type) with a business_id, ensure an anchor row
             #    exists (so the finds.place_osm_id FK can be satisfied).
+            #    Business-derived annotations from step 3 take precedence via ON CONFLICT DO NOTHING.
             for f in finds:
-                if f["type"] == "lead" and f["business_id"] is not None:
+                if f["business_id"] is not None:
                     osm_id = biz_id_to_osm_id.get(f["business_id"])
                     if osm_id:
                         await pgconn.execute(
