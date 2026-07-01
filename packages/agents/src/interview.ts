@@ -500,7 +500,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     }
 
     // ── RUN (provisional leads; clear any from a prior cycle first) ──
-    discardProvisionalFinds();
+    await discardProvisionalFinds();
     const run = await runProspectorSample(staging);
 
     // ── REVIEW (reads the staged config + the run's provisional leads) ──
@@ -533,7 +533,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     if (archived) process.stdout.write(`Transcript kept at ${path.relative(process.cwd(), archived)}\n`);
   } else {
     discardStaging(staging);
-    discardProvisionalFinds();
+    await discardProvisionalFinds();
     process.stdout.write("\nReverted — your earlier config is unchanged.\n");
   }
   rl.close();
