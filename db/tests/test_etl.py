@@ -59,6 +59,11 @@ def _build_sqlite(path: Path) -> None:
         "INSERT INTO businesses (osm_id,name,status,added_by,discovered_at,last_seen_at) "
         "VALUES ('node/204','Clean Place','active','etl','2024-01-01','2024-01-01')"
     )
+    # biz5: truly clean → NO annotation (active, no note, no dup, no lead at all)
+    conn.execute(
+        "INSERT INTO businesses (osm_id,name,status,added_by,discovered_at,last_seen_at) "
+        "VALUES ('node/205','Truly Clean Place','active','etl','2024-01-01','2024-01-01')"
+    )
 
     # Grab ids for FK wiring
     biz1_id = conn.execute("SELECT id FROM businesses WHERE osm_id='node/201'").fetchone()[0]
@@ -161,6 +166,7 @@ def test_fetches_count(etl_counts):
 
 def test_place_annotations_count(etl_counts):
     # biz1 (closed) + biz2 (noted) + biz3 (duplicate_of) + biz4 (lead anchor) = 4
+    # biz5 (node/205) is truly clean — no lead, no note, no dup — produces zero rows
     assert etl_counts["place_annotations"] == 4
 
 
@@ -260,3 +266,12 @@ async def test_lead_to_closed_biz_place_osm_id(check):
         "SELECT place_osm_id FROM localfinds.finds WHERE url_hash='etl-hash-3'"
     )
     assert row["place_osm_id"] == "node/201"
+
+
+async def test_truly_clean_business_no_annotation(check):
+    # node/205: active, no notes_path, no duplicate_of, no lead pointing at it —
+    # must produce ZERO place_annotations rows (the core clean-business invariant).
+    row = await check.fetchrow(
+        "SELECT osm_id FROM localfinds.place_annotations WHERE osm_id = 'node/205'"
+    )
+    assert row is None, "clean business with no lead must not produce an annotation"

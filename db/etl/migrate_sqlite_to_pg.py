@@ -94,6 +94,8 @@ async def migrate(sqlite_path: str, dsn: str) -> dict[str, int]:
 
     Returns a dict of per-table row counts: the number of rows read from SQLite
     (or, for place_annotations, the final count in Postgres after the run).
+    All Postgres writes execute inside a single transaction — a mid-migration
+    failure rolls back completely, making the migration safe to re-run.
     """
     # ---- read SQLite -------------------------------------------------------
     sconn = sqlite3.connect(sqlite_path)
@@ -112,193 +114,194 @@ async def migrate(sqlite_path: str, dsn: str) -> dict[str, int]:
     biz_id_to_osm_id: dict[int, str] = {b["id"]: b["osm_id"] for b in businesses}
     src_id_to_url: dict[int, str]    = {s["id"]: s["url"] for s in sources}
 
-    # ---- write Postgres ----------------------------------------------------
+    # ---- write Postgres (single atomic transaction) ------------------------
     pgconn = await asyncpg.connect(dsn)
     try:
-        # 1. sources → localfinds.sources
-        src_url_to_new_id: dict[str, int] = {}
-        for s in sources:
-            new_id = await pgconn.fetchval(
-                """
-                INSERT INTO localfinds.sources
-                    (url, name, notes_path, ical_url, status, quality_score,
-                     finds_count, last_find_at, last_checked_at, added_by, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                RETURNING id
-                """,
-                s["url"],
-                s["name"],
-                s["notes_path"],
-                s["ical_url"],
-                s["status"] or "active",
-                s["quality_score"],
-                s["finds_count"] or 0,
-                _ts(s["last_find_at"]),
-                _ts(s["last_checked_at"]),
-                s["added_by"],
-                _ts(s["created_at"]) or datetime.now(timezone.utc),
-            )
-            src_url_to_new_id[s["url"]] = new_id
+        async with pgconn.transaction():
+            # 1. sources → localfinds.sources
+            src_url_to_new_id: dict[str, int] = {}
+            for s in sources:
+                new_id = await pgconn.fetchval(
+                    """
+                    INSERT INTO localfinds.sources
+                        (url, name, notes_path, ical_url, status, quality_score,
+                         finds_count, last_find_at, last_checked_at, added_by, created_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    s["url"],
+                    s["name"],
+                    s["notes_path"],
+                    s["ical_url"],
+                    s["status"] or "active",
+                    s["quality_score"],
+                    s["finds_count"] or 0,
+                    _ts(s["last_find_at"]),
+                    _ts(s["last_checked_at"]),
+                    s["added_by"],
+                    _ts(s["created_at"]) or datetime.now(timezone.utc),
+                )
+                src_url_to_new_id[s["url"]] = new_id
 
-        # 2. runs → localfinds.runs
-        old_run_to_new: dict[int, int] = {}
-        for r in runs:
-            new_id = await pgconn.fetchval(
-                """
-                INSERT INTO localfinds.runs
-                    (agent, started_at, finished_at, status, items_added,
-                     items_updated, warnings, num_turns, cost_usd, usage_json,
-                     session_id, error)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12)
-                RETURNING id
-                """,
-                r["agent"],
-                _ts(r["started_at"]) or datetime.now(timezone.utc),
-                _ts(r["finished_at"]),
-                r["status"] or "running",
-                r["items_added"] or 0,
-                r["items_updated"] or 0,
-                r["warnings"] or 0,
-                r["num_turns"],
-                r["cost_usd"],
-                _jsonb_str(r["usage_json"]),
-                r["session_id"],
-                r["error"],
-            )
-            old_run_to_new[r["id"]] = new_id
+            # 2. runs → localfinds.runs
+            old_run_to_new: dict[int, int] = {}
+            for r in runs:
+                new_id = await pgconn.fetchval(
+                    """
+                    INSERT INTO localfinds.runs
+                        (agent, started_at, finished_at, status, items_added,
+                         items_updated, warnings, num_turns, cost_usd, usage_json,
+                         session_id, error)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12)
+                    RETURNING id
+                    """,
+                    r["agent"],
+                    _ts(r["started_at"]) or datetime.now(timezone.utc),
+                    _ts(r["finished_at"]),
+                    r["status"] or "running",
+                    r["items_added"] or 0,
+                    r["items_updated"] or 0,
+                    r["warnings"] or 0,
+                    r["num_turns"],
+                    r["cost_usd"],
+                    _jsonb_str(r["usage_json"]),
+                    r["session_id"],
+                    r["error"],
+                )
+                old_run_to_new[r["id"]] = new_id
 
-        # 3. businesses (non-default) → localfinds.place_annotations
-        for b in businesses:
-            needs = (
-                b["status"] != "active"
-                or b["notes_path"] is not None
-                or b["duplicate_of"] is not None
-            )
-            if not needs:
-                continue
-            so = _status_override(b["status"])
-            await pgconn.execute(
-                """
-                INSERT INTO localfinds.place_annotations
-                    (osm_id, status_override, note, duplicate_of, added_by)
-                VALUES ($1,$2,$3,$4,'etl')
-                ON CONFLICT (osm_id) DO UPDATE
-                    SET status_override = EXCLUDED.status_override,
-                        note            = EXCLUDED.note,
-                        duplicate_of    = EXCLUDED.duplicate_of
-                """,
-                b["osm_id"],
-                so,
-                b["notes_path"],   # path text becomes the note
-                b["duplicate_of"],
-            )
+            # 3. businesses (non-default) → localfinds.place_annotations
+            for b in businesses:
+                needs = (
+                    b["status"] != "active"
+                    or b["notes_path"] is not None
+                    or b["duplicate_of"] is not None
+                )
+                if not needs:
+                    continue
+                so = _status_override(b["status"])
+                await pgconn.execute(
+                    """
+                    INSERT INTO localfinds.place_annotations
+                        (osm_id, status_override, note, duplicate_of, added_by)
+                    VALUES ($1,$2,$3,$4,'etl')
+                    ON CONFLICT (osm_id) DO UPDATE
+                        SET status_override = EXCLUDED.status_override,
+                            note            = EXCLUDED.note,
+                            duplicate_of    = EXCLUDED.duplicate_of
+                    """,
+                    b["osm_id"],
+                    so,
+                    b["notes_path"],   # path text becomes the note
+                    b["duplicate_of"],
+                )
 
-        # 4. For every lead find with a business_id, ensure an anchor row
-        #    exists (so the finds.place_osm_id FK can be satisfied).
-        for f in finds:
-            if f["type"] == "lead" and f["business_id"] is not None:
-                osm_id = biz_id_to_osm_id.get(f["business_id"])
-                if osm_id:
-                    await pgconn.execute(
-                        """
-                        INSERT INTO localfinds.place_annotations (osm_id, added_by)
-                        VALUES ($1,'etl')
-                        ON CONFLICT (osm_id) DO NOTHING
-                        """,
-                        osm_id,
-                    )
+            # 4. For every lead find with a business_id, ensure an anchor row
+            #    exists (so the finds.place_osm_id FK can be satisfied).
+            for f in finds:
+                if f["type"] == "lead" and f["business_id"] is not None:
+                    osm_id = biz_id_to_osm_id.get(f["business_id"])
+                    if osm_id:
+                        await pgconn.execute(
+                            """
+                            INSERT INTO localfinds.place_annotations (osm_id, added_by)
+                            VALUES ($1,'etl')
+                            ON CONFLICT (osm_id) DO NOTHING
+                            """,
+                            osm_id,
+                        )
 
-        ann_count = await pgconn.fetchval(
-            "SELECT COUNT(*) FROM localfinds.place_annotations"
-        )
-
-        # 5. finds → localfinds.finds
-        old_find_to_new: dict[int, int] = {}
-        for f in finds:
-            new_src_id = None
-            if f["source_id"] is not None:
-                url = src_id_to_url.get(f["source_id"])
-                if url:
-                    new_src_id = src_url_to_new_id.get(url)
-
-            place_osm_id = None
-            if f["business_id"] is not None:
-                place_osm_id = biz_id_to_osm_id.get(f["business_id"])
-
-            new_id = await pgconn.fetchval(
-                """
-                INSERT INTO localfinds.finds
-                    (title, url, url_hash, summary, event_start, event_end,
-                     expires_at, published_at, discovered_at, status, agent,
-                     source_id, tags, score, type, place_osm_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-                RETURNING id
-                """,
-                f["title"],
-                f["url"],
-                f["url_hash"],
-                f["summary"],
-                _ts(f["event_start"]),
-                _ts(f["event_end"]),
-                _ts(f["expires_at"]),
-                _ts(f["published_at"]),
-                _ts(f["discovered_at"]) or datetime.now(timezone.utc),
-                f["status"] or "new",
-                f["agent"],
-                new_src_id,
-                _tags(f["tags"]),
-                f["score"],
-                f["type"] or "event",
-                place_osm_id,
-            )
-            old_find_to_new[f["id"]] = new_id
-
-        # 6. feedback → localfinds.feedback
-        fb_count = 0
-        for fb in feedback:
-            new_find_id = old_find_to_new.get(fb["find_id"])
-            if new_find_id is None:
-                continue  # orphaned feedback — skip
-            await pgconn.execute(
-                """
-                INSERT INTO localfinds.feedback (find_id, action, note, created_at)
-                VALUES ($1,$2,$3,$4)
-                """,
-                new_find_id,
-                fb["action"],
-                fb["note"],
-                _ts(fb["created_at"]) or datetime.now(timezone.utc),
-            )
-            fb_count += 1
-
-        # 7. fetches → localfinds.fetches
-        for ft in fetches:
-            new_run_id = old_run_to_new.get(ft["run_id"]) if ft["run_id"] else None
-            await pgconn.execute(
-                """
-                INSERT INTO localfinds.fetches
-                    (run_id, agent, host, url, method, status, klass, via, ts)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-                """,
-                new_run_id,
-                ft["agent"],
-                ft["host"],
-                ft["url"],
-                ft["method"] or "GET",
-                ft["status"],
-                ft["klass"],
-                ft["via"] or "webfetch",
-                _ts(ft["ts"]) or datetime.now(timezone.utc),
+            ann_count = await pgconn.fetchval(
+                "SELECT COUNT(*) FROM localfinds.place_annotations"
             )
 
-        return {
-            "sources":          len(sources),
-            "runs":             len(runs),
-            "finds":            len(finds),
-            "feedback":         fb_count,
-            "fetches":          len(fetches),
-            "place_annotations": ann_count,
-        }
+            # 5. finds → localfinds.finds
+            old_find_to_new: dict[int, int] = {}
+            for f in finds:
+                new_src_id = None
+                if f["source_id"] is not None:
+                    url = src_id_to_url.get(f["source_id"])
+                    if url:
+                        new_src_id = src_url_to_new_id.get(url)
+
+                place_osm_id = None
+                if f["business_id"] is not None:
+                    place_osm_id = biz_id_to_osm_id.get(f["business_id"])
+
+                new_id = await pgconn.fetchval(
+                    """
+                    INSERT INTO localfinds.finds
+                        (title, url, url_hash, summary, event_start, event_end,
+                         expires_at, published_at, discovered_at, status, agent,
+                         source_id, tags, score, type, place_osm_id)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                    RETURNING id
+                    """,
+                    f["title"],
+                    f["url"],
+                    f["url_hash"],
+                    f["summary"],
+                    _ts(f["event_start"]),
+                    _ts(f["event_end"]),
+                    _ts(f["expires_at"]),
+                    _ts(f["published_at"]),
+                    _ts(f["discovered_at"]) or datetime.now(timezone.utc),
+                    f["status"] or "new",
+                    f["agent"],
+                    new_src_id,
+                    _tags(f["tags"]),
+                    f["score"],
+                    f["type"] or "event",
+                    place_osm_id,
+                )
+                old_find_to_new[f["id"]] = new_id
+
+            # 6. feedback → localfinds.feedback
+            fb_count = 0
+            for fb in feedback:
+                new_find_id = old_find_to_new.get(fb["find_id"])
+                if new_find_id is None:
+                    continue  # orphaned feedback — skip
+                await pgconn.execute(
+                    """
+                    INSERT INTO localfinds.feedback (find_id, action, note, created_at)
+                    VALUES ($1,$2,$3,$4)
+                    """,
+                    new_find_id,
+                    fb["action"],
+                    fb["note"],
+                    _ts(fb["created_at"]) or datetime.now(timezone.utc),
+                )
+                fb_count += 1
+
+            # 7. fetches → localfinds.fetches
+            for ft in fetches:
+                new_run_id = old_run_to_new.get(ft["run_id"]) if ft["run_id"] else None
+                await pgconn.execute(
+                    """
+                    INSERT INTO localfinds.fetches
+                        (run_id, agent, host, url, method, status, klass, via, ts)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                    """,
+                    new_run_id,
+                    ft["agent"],
+                    ft["host"],
+                    ft["url"],
+                    ft["method"] or "GET",
+                    ft["status"],
+                    ft["klass"],
+                    ft["via"] or "webfetch",
+                    _ts(ft["ts"]) or datetime.now(timezone.utc),
+                )
+
+            return {
+                "sources":          len(sources),
+                "runs":             len(runs),
+                "finds":            len(finds),
+                "feedback":         fb_count,
+                "fetches":          len(fetches),
+                "place_annotations": ann_count,
+            }
     finally:
         await pgconn.close()
 
