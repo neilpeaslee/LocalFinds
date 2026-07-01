@@ -2,7 +2,7 @@
 # Open an SSH local port-forward from localhost:5433 to the prod Postgres
 # (localhost:5432 on the server), so agents on the dev box can write to the
 # single system of record WITHOUT exposing Postgres to the internet. Point
-# LOCALFINDS_DATABASE_URL at postgres://…@localhost:5433/localfinds while this
+# LOCALFINDS_DATABASE_URL at postgresql://osm_api@localhost:5433/gis?sslmode=disable while this
 # runs. Reuses DEPLOY_HOST from the gitignored data/config/deploy.env (the same
 # infra config the deploy pipeline reads) so this committed script carries no
 # host details. Ctrl-C to close.

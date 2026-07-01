@@ -16,7 +16,6 @@ fi
 
 : "${DEPLOY_HOST:?set in deploy.env}"
 : "${DEPLOY_PATH:?set in deploy.env}"
-: "${DEPLOY_PGDATABASE:?set in deploy.env}"
 : "${DEPLOY_NVM_PREFIX:?set in deploy.env}"
 : "${DEPLOY_PM2_NAME:?set in deploy.env}"
 
