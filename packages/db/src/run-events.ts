@@ -1,11 +1,9 @@
-// Per-run agent transcript: one structured event per line in
-// data/agents/<agent>/runs/<runId>.jsonl. Powers the live SSE feed and the
-// per-run detail page. Bulky transcripts stay under gitignored data/ (PII
-// boundary); exact run stats stay in the `runs` table.
+// Per-run agent transcript: one structured event per row in
+// localfinds.run_events — the single system of record. Powers the live SSE feed
+// and the per-run detail page. Written as the run streams; read back ordered by
+// the per-run sequence number. (Was a filesystem .jsonl before SP4.)
 
-import fs from "node:fs";
-import path from "node:path";
-import { agentWorkspaceDir } from "./paths";
+import { execute, query } from "./client";
 
 export type RunEvent =
   | {
@@ -31,8 +29,8 @@ export type RunEvent =
   | { kind: "error"; message: string }
   | { kind: "run_end"; status: "success" | "capped" | "error" };
 
-// On disk and as read back: a RunEvent plus a per-run sequence number and an
-// ISO timestamp, both stamped by the writer at append time.
+// As read back: a RunEvent plus its per-run sequence number and an ISO timestamp
+// (the run_events.seq / .t columns).
 export type StoredRunEvent = RunEvent & { seq: number; t: string };
 
 // Project one SDK message to zero-or-more semantic events. Read defensively —
@@ -95,65 +93,62 @@ export function countRunWarnings(
     .length;
 }
 
-export function runLogPath(agent: string, runId: number): string {
-  return path.join(agentWorkspaceDir(agent), "runs", `${runId}.jsonl`);
+interface RunEventRow {
+  seq: number;
+  t: string;
+  kind: string;
+  payload: Record<string, unknown>;
 }
 
-// Turn a newly-read chunk into complete lines, carrying any trailing partial
-// line forward in `rest`. Strips a trailing \r so CRLF is tolerated; drops
-// blank lines.
-export function splitLines(buffer: string, chunk: string): { lines: string[]; rest: string } {
-  const parts = (buffer + chunk).split("\n");
-  const rest = parts.pop() ?? "";
-  const lines = parts.map((l) => l.replace(/\r$/, "")).filter((l) => l.length > 0);
-  return { lines, rest };
+// Reconstruct a StoredRunEvent from a row: kind/seq/t are columns; the event's
+// remaining fields live in the payload jsonb (spread back on top).
+function rowToEvent(r: RunEventRow): StoredRunEvent {
+  return { ...r.payload, kind: r.kind, seq: r.seq, t: r.t } as unknown as StoredRunEvent;
 }
 
-export function parseEvents(text: string): StoredRunEvent[] {
-  const lines = text.split("\n");
-  const out: StoredRunEvent[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    if (!trimmed) continue;
-    try {
-      out.push(JSON.parse(trimmed) as StoredRunEvent);
-    } catch {
-      // The last non-empty line can be a legitimate partial from an in-flight
-      // write — skip it silently. An unparseable interior line is real
-      // corruption; skip it but warn so it isn't invisible in production.
-      if (i < lines.length - 1) {
-        console.warn(`run-events: skipping unparseable log line ${i + 1}`);
-      }
-    }
-  }
-  return out;
+export async function readRunEvents(runId: number): Promise<StoredRunEvent[]> {
+  const rows = await query<RunEventRow>(
+    `SELECT seq, t, kind, payload FROM localfinds.run_events WHERE run_id = $1 ORDER BY seq`,
+    [runId],
+  );
+  return rows.map(rowToEvent);
 }
 
-export function readRunEvents(agent: string, runId: number): StoredRunEvent[] {
-  try {
-    return parseEvents(fs.readFileSync(runLogPath(agent, runId), "utf8"));
-  } catch {
-    return [];
-  }
+// The events newer than `afterSeq` — the SSE poll's incremental read. Pass -1 to
+// get everything from seq 0.
+export async function readRunEventsSince(
+  runId: number,
+  afterSeq: number,
+): Promise<StoredRunEvent[]> {
+  const rows = await query<RunEventRow>(
+    `SELECT seq, t, kind, payload FROM localfinds.run_events
+     WHERE run_id = $1 AND seq > $2 ORDER BY seq`,
+    [runId, afterSeq],
+  );
+  return rows.map(rowToEvent);
 }
 
 export interface RunLogWriter {
-  write(event: RunEvent): void;
-  close(): void;
+  write(event: RunEvent): Promise<void>;
+  close(): Promise<void>;
 }
 
-// Append-only JSONL writer. Stamps each event with a per-run sequence number
-// and an ISO timestamp. appendFileSync per event keeps it crash-safe and avoids
-// any buffer the SSE tailer would miss.
-export function openRunLog(agent: string, runId: number): RunLogWriter {
-  const file = runLogPath(agent, runId);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+// Row-per-event writer for the current run. Stamps a monotonic per-run sequence
+// number; run_events.t defaults to now() on the DB (single clock). One INSERT per
+// event is fine at this volume (single-user, tens–low-hundreds of events/run);
+// batching/COPY is a future optimization, not built. `agent` is accepted for
+// call-site symmetry — the (run_id, seq) key is all the writes need.
+export function openRunLog(_agent: string, runId: number): RunLogWriter {
   let seq = 0;
   return {
-    write(event: RunEvent) {
-      const stored = { seq: seq++, t: new Date().toISOString(), ...event } as StoredRunEvent;
-      fs.appendFileSync(file, JSON.stringify(stored) + "\n");
+    async write(event: RunEvent) {
+      const { kind, ...payload } = event;
+      await execute(
+        `INSERT INTO localfinds.run_events (run_id, seq, kind, payload)
+         VALUES ($1, $2, $3, $4)`,
+        [runId, seq++, kind, JSON.stringify(payload)],
+      );
     },
-    close() {},
+    async close() {},
   };
 }

@@ -1,5 +1,4 @@
-import { getRun, isRunStale, runLogPath, splitLines } from "@localfinds/db";
-import fs from "node:fs";
+import { getRun, isRunStale, readRunEventsSince } from "@localfinds/db";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +13,11 @@ export async function GET(
   const run = Number.isInteger(runId) ? await getRun(runId) : undefined;
   if (!run) return new Response("run not found", { status: 404 });
 
-  const file = runLogPath(run.agent, runId);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      let offset = 0;
-      let buffer = "";
+      let lastSeq = -1;
       let closed = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -35,48 +32,27 @@ export async function GET(
         }
       };
 
-      // Self-scheduling async poll (setTimeout recursion): getRun is async now,
-      // and a setInterval callback can't await it. Each pass schedules the next.
+      // Self-scheduling async poll: read the run_events rows newer than the last
+      // seq we emitted, frame each as an SSE `data:` line, and stop when the run
+      // ends (a run_end event, or the run is no longer live and drained).
       const poll = async () => {
         if (closed) return;
 
-        let size = 0;
-        try {
-          size = fs.statSync(file).size;
-        } catch {
-          // file not created yet (cold start) — fall through to the end check
-        }
-
-        if (size > offset) {
-          const fd = fs.openSync(file, "r");
-          const buf = Buffer.alloc(size - offset);
-          try {
-            fs.readSync(fd, buf, 0, buf.length, offset);
-          } finally {
-            fs.closeSync(fd);
-          }
-          offset = size;
-
-          const { lines, rest } = splitLines(buffer, buf.toString("utf8"));
-          buffer = rest;
-          for (const line of lines) {
-            if (closed) return;
-            controller.enqueue(encoder.encode(`data: ${line}\n\n`));
-            try {
-              if ((JSON.parse(line) as { kind?: string }).kind === "run_end") {
-                finish();
-                return;
-              }
-            } catch {
-              // non-JSON line — ignore for the end check
-            }
+        const events = await readRunEventsSince(runId, lastSeq);
+        for (const ev of events) {
+          if (closed) return;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
+          lastSeq = ev.seq;
+          if (ev.kind === "run_end") {
+            finish();
+            return;
           }
         }
 
-        // Fallback close: the run is no longer live and we've drained the file.
+        // Fallback close: the run is no longer live and we've drained its events.
         const fresh = await getRun(runId);
         const ended = !fresh || fresh.status !== "running" || isRunStale(fresh, Date.now());
-        if (ended && size <= offset) {
+        if (ended && events.length === 0) {
           finish();
           return;
         }

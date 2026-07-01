@@ -44,7 +44,7 @@ export async function teardownPgDatabase(): Promise<void> {
   MIGRATIONS_APPLIED.length = 0;
 }
 
-const LOCALFINDS_TABLES = ["place_annotations", "sources", "finds", "feedback", "runs", "fetches"];
+const LOCALFINDS_TABLES = ["place_annotations", "sources", "finds", "feedback", "run_events", "runs", "fetches"];
 
 export async function resetDb(): Promise<void> {
   const client = new pg.Client({ connectionString: process.env.LOCALFINDS_DATABASE_URL });

@@ -187,7 +187,7 @@ export async function runAgent(
   const model = def.model ?? DEFAULT_MODEL;
   const runId = await startRun(def.name);
   const log = openRunLog(def.name, runId);
-  log.write({
+  await log.write({
     kind: "run_start",
     agent: def.name,
     runId,
@@ -243,7 +243,7 @@ export async function runAgent(
       logMessage(message as never);
       const events = projectMessage(message);
       for (const ev of events) {
-        log.write(ev);
+        await log.write(ev);
         if (isScout && ev.kind === "tool_use" && ev.name === "WebFetch") {
           const url = (ev.input as { url?: unknown })?.url;
           if (typeof url === "string") fetchUrls.set(ev.id, url);
@@ -267,8 +267,8 @@ export async function runAgent(
     }
 
     const status = statusFromResult(result);
-    log.write({ kind: "run_end", status });
-    log.close();
+    await log.write({ kind: "run_end", status });
+    await log.close();
     await finishRun(runId, {
       status,
       itemsAdded: counters.added,
@@ -287,9 +287,9 @@ export async function runAgent(
     // here as a "capped" (non-error) run that already persisted its finds.
     const status = statusFromResult(result);
     const message = err instanceof Error ? err.message : String(err);
-    if (status === "error") log.write({ kind: "error", message });
-    log.write({ kind: "run_end", status });
-    log.close();
+    if (status === "error") await log.write({ kind: "error", message });
+    await log.write({ kind: "run_end", status });
+    await log.close();
     await finishRun(runId, {
       status,
       itemsAdded: counters.added,

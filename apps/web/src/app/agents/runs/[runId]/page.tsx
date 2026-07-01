@@ -21,7 +21,7 @@ export default async function RunDetailPage({
   const run = Number.isInteger(runId) ? await getRun(runId) : undefined;
   if (!run) notFound();
 
-  const events = readRunEvents(run.agent, runId);
+  const events = await readRunEvents(runId);
   // Compute from the log rather than the stored column so historical and live
   // runs both reflect their non-fatal tool failures accurately.
   const warnings = countRunWarnings(events);
