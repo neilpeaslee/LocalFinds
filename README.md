@@ -119,21 +119,18 @@ The real infra values (host, path, process name) live in the gitignored
 `data/config/deploy.env`; the `deploy-localfinds` skill documents them.
 
 ```sh
-npm run deploy                 # full: gate → migrate → deploy-code → sync-content
+npm run deploy                 # full: gate → deploy-code → migrate
 npm run deploy -- --dry-run    # preview every remote action, change nothing
-npm run deploy:sync-content    # data only — refresh content after an agent run
 ```
 
 Composable stages: `deploy:gate` (blocks unless on `main`, tree clean, tests +
-`tsc` pass), `deploy:migrate` (applies new Drizzle migrations, prod DB backed up
-first), `deploy:code` (rsyncs the tree, builds, reloads, verifies GET=200 /
-POST=401), `deploy:sync-content`.
+`tsc` pass), `deploy:code` (rsyncs the tree, installs, builds), `deploy:migrate`
+(dumps the prod Postgres DB, then applies pending `db/migrations/*.sql` via the
+tracked runner, then reloads pm2 and verifies GET=200 / POST=401).
 
-`sync-content` merges local discovery data into the prod DB **preserving
-prod-side activity** — the `feedback` table and `finds.status` (stars/hides/shown)
-are never overwritten — then ships agent runtime files and reloads. The prod DB
-is backed up first; deletes do **not** propagate (a find removed locally stays on
-prod). After it finishes, sanity-check the site:
+Code ships before migrations apply, and the app reloads only after the migration
+runs, so it never serves new code against an unmigrated schema. After a deploy,
+sanity-check the site:
 
 ```sh
 curl -s -o /dev/null -w "%{http_code}\n" https://localfinds.peaslee.org/        # 200

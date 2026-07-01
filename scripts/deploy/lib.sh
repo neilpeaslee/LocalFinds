@@ -34,13 +34,3 @@ remote() {
     ssh "$DEPLOY_HOST" "$cmd"
   fi
 }
-
-# rsync one local file to $DEPLOY_PATH/<remote-rel> on the server.
-push_file() {
-  local src="$1" dest_rel="$2"
-  if [ "$DRY_RUN" = 1 ]; then
-    echo "DRY rsync> $src -> $DEPLOY_HOST:$DEPLOY_PATH/$dest_rel"
-  else
-    rsync -az "$src" "$DEPLOY_HOST:$DEPLOY_PATH/$dest_rel"
-  fi
-}
