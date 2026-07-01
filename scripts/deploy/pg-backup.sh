@@ -18,7 +18,11 @@ set -a; . "$ENV_FILE"; set +a
 mkdir -p "$DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$DIR/${PREFIX}-${STAMP}.dump"
+# Remove a partial dump if pg_dump fails mid-write (set -e aborts before rotation),
+# so a truncated file is never counted as a good backup. Cleared on success.
+trap 'rm -f "$OUT"' ERR
 pg_dump -Fc --schema=localfinds -d "$LOCALFINDS_DATABASE_URL" > "$OUT"
+trap - ERR
 echo "pg-backup: wrote $OUT ($(du -h "$OUT" | cut -f1))"
 
 # Rotate: keep the newest $KEEP dumps of this prefix.

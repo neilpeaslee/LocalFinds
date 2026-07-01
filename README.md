@@ -133,8 +133,8 @@ runs, so it never serves new code against an unmigrated schema. After a deploy,
 sanity-check the site:
 
 ```sh
-curl -s -o /dev/null -w "%{http_code}\n" https://localfinds.peaslee.org/        # 200
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://localfinds.peaslee.org/ # 401
+curl -s -o /dev/null -w "%{http_code}\n" https://localfinds.me/        # 200
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://localfinds.me/ # 401
 ```
 
 ## Using your own region
