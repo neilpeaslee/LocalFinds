@@ -4,7 +4,7 @@ import { selectVisible, tiersForZoom, type MapFilters, type Viewport } from "./m
 
 function pin(over: Partial<MapPin>): MapPin {
   return {
-    id: 1, name: "X", kind: "amenity=cafe", lat: 44.1, lng: -69.1, town: "Rockland",
+    osmId: "node/1", name: "X", kind: "amenity=cafe", lat: 44.1, lng: -69.1, town: "Rockland",
     status: "active", isChain: false, tier: 1, theme: "food", subtype: "Café",
     subtypeKey: "amenity=cafe", tags: [], ...over,
   };
@@ -38,39 +38,39 @@ describe("tiersForZoom", () => {
 
 describe("selectVisible", () => {
   it("culls pins outside the viewport", () => {
-    const inside = pin({ id: 1, lat: 44.1, lng: -69.1 });
-    const outside = pin({ id: 2, lat: 10, lng: 10 });
-    expect(selectVisible([inside, outside], filters(), VIEW).map((p) => p.id)).toEqual([1]);
+    const inside = pin({ osmId: "node/1", lat: 44.1, lng: -69.1 });
+    const outside = pin({ osmId: "node/2", lat: 10, lng: 10 });
+    expect(selectVisible([inside, outside], filters(), VIEW).map((p) => p.osmId)).toEqual(["node/1"]);
   });
 
   it("filters by theme, tier, status, chains, tags, and name query", () => {
-    const keep = pin({ id: 1, name: "Keepers Cafe", theme: "food", tier: 1, tags: ["dog-friendly"] });
-    const wrongTheme = pin({ id: 2, theme: "civic" });
-    const wrongTier = pin({ id: 3, tier: 3 });
-    const closed = pin({ id: 4, status: "closed" });
-    const chain = pin({ id: 5, isChain: true });
-    const noTag = pin({ id: 6, tags: [] });
-    const wrongName = pin({ id: 7, name: "Other" });
+    const keep = pin({ osmId: "node/1", name: "Keepers Cafe", theme: "food", tier: 1, tags: ["dog-friendly"] });
+    const wrongTheme = pin({ osmId: "node/2", theme: "civic" });
+    const wrongTier = pin({ osmId: "node/3", tier: 3 });
+    const closed = pin({ osmId: "node/4", status: "closed" });
+    const chain = pin({ osmId: "node/5", isChain: true });
+    const noTag = pin({ osmId: "node/6", tags: [] });
+    const wrongName = pin({ osmId: "node/7", name: "Other" });
     const f = filters({ tiers: new Set([1]), tags: ["dog-friendly"], query: "keep" });
     const result = selectVisible([keep, wrongTheme, wrongTier, closed, chain, noTag, wrongName], f, VIEW);
-    expect(result.map((p) => p.id)).toEqual([1]);
+    expect(result.map((p) => p.osmId)).toEqual(["node/1"]);
   });
 
   it("matches the name query case-insensitively regardless of input case", () => {
-    const match = pin({ id: 1, name: "Keepers Cafe" });
-    const miss = pin({ id: 2, name: "Other Place" });
-    expect(selectVisible([match, miss], filters({ query: "KEEP" }), VIEW).map((p) => p.id)).toEqual([1]);
+    const match = pin({ osmId: "node/1", name: "Keepers Cafe" });
+    const miss = pin({ osmId: "node/2", name: "Other Place" });
+    expect(selectVisible([match, miss], filters({ query: "KEEP" }), VIEW).map((p) => p.osmId)).toEqual(["node/1"]);
   });
 
   it("matches sub-types by subtypeKey, including the wildcard case", () => {
-    const bakery = pin({ id: 1, theme: "retail", kind: "shop=bakery", subtypeKey: "shop=*" });
-    const grocery = pin({ id: 2, theme: "retail", kind: "shop=grocery", subtypeKey: "shop=*" });
+    const bakery = pin({ osmId: "node/1", theme: "retail", kind: "shop=bakery", subtypeKey: "shop=*" });
+    const grocery = pin({ osmId: "node/2", theme: "retail", kind: "shop=grocery", subtypeKey: "shop=*" });
     const f = filters({ themes: new Set(["retail"]), subtypes: new Map([["retail", new Set(["shop=*"])]]) });
-    expect(selectVisible([bakery, grocery], f, VIEW).map((p) => p.id)).toEqual([1, 2]);
+    expect(selectVisible([bakery, grocery], f, VIEW).map((p) => p.osmId)).toEqual(["node/1", "node/2"]);
   });
 
   it("returns every match with no cap (clustering, not a budget, controls density)", () => {
-    const pins = Array.from({ length: 200 }, (_, i) => pin({ id: i + 1, lat: 44.1, lng: -69.1 }));
+    const pins = Array.from({ length: 200 }, (_, i) => pin({ osmId: `node/${i + 1}`, lat: 44.1, lng: -69.1 }));
     expect(selectVisible(pins, filters(), VIEW)).toHaveLength(200);
   });
 });

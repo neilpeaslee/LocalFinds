@@ -90,9 +90,9 @@ export function FindCard({
             {find.score != null ? ` · fit ${Math.round(find.score * 100)}%` : ""}
           </span>
         )}
-        {find.businessId != null && (
+        {find.placeOsmId != null && (
           <Link
-            href={`/businesses/${find.businessId}`}
+            href={`/businesses/${find.placeOsmId}`}
             className="rounded bg-stone-100 px-1.5 py-0.5 hover:bg-stone-200"
           >
             Business ↗

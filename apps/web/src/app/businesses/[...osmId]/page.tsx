@@ -1,4 +1,4 @@
-import { getBusinessById, readAgentNote, readCategoryConfig } from "@localfinds/db";
+import { getPlaceByOsmId, readCategoryConfig } from "@localfinds/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
@@ -22,20 +22,17 @@ const TIER_STYLE: Record<number, string> = {
 export default async function BusinessDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ osmId: string[] }>;
 }) {
-  const { id: idParam } = await params;
-  // Number() (not parseInt) so "1abc" becomes NaN and 404s instead of parsing to 1.
-  const id = Number(idParam);
-  if (!Number.isInteger(id) || id <= 0) notFound();
+  const osmId = (await params).osmId.join("/");
 
-  const business = getBusinessById(id);
-  if (!business) notFound();
+  const place = await getPlaceByOsmId(osmId);
+  if (!place) notFound();
 
   const cfg = readCategoryConfig();
-  const tier = cfg.tierOf(business.kind);
-  const isChain = Boolean(business.brand);
-  const note = readAgentNote("cartographer", business.notesPath);
+  const tier = cfg.tierOf(place.kind);
+  const isChain = Boolean(place.brand);
+  const note = place.annotationNote;
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,10 +48,10 @@ export default async function BusinessDetailPage({
           >
             T{tier}
           </span>
-          <h2 className="text-base font-semibold">{business.name}</h2>
-          {business.kind && (
+          <h2 className="text-base font-semibold">{place.name}</h2>
+          {place.kind && (
             <span className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
-              {business.kind}
+              {place.kind}
             </span>
           )}
           {isChain && (
@@ -62,45 +59,45 @@ export default async function BusinessDetailPage({
               className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
               title="National/regional chain (OSM brand)"
             >
-              chain{business.brand ? `: ${business.brand}` : ""}
+              chain{place.brand ? `: ${place.brand}` : ""}
             </span>
           )}
           <span
-            className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[business.status] ?? ""}`}
+            className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[place.status] ?? ""}`}
           >
-            {business.status}
+            {place.status}
           </span>
-          {business.town && <span className="text-xs text-stone-500">{business.town}</span>}
+          {place.town && <span className="text-xs text-stone-500">{place.town}</span>}
         </div>
 
-        {business.address && <div className="text-sm text-stone-600">{business.address}</div>}
+        {place.address && <div className="text-sm text-stone-600">{place.address}</div>}
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
-          {business.website && (
+          {place.website && (
             <a
-              href={business.website}
+              href={place.website}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-700 hover:underline"
             >
-              {business.website}
+              {place.website}
             </a>
           )}
-          {business.phone && <span>{business.phone}</span>}
+          {place.phone && <span>{place.phone}</span>}
           <a
-            href={`https://www.openstreetmap.org/${business.osmId}`}
+            href={`https://www.openstreetmap.org/${place.osmId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:underline"
-            aria-label={`View ${business.name} on OpenStreetMap (opens in a new tab)`}
+            aria-label={`View ${place.name} on OpenStreetMap (opens in a new tab)`}
           >
-            {business.osmId}
+            {place.osmId}
           </a>
         </div>
 
-        {business.tags.length > 0 && (
+        {place.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {business.tags.map((t) => (
+            {place.tags.map((t) => (
               <Link
                 key={t}
                 href={`/businesses?tag=${encodeURIComponent(t)}`}
@@ -115,7 +112,7 @@ export default async function BusinessDetailPage({
 
       <div className="rounded-lg border border-stone-200 bg-white p-4">
         <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-stone-400">
-          Cartographer note
+          Note
         </h3>
         {note ? (
           <div className="prose prose-sm prose-stone max-w-none">

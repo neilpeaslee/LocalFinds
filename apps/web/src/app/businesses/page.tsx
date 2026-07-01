@@ -1,5 +1,5 @@
 import {
-  type Business,
+  type Place,
   type BusinessSort,
   type SortDir,
   listBusinessTowns,
@@ -58,7 +58,7 @@ export default async function BusinessesPage({
   const town = first(params.town) || undefined;
   const statusRaw = first(params.status);
   const status = STATUSES.includes(statusRaw as (typeof STATUSES)[number])
-    ? (statusRaw as Business["status"])
+    ? (statusRaw as Place["status"])
     : undefined;
   const tag = first(params.tag) || undefined;
   const q = first(params.q) || undefined;
@@ -89,7 +89,7 @@ export default async function BusinessesPage({
   const showChains = chains === "1" || !cfg.hideInDirectory.chains;
 
   const { rows, total, matched, page, pageCount, tier4Count, chainCount } =
-    listBusinessesRanked({
+    await listBusinessesRanked({
       town,
       status,
       tag,
@@ -103,7 +103,7 @@ export default async function BusinessesPage({
       dir,
     });
   const start = size === "all" ? 0 : (page - 1) * size;
-  const towns = listBusinessTowns();
+  const towns = await listBusinessTowns();
   const hasFilters = Boolean(town || status || tag || q);
 
   const orderLabel = !sort
@@ -274,7 +274,7 @@ export default async function BusinessesPage({
             </thead>
             <tbody>
               {rows.map(({ business: b, tier, isChain }) => (
-                <tr key={b.id} className="border-b border-stone-100 last:border-0">
+                <tr key={b.osmId} className="border-b border-stone-100 last:border-0">
                   <td className="px-3 py-2">
                     <span
                       className={`rounded px-1.5 py-0.5 text-xs font-medium ${TIER_STYLE[tier] ?? ""}`}
@@ -285,7 +285,7 @@ export default async function BusinessesPage({
                   </td>
                   <td className="px-3 py-2">
                     <Link
-                      href={`/businesses/${b.id}`}
+                      href={`/businesses/${b.osmId}`}
                       className="font-medium text-stone-900 hover:underline"
                     >
                       {b.name}
