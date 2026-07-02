@@ -128,3 +128,57 @@ export async function geocodeTowns(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Address-level geocoding (concierge save_place). Same Nominatim endpoint and
+// injectable-fetch pattern as geocodeTown above; freeform q= (structured
+// queries reject partial addresses more often). Callers own the ≤1 req/s
+// throttle — this function performs exactly one request.
+
+export interface AddressInput {
+  housenumber?: string;
+  street?: string;
+  city: string;
+  state?: string;
+  postcode?: string;
+}
+
+export type AddressGeocodeResult =
+  | { ok: true; lat: number; lng: number; displayName: string }
+  | { ok: false; error: string };
+
+export async function geocodeAddress(
+  input: AddressInput,
+  fetchImpl: FetchLike = fetch,
+): Promise<AddressGeocodeResult> {
+  const q = [
+    [input.housenumber, input.street].filter(Boolean).join(" "),
+    input.city,
+    input.state ?? "ME",
+    input.postcode,
+  ]
+    .filter((part) => part && String(part).trim() !== "")
+    .join(", ");
+  const params = new URLSearchParams({
+    q,
+    format: "json",
+    countrycodes: "us",
+    limit: "1",
+  });
+  let rows: { lat: string; lon: string; display_name?: string }[];
+  try {
+    const res = await fetchImpl(`${NOMINATIM}?${params}`, { headers: { "User-Agent": UA } });
+    if (!res.ok) return { ok: false, error: `Nominatim HTTP ${res.status}` };
+    rows = (await res.json()) as typeof rows;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  const hit = Array.isArray(rows) ? rows[0] : undefined;
+  if (!hit) return { ok: false, error: `No geocoding match for "${q}"` };
+  const lat = Number(hit.lat);
+  const lng = Number(hit.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { ok: false, error: `Malformed coordinates for "${q}"` };
+  }
+  return { ok: true, lat, lng, displayName: hit.display_name ?? q };
+}
