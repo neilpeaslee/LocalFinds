@@ -18,7 +18,6 @@
     "deploy": "bash scripts/deploy/deploy.sh",
     "deploy:gate": "bash scripts/deploy/gate.sh",
     "deploy:migrate": "bash scripts/deploy/migrate.sh",
-    "deploy:code": "bash scripts/deploy/deploy-code.sh",
-    "deploy:sync-content": "bash scripts/deploy/sync-content.sh"
+    "deploy:code": "bash scripts/deploy/deploy-code.sh"
   }
 }

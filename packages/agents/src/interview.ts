@@ -240,11 +240,13 @@ async function runBuild(
 // This snapshot/restore machinery backs the PREPARED path (runPrepared); the
 // interactive path uses a staging dir instead.
 //
-// The four target files are hand-tuned and production-bound (sync-content.sh
-// rsyncs data/ to the live site), so a silent drop/rename must be visible before
-// the user commits. set_towns needs a written region to derive its state, so a
-// pure "buffer all, commit on confirm" can't work; instead we snapshot the files,
-// let the agent write live, then show one cumulative diff and revert on reject.
+// The four target files are hand-tuned and drive live behavior — region.md is
+// injected verbatim into every agent prompt, the category tiers and prospector ICP
+// steer runs, and deploy-code ships data/config/* to the live site — so a silent
+// drop/rename must be visible before the user commits. set_towns needs a written
+// region to derive its state, so a pure "buffer all, commit on confirm" can't work;
+// instead we snapshot the files, let the agent write live, then show one cumulative
+// diff and revert on reject.
 
 interface TargetFile {
   label: string;
@@ -446,7 +448,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
   const runId = interviewRunId();
   const staging = createStagingDir(dataRoot, runId);
   seedStaging(dataRoot, staging);
-  const prospectorContext = recentProspectorContext();
+  const prospectorContext = await recentProspectorContext();
 
   const totalCycles = preliminaryCycles(depth) + 1;
   let lastReview: ReviewResult | undefined;
@@ -468,7 +470,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
       process.stdout.write(
         "\nThe interview didn't finish. Re-run `npm run interview` to resume where you left off.\n",
       );
-      discardProvisionalFinds();
+      await discardProvisionalFinds();
       discardStaging(staging);
       rl.close();
       return;
@@ -476,7 +478,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     lastTranscript = renderTranscript(readJournal());
     if (!lastTranscript.trim()) {
       process.stdout.write("\nNo answers were captured, so there's nothing to write.\n");
-      discardProvisionalFinds();
+      await discardProvisionalFinds();
       discardStaging(staging);
       rl.close();
       return;
@@ -494,13 +496,13 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     if (built?.subtype !== "success") {
       process.stdout.write("\nI couldn't write the config from the interview this pass.\n");
       discardStaging(staging);
-      discardProvisionalFinds();
+      await discardProvisionalFinds();
       rl.close();
       return;
     }
 
     // ── RUN (provisional leads; clear any from a prior cycle first) ──
-    discardProvisionalFinds();
+    await discardProvisionalFinds();
     const run = await runProspectorSample(staging);
 
     // ── REVIEW (reads the staged config + the run's provisional leads) ──
@@ -523,7 +525,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
   const keep = await confirmStaging(rl, dataRoot, staging);
   if (keep) {
     promoteStaging(dataRoot, staging);
-    const promoted = promoteProvisionalFinds();
+    const promoted = await promoteProvisionalFinds();
     discardStaging(staging);
     const archived = archiveJournal(runId);
     process.stdout.write(
@@ -533,7 +535,7 @@ async function runInteractive(depth: InterviewDepth): Promise<void> {
     if (archived) process.stdout.write(`Transcript kept at ${path.relative(process.cwd(), archived)}\n`);
   } else {
     discardStaging(staging);
-    discardProvisionalFinds();
+    await discardProvisionalFinds();
     process.stdout.write("\nReverted — your earlier config is unchanged.\n");
   }
   rl.close();

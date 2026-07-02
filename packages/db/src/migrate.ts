@@ -1,28 +1,81 @@
-import Database from "better-sqlite3";
-import fs from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { dbPath } from "./paths";
+import { pathToFileURL } from "node:url";
+import { pool, query, tx } from "./client";
+import { findRepoRoot } from "./paths";
 
-/** Absolute path to the committed migrations folder (packages/db/drizzle). */
-export function migrationsFolder(): string {
-  return path.join(import.meta.dirname, "..", "drizzle");
+export interface MigrationResult {
+  applied: string[];
+  skipped: string[];
 }
 
-/** Apply all pending migrations to the SQLite file (defaults to dbPath()). */
-export function runMigrations(file: string = dbPath()): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const sqlite = new Database(file);
-  sqlite.pragma("foreign_keys = ON");
-  const db = drizzle(sqlite);
-  migrate(db, { migrationsFolder: migrationsFolder() });
-  sqlite.close();
+function migrationDir(): string {
+  return path.join(findRepoRoot(), "db", "migrations");
 }
 
-// CLI entry: `tsx src/migrate.ts` migrates the resolved data-dir DB.
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  runMigrations();
-  console.log("migrations applied");
+function listMigrations(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((n) => n.endsWith(".sql"))
+    .sort();
+}
+
+export function migrationFilenames(): string[] {
+  return listMigrations(migrationDir());
+}
+
+// Apply every db/migrations/*.sql not already recorded in public.schema_migrations,
+// each file in its own transaction (SQL + bookkeeping insert together). Idempotent:
+// a re-run applies nothing. Each file applies inside tx() (client.ts): if its SQL
+// throws, tx() rolls back that file's statements — including the bookkeeping
+// insert — before rethrowing, so a partially-applied migration is never recorded,
+// and the throw stops the loop before any later file runs.
+export async function runMigrations(): Promise<MigrationResult> {
+  await query(
+    `CREATE TABLE IF NOT EXISTS public.schema_migrations (
+       filename   text PRIMARY KEY,
+       applied_at timestamptz NOT NULL DEFAULT now()
+     )`,
+  );
+  const done = new Set(
+    (await query<{ filename: string }>(`SELECT filename FROM public.schema_migrations`)).map(
+      (r) => r.filename,
+    ),
+  );
+
+  const applied: string[] = [];
+  const skipped: string[] = [];
+  const dir = migrationDir();
+  for (const name of listMigrations(dir)) {
+    if (done.has(name)) {
+      skipped.push(name);
+      continue;
+    }
+    const sql = readFileSync(path.join(dir, name), "utf8");
+    await tx(async (c) => {
+      // No params => simple-query protocol, so the multi-statement migration file
+      // runs as one script. (query()/execute() would force single-statement.)
+      await c.query(sql);
+      await c.query(`INSERT INTO public.schema_migrations (filename) VALUES ($1)`, [name]);
+    });
+    applied.push(name);
+  }
+  return { applied, skipped };
+}
+
+// CLI entry: `tsx src/migrate.ts` (reads LOCALFINDS_DATABASE_URL). Guarded so that
+// importing this module (migrate.test.ts) never runs a migration as a side effect.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const { applied, skipped } = await runMigrations();
+    console.log(
+      `migrate: applied ${applied.length}` +
+        (applied.length ? ` (${applied.join(", ")})` : "") +
+        `, skipped ${skipped.length}`,
+    );
+  } catch (err) {
+    console.error("migrate: failed —", err);
+    process.exitCode = 1;
+  } finally {
+    await pool().end();
+  }
 }

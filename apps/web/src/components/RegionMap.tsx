@@ -187,7 +187,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
       candidates.map((p) => ({
         type: "Feature" as const,
         properties: {
-          id: p.id, name: p.name, theme: p.theme, subtype: p.subtype, kind: p.kind,
+          osmId: p.osmId, name: p.name, theme: p.theme, subtype: p.subtype, kind: p.kind,
         },
         geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
       })),
@@ -302,7 +302,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
             cluster?: boolean;
             cluster_id?: number;
             point_count?: number;
-            id?: number;
+            osmId?: string;
             name?: string;
             theme?: string;
             subtype?: string | null;
@@ -313,7 +313,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
             const color = colorOf(props.theme ?? "other");
             return (
               <CircleMarker
-                key={`pin-${props.id}`}
+                key={`pin-${props.osmId}`}
                 center={[lat, lng]}
                 radius={5}
                 pathOptions={{

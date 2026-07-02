@@ -27,9 +27,9 @@ export async function submitFeedback(formData: FormData): Promise<void> {
   const action = String(formData.get("action")) as FeedbackAction;
   if (!Number.isInteger(findId) || !ACTIONS.includes(action)) return;
 
-  recordFeedback(findId, action);
+  await recordFeedback(findId, action);
   const status = STATUS_EFFECT[action];
-  if (status) updateFindStatus(findId, status);
+  if (status) await updateFindStatus(findId, status);
   // The full feed lives at /feed; the dashboard's compact list mirrors it.
   revalidatePath("/feed");
   revalidatePath("/");

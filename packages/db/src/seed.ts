@@ -1,6 +1,7 @@
+import { pool } from "./client";
 import { insertFind } from "./queries";
 
-const result = insertFind({
+const result = await insertFind({
   title: "Seeded test find — LocalFinds is wired up",
   url: "https://example.com/localfinds-seed",
   summary:
@@ -10,3 +11,5 @@ const result = insertFind({
 });
 
 console.log(`seed: ${result.outcome} (find id ${result.id})`);
+
+await pool().end();

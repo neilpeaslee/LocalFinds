@@ -5,10 +5,11 @@ import { normalizeTitle } from "./dedupe";
 // offsets without merging genuinely distinct same-named neighbours.
 export const DUP_RADIUS_M = 50;
 
-// The fields the sweep reads. `Business` (from schema) is structurally
-// assignable to this, so DB rows pass straight in without conversion.
+// The fields the sweep reads. `Place` (from schema, a localfinds.places row) is
+// structurally assignable to this, so DB rows pass straight in without
+// conversion. No integer id / discoveredAt: places are keyed by the OSM stable
+// id, which is also the deterministic tiebreak.
 export interface DedupeRow {
-  id: number;
   osmId: string;
   name: string;
   kind: string | null;
@@ -21,7 +22,6 @@ export interface DedupeRow {
   phone: string | null;
   brand: string | null;
   status: "active" | "closed" | "unknown";
-  discoveredAt: string;
 }
 
 const EARTH_R = 6_371_000; // metres
@@ -103,14 +103,13 @@ export function groupBusinessDuplicates(rows: DedupeRow[]): DedupeRow[][] {
 }
 
 // The survivor of a duplicate group: active first (the live record should
-// represent the place), then richest, then oldest, then lowest id.
+// represent the place), then richest, then lowest osm_id (deterministic).
 export function chooseCanonical(group: DedupeRow[]): DedupeRow {
   return [...group].sort(
     (a, b) =>
       STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
       richness(b) - richness(a) ||
-      a.discoveredAt.localeCompare(b.discoveredAt) ||
-      a.id - b.id,
+      a.osmId.localeCompare(b.osmId),
   )[0];
 }
 
@@ -131,10 +130,7 @@ export function mergeFacts(
   others: DedupeRow[],
 ): Partial<DedupeRow> {
   const ranked = [...others].sort(
-    (a, b) =>
-      richness(b) - richness(a) ||
-      a.discoveredAt.localeCompare(b.discoveredAt) ||
-      a.id - b.id,
+    (a, b) => richness(b) - richness(a) || a.osmId.localeCompare(b.osmId),
   );
   const out: Record<string, unknown> = {};
   for (const field of MERGE_FIELDS) {

@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execSync } from "node:child_process";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { insertFind, writeRegionConfig, writeTownsConfig, type WritableTown } from "@localfinds/db";
+import { resetDb, setupPgDatabase, teardownPgDatabase } from "@localfinds/db/test-harness";
 import type { GeocodeInput, GeocodeResult } from "./geocode";
 import {
   currentConfig,
@@ -188,28 +188,12 @@ describe("with a data dir", () => {
 });
 
 describe("reviewRunResults", () => {
-  let reviewDir: string;
-  let savedDataDir: string | undefined;
+  beforeAll(setupPgDatabase, 120_000);
+  afterAll(teardownPgDatabase);
+  afterEach(resetDb);
 
-  beforeAll(() => {
-    savedDataDir = process.env.LOCALFINDS_DATA_DIR;
-    reviewDir = fs.mkdtempSync(path.join(os.tmpdir(), "localfinds-review-"));
-    process.env.LOCALFINDS_DATA_DIR = reviewDir;
-    // Push the schema to the fresh SQLite file so insertFind can write.
-    execSync("npx drizzle-kit push --force", {
-      cwd: path.resolve(import.meta.dirname, "../../db"),
-      env: { ...process.env, LOCALFINDS_DATA_DIR: reviewDir },
-      stdio: "ignore",
-    });
-  }, 60_000);
-
-  afterAll(() => {
-    if (savedDataDir === undefined) delete process.env.LOCALFINDS_DATA_DIR;
-    else process.env.LOCALFINDS_DATA_DIR = savedDataDir;
-  });
-
-  it("returns provisional leads and the scratch coverage note", () => {
-    insertFind({
+  it("returns provisional leads and the scratch coverage note", async () => {
+    await insertFind({
       title: "Provisional Co",
       type: "lead",
       agent: "prospector",
@@ -221,7 +205,7 @@ describe("reviewRunResults", () => {
     fs.mkdirSync(path.join(scratch, "notes"), { recursive: true });
     fs.writeFileSync(path.join(scratch, "notes", "coverage.md"), "Walked Rockland. Skipped X.");
 
-    const out = reviewRunResults({ runId: 42, scratchDir: scratch });
+    const out = await reviewRunResults({ runId: 42, scratchDir: scratch });
     expect(out.runId).toBe(42);
     expect(out.leads.map((l) => l.title)).toContain("Provisional Co");
     expect(out.coverageNote).toContain("Skipped X");

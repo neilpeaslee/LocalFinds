@@ -3,7 +3,6 @@ import {
   agentWorkspaceDir,
   blockedHosts,
   countRunWarnings,
-  dedupeBusinesses,
   finishRun,
   formatCategoryPriorities,
   openRunLog,
@@ -13,6 +12,8 @@ import {
   readRegionConfig,
   startRun,
   type FindStatus,
+  type RunEvent,
+  type RunLogWriter,
 } from "@localfinds/db";
 import fs from "node:fs";
 import path from "node:path";
@@ -122,6 +123,17 @@ export function ensureWorkspace(workspace: string): string {
   return workspace;
 }
 
+// Transcript writes are pure observability and, since SP4, a remote DB call
+// over the SSH tunnel. A failed write must never abort or wedge a run
+// (mirrors the recordFetch guard below) — log and continue.
+async function safeWrite(log: RunLogWriter, event: RunEvent): Promise<void> {
+  try {
+    await log.write(event);
+  } catch (err) {
+    console.error(`run-events write failed (non-fatal):`, err);
+  }
+}
+
 function logMessage(message: { type: string } & Record<string, any>): void {
   if (message.type !== "assistant") return;
   for (const block of message.message?.content ?? []) {
@@ -176,7 +188,7 @@ export async function runAgent(
   // Scout-only: skip hosts that have repeatedly 403/401'd. The prompt note avoids
   // wasting a turn on a denial; the PreToolUse guard (below) is the hard backstop.
   const isScout = def.name === "scout";
-  const blocked = isScout ? blockedHosts(STRIKE_THRESHOLD) : [];
+  const blocked = isScout ? await blockedHosts(STRIKE_THRESHOLD) : [];
   if (blocked.length > 0) {
     prompt +=
       "\n\n## Hosts to skip\n" +
@@ -186,9 +198,9 @@ export async function runAgent(
   const blockedSet = new Set(blocked);
 
   const model = def.model ?? DEFAULT_MODEL;
-  const runId = startRun(def.name);
+  const runId = await startRun(def.name);
   const log = openRunLog(def.name, runId);
-  log.write({
+  await safeWrite(log, {
     kind: "run_start",
     agent: def.name,
     runId,
@@ -244,7 +256,7 @@ export async function runAgent(
       logMessage(message as never);
       const events = projectMessage(message);
       for (const ev of events) {
-        log.write(ev);
+        await safeWrite(log, ev);
         if (isScout && ev.kind === "tool_use" && ev.name === "WebFetch") {
           const url = (ev.input as { url?: unknown })?.url;
           if (typeof url === "string") fetchUrls.set(ev.id, url);
@@ -256,7 +268,7 @@ export async function runAgent(
             // Logging must never fail a run.
             try {
               const { klass, status } = classifyWebFetchResult(webFetchResultText(ev.content));
-              recordFetch({ runId, agent: def.name, host, url, status, klass });
+              await recordFetch({ runId, agent: def.name, host, url, status, klass });
             } catch (err) {
               console.error(`[${def.name}] recordFetch failed:`, err);
             }
@@ -268,9 +280,9 @@ export async function runAgent(
     }
 
     const status = statusFromResult(result);
-    log.write({ kind: "run_end", status });
-    log.close();
-    finishRun(runId, {
+    await safeWrite(log, { kind: "run_end", status });
+    await log.close();
+    await finishRun(runId, {
       status,
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,
@@ -281,19 +293,6 @@ export async function runAgent(
       sessionId: result?.session_id,
       error: status === "error" ? result?.subtype : undefined,
     });
-    // Deterministic post-run housekeeping: collapse OSM duplicate elements the
-    // scan may have introduced. Cartographer-only; never LLM-triggered. A
-    // failure here must not fail an otherwise-successful run.
-    if (status === "success" && def.name === "cartographer") {
-      try {
-        const summary = dedupeBusinesses();
-        console.log(
-          `[${def.name}] dedupe: marked ${summary.marked} duplicate(s) across ${summary.groups} group(s)`,
-        );
-      } catch (err) {
-        console.error(`[${def.name}] dedupe sweep failed:`, err);
-      }
-    }
   } catch (err) {
     // The SDK yields the terminal result message (e.g. error_max_budget_usd or
     // error_max_turns), then throws when the CLI process exits non-zero — keep
@@ -301,10 +300,10 @@ export async function runAgent(
     // here as a "capped" (non-error) run that already persisted its finds.
     const status = statusFromResult(result);
     const message = err instanceof Error ? err.message : String(err);
-    if (status === "error") log.write({ kind: "error", message });
-    log.write({ kind: "run_end", status });
-    log.close();
-    finishRun(runId, {
+    if (status === "error") await safeWrite(log, { kind: "error", message });
+    await safeWrite(log, { kind: "run_end", status });
+    await log.close();
+    await finishRun(runId, {
       status,
       itemsAdded: counters.added,
       itemsUpdated: counters.updated,

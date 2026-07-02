@@ -76,9 +76,9 @@ npm run db:push && npm run db:seed
 npm run dev                                           # http://localhost:3000
 ```
 
-The schema is applied with `drizzle-kit push` (no migration files). After
-pulling changes that touch `packages/db/src/schema.ts` (e.g. a new table),
-re-run `npm run db:push` to apply them to your existing database.
+The schema is applied from the canonical SQL migrations in `db/migrations/*.sql`.
+After pulling changes that add a new migration, re-run `npm run db:migrate` to
+apply them to your existing database.
 
 ## Running agents
 
@@ -108,7 +108,7 @@ prompt-level search caps. Per-run cost is logged to the `runs` table and
 totaled on `/agents`.
 
 Watch a run live — or read any past run's full transcript — on `/agents`: each
-run streams a structured event log to `data/agents/<agent>/runs/<id>.jsonl`,
+run streams a structured event log into the `localfinds.run_events` table (Postgres),
 surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
 ## Deploy
@@ -119,25 +119,22 @@ The real infra values (host, path, process name) live in the gitignored
 `data/config/deploy.env`; the `deploy-localfinds` skill documents them.
 
 ```sh
-npm run deploy                 # full: gate → migrate → deploy-code → sync-content
+npm run deploy                 # full: gate → deploy-code → migrate
 npm run deploy -- --dry-run    # preview every remote action, change nothing
-npm run deploy:sync-content    # data only — refresh content after an agent run
 ```
 
 Composable stages: `deploy:gate` (blocks unless on `main`, tree clean, tests +
-`tsc` pass), `deploy:migrate` (applies new Drizzle migrations, prod DB backed up
-first), `deploy:code` (rsyncs the tree, builds, reloads, verifies GET=200 /
-POST=401), `deploy:sync-content`.
+`tsc` pass), `deploy:code` (rsyncs the tree, installs, builds), `deploy:migrate`
+(dumps the prod Postgres DB, then applies pending `db/migrations/*.sql` via the
+tracked runner, then reloads pm2 and verifies GET=200 / POST=401).
 
-`sync-content` merges local discovery data into the prod DB **preserving
-prod-side activity** — the `feedback` table and `finds.status` (stars/hides/shown)
-are never overwritten — then ships agent runtime files and reloads. The prod DB
-is backed up first; deletes do **not** propagate (a find removed locally stays on
-prod). After it finishes, sanity-check the site:
+Code ships before migrations apply, and the app reloads only after the migration
+runs, so it never serves new code against an unmigrated schema. After a deploy,
+sanity-check the site:
 
 ```sh
-curl -s -o /dev/null -w "%{http_code}\n" https://localfinds.peaslee.org/        # 200
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://localfinds.peaslee.org/ # 401
+curl -s -o /dev/null -w "%{http_code}\n" https://localfinds.me/        # 200
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://localfinds.me/ # 401
 ```
 
 ## Using your own region

@@ -1,17 +1,17 @@
-import os from "node:os";
-import fsx from "node:fs";
-import pathx from "node:path";
-import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { resetDb, setupPgDatabase, teardownPgDatabase } from "../test/harness";
 import {
   countRunWarnings,
   openRunLog,
-  parseEvents,
   projectMessage,
   readRunEvents,
-  runLogPath,
-  splitLines,
+  readRunEventsSince,
 } from "./run-events";
+import { startRun } from "./queries";
+
+beforeAll(setupPgDatabase, 120_000);
+afterAll(teardownPgDatabase);
+afterEach(resetDb);
 
 describe("projectMessage", () => {
   it("emits text and tool_use events from an assistant message, in order", () => {
@@ -105,81 +105,38 @@ describe("countRunWarnings", () => {
   });
 });
 
-describe("runLogPath", () => {
-  it("places the log under the agent workspace runs/ dir", () => {
-    expect(runLogPath("scout", 42)).toContain(
-      path.join("agents", "scout", "runs", "42.jsonl"),
-    );
-  });
-});
+describe("run_events store", () => {
+  it("writes stamped events that readRunEvents reads back in order", async () => {
+    const runId = await startRun("scout");
+    const log = openRunLog("scout", runId);
+    await log.write({ kind: "run_start", agent: "scout", runId, model: "claude-sonnet-4-6", maxTurns: 8 });
+    await log.write({ kind: "assistant_text", text: "hi" });
+    await log.write({ kind: "run_end", status: "success" });
+    await log.close();
 
-describe("splitLines", () => {
-  it("returns complete lines and keeps a trailing partial in rest", () => {
-    expect(splitLines("", '{"a":1}\n{"b":2}\n{"c"')).toEqual({
-      lines: ['{"a":1}', '{"b":2}'],
-      rest: '{"c"',
-    });
-  });
-
-  it("joins a buffered partial with the next chunk", () => {
-    const first = splitLines("", '{"a":1}\n{"b"');
-    expect(first.lines).toEqual(['{"a":1}']);
-    const second = splitLines(first.rest, ':2}\n');
-    expect(second).toEqual({ lines: ['{"b":2}'], rest: "" });
+    const events = await readRunEvents(runId);
+    expect(events.map((e) => e.kind)).toEqual(["run_start", "assistant_text", "run_end"]);
+    expect(events.map((e) => e.seq)).toEqual([0, 1, 2]);
+    expect(typeof events[0].t).toBe("string");
+    // payload fields round-trip through jsonb
+    const start = events[0];
+    if (start.kind === "run_start") expect(start.model).toBe("claude-sonnet-4-6");
   });
 
-  it("drops blank lines and tolerates CRLF", () => {
-    expect(splitLines("", '{"a":1}\r\n\n{"b":2}\r\n')).toEqual({
-      lines: ['{"a":1}', '{"b":2}'],
-      rest: "",
-    });
-  });
-});
+  it("readRunEventsSince returns only events after the given seq", async () => {
+    const runId = await startRun("scout");
+    const log = openRunLog("scout", runId);
+    await log.write({ kind: "run_start", agent: "scout", runId, model: "m", maxTurns: 8 });
+    await log.write({ kind: "assistant_text", text: "a" });
+    await log.write({ kind: "assistant_text", text: "b" });
+    await log.close();
 
-describe("parseEvents", () => {
-  it("parses one event per line and skips a trailing partial line", () => {
-    const text =
-      '{"seq":0,"t":"x","kind":"run_end","status":"success"}\n{"seq":1,"t":"y","kind":"err';
-    expect(parseEvents(text)).toEqual([
-      { seq: 0, t: "x", kind: "run_end", status: "success" },
-    ]);
+    expect((await readRunEventsSince(runId, 0)).map((e) => e.seq)).toEqual([1, 2]);
+    expect(await readRunEventsSince(runId, 2)).toEqual([]);
   });
 
-  it("skips an interior corrupt line (with a warning) but keeps good events", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const text =
-      '{"seq":0,"t":"x","kind":"run_end","status":"success"}\nBADLINE\n{"seq":2,"t":"z","kind":"assistant_text","text":"ok"}';
-    const events = parseEvents(text);
-    expect(events.map((e) => e.seq)).toEqual([0, 2]);
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
-  });
-});
-
-describe("readRunEvents", () => {
-  it("returns [] when the log file does not exist", () => {
-    expect(readRunEvents("no-such-agent", 99999)).toEqual([]);
-  });
-});
-
-describe("openRunLog", () => {
-  it("appends stamped events that readRunEvents can read back in order", () => {
-    const tmp = fsx.mkdtempSync(pathx.join(os.tmpdir(), "lf-runlog-"));
-    process.env.LOCALFINDS_DATA_DIR = tmp; // paths.ts honors this override
-    try {
-      const log = openRunLog("scout", 99);
-      log.write({ kind: "run_start", agent: "scout", runId: 99, model: "claude-sonnet-4-6", maxTurns: 8 });
-      log.write({ kind: "assistant_text", text: "hi" });
-      log.write({ kind: "run_end", status: "success" });
-      log.close();
-
-      const events = readRunEvents("scout", 99);
-      expect(events.map((e) => e.kind)).toEqual(["run_start", "assistant_text", "run_end"]);
-      expect(events.map((e) => e.seq)).toEqual([0, 1, 2]);
-      expect(typeof events[0].t).toBe("string");
-    } finally {
-      delete process.env.LOCALFINDS_DATA_DIR;
-      fsx.rmSync(tmp, { recursive: true, force: true });
-    }
+  it("readRunEvents returns [] for a run with no events", async () => {
+    const runId = await startRun("prospector");
+    expect(await readRunEvents(runId)).toEqual([]);
   });
 });

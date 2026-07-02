@@ -235,8 +235,8 @@ export interface ReviewContext {
 
 // What the sample run produced: provisional leads (real DB) + the run's own
 // narrative coverage note (where it explains what it skipped and why).
-export function reviewRunResults(ctx: ReviewContext) {
-  const leads = listProvisionalFinds().map((f) => ({
+export async function reviewRunResults(ctx: ReviewContext) {
+  const leads = (await listProvisionalFinds()).map((f) => ({
     title: f.title,
     score: f.score,
     url: f.url,
@@ -279,7 +279,7 @@ export function buildReviewServer(io: InterviewIO, ctx: ReviewContext, sink: Rev
           "what it walked, what it SKIPPED and why). Use the narrative to catch ICP " +
           "self-contradictions and mis-scoring, not just the leads it kept.",
         {},
-        async () => asText(reviewRunResults(ctx)),
+        async () => asText(await reviewRunResults(ctx)),
       ),
       tool(
         "submit_review",

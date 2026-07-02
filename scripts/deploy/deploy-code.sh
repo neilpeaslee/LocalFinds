@@ -20,6 +20,14 @@ else
   rsync -az --files-from=<(git ls-files) ./ "$DEPLOY_HOST:$DEPLOY_PATH/"
 fi
 
+echo "deploy-code: rsync gitignored config reals (region/categories/towns/boundaries)"
+CONFIG_REALS=(data/config/region.md data/config/categories.json data/config/towns.json data/config/town-boundaries.json)
+if [ "$DRY_RUN" = 1 ]; then
+  echo "DRY rsync> ${CONFIG_REALS[*]} -> $DEPLOY_HOST:$DEPLOY_PATH/data/config/"
+else
+  rsync -az "${CONFIG_REALS[@]}" "$DEPLOY_HOST:$DEPLOY_PATH/data/config/"
+fi
+
 if [ "$LOCAL_LOCK" != "$REMOTE_LOCK" ]; then
   echo "deploy-code: package-lock changed — npm ci"
   remote "npm ci"
@@ -27,14 +35,7 @@ else
   echo "deploy-code: package-lock unchanged — skipping npm ci"
 fi
 
-echo "deploy-code: build + reload"
+echo "deploy-code: build"
 remote "npm run build -w @localfinds/web"
-remote "pm2 reload $DEPLOY_PM2_NAME && pm2 save"
 
-if [ "$DRY_RUN" != 1 ]; then
-  echo "deploy-code: verify"
-  curl -sS -o /dev/null -w "GET %{http_code}\n"  "https://localfinds.peaslee.org/"
-  curl -sS -o /dev/null -w "POST %{http_code}\n" -X POST "https://localfinds.peaslee.org/"
-fi
-
-echo "deploy-code: done"
+echo "deploy-code: done (reload happens after migrate)"

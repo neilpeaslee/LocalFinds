@@ -7,13 +7,11 @@ import {
   readFeedbackForAgent,
   setFindExpiry,
   updateFindStatus,
-  upsertBusiness,
   upsertSource,
   type FindStatus,
 } from "@localfinds/db";
 import { z } from "zod";
 import { formatIcalResult, runIcalFetch } from "./ical";
-import { formatOsmResult, isValidOsmId, runOsmQuery } from "./osm-client";
 
 export interface RunCounters {
   added: number;
@@ -47,12 +45,12 @@ export interface SourceUpsertArgs {
 
 // Upsert a source and tally it against the run counters. Mirrors
 // upsertOneBusiness: a brand-new URL is `added`, an existing one is `updated`.
-export function recordSourceUpsert(
+export async function recordSourceUpsert(
   args: SourceUpsertArgs,
   agent: string,
   counters: RunCounters,
 ) {
-  const result = upsertSource({
+  const result = await upsertSource({
     url: args.url,
     name: args.name,
     status: args.status,
@@ -67,77 +65,6 @@ export function recordSourceUpsert(
 }
 
 const findStatus = z.enum(["new", "shown", "hidden", "starred"]);
-
-// Shared shape for one business row — used by both upsert_business (a single
-// row) and upsert_businesses (a batch), so their fields and validation stay
-// identical.
-const businessShape = {
-  osm_id: z
-    .string()
-    .describe('OSM stable id, e.g. "node/123" / "way/456" / "relation/789"'),
-  name: z.string().describe(PLAIN_TEXT),
-  kind: z
-    .string()
-    .optional()
-    .describe('Verbatim OSM primary tag, e.g. "amenity=cafe"'),
-  tags: z.array(z.string()).optional().describe("A few lowercase free-form tags"),
-  address: z.string().optional(),
-  town: z.string().optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  website: z.string().optional(),
-  phone: z.string().optional(),
-  brand: z
-    .string()
-    .optional()
-    .describe("OSM brand tag if present — marks a national/regional chain"),
-  status: z.enum(["active", "closed", "unknown"]).optional(),
-  notes_path: z
-    .string()
-    .optional()
-    .describe("Workspace-relative path to a note, e.g. notes/towns/rockland.md"),
-};
-const businessSchema = z.object(businessShape);
-type BusinessInput = z.infer<typeof businessSchema>;
-
-// Validate + coerce one business row and write it. Returns the upsert result,
-// or an { osm_id, error } object the caller can surface without aborting a batch.
-function upsertOneBusiness(
-  item: BusinessInput,
-  agent: string,
-  counters: RunCounters,
-) {
-  // osm_id is the unique dedupe key and is rendered into an OSM URL — reject
-  // free text rather than storing a junk key / broken link.
-  if (!isValidOsmId(item.osm_id)) {
-    return {
-      osm_id: item.osm_id,
-      error: `invalid osm_id "${item.osm_id}" — expected "node/<n>", "way/<n>", or "relation/<n>"`,
-    };
-  }
-  // Drop out-of-range coordinates instead of persisting a bad pin.
-  const lat = item.lat != null && Math.abs(item.lat) <= 90 ? item.lat : undefined;
-  const lng = item.lng != null && Math.abs(item.lng) <= 180 ? item.lng : undefined;
-  const result = upsertBusiness({
-    osmId: item.osm_id.trim(),
-    name: item.name,
-    kind: item.kind,
-    tags: item.tags,
-    address: item.address,
-    town: item.town,
-    lat,
-    lng,
-    website: item.website,
-    phone: item.phone,
-    brand: item.brand,
-    status: item.status,
-    notesPath: item.notes_path,
-    addedBy: agent,
-  });
-  if (result.outcome === "created") counters.added++;
-  else counters.updated++;
-  return result;
-}
 
 // All tools are defined on one server; each agent's allowedTools picks its subset.
 export function buildLocalfindsServer(
@@ -181,17 +108,17 @@ export function buildLocalfindsServer(
             .string()
             .optional()
             .describe('Find type — omit for an event (default), or "lead" for a qualified business lead.'),
-          business_id: z
-            .number()
+          place_osm_id: z
+            .string()
             .optional()
-            .describe("For a lead: the id of the linked business (from list_businesses)."),
+            .describe("For a lead: the osm_id of the linked place (from list_businesses)."),
           score: z
             .number()
             .optional()
             .describe("0-1 fit/quality score (e.g. a lead's ICP fit)."),
         },
         async (args) => {
-          const result = insertFind({
+          const result = await insertFind({
             title: args.title,
             url: args.url,
             summary: args.summary,
@@ -202,7 +129,7 @@ export function buildLocalfindsServer(
             tags: args.tags,
             sourceUrl: args.source_url,
             type: args.type,
-            businessId: args.business_id,
+            placeOsmId: args.place_osm_id,
             score: args.score,
             agent,
             status: resolveFindStatus(opts.findStatusOverride),
@@ -219,7 +146,7 @@ export function buildLocalfindsServer(
           status: findStatus.optional(),
           limit: z.number().optional().describe("Default 100"),
         },
-        async (args) => asText(listRecentFinds(args)),
+        async (args) => asText(await listRecentFinds(args)),
       ),
       tool(
         "update_find_status",
@@ -233,7 +160,7 @@ export function buildLocalfindsServer(
             .describe("One line on why — also record it in your notes"),
         },
         async (args) => {
-          const ok = updateFindStatus(args.id, args.status);
+          const ok = await updateFindStatus(args.id, args.status);
           if (ok) counters.updated++;
           return asText({ ok, id: args.id, status: args.status });
         },
@@ -246,7 +173,7 @@ export function buildLocalfindsServer(
           expires_at: z.string().describe("ISO 8601"),
         },
         async (args) => {
-          const ok = setFindExpiry(args.id, args.expires_at);
+          const ok = await setFindExpiry(args.id, args.expires_at);
           if (ok) counters.updated++;
           return asText({ ok, id: args.id });
         },
@@ -257,13 +184,13 @@ export function buildLocalfindsServer(
         {
           limit: z.number().optional().describe("Default 200"),
         },
-        async (args) => asText(readFeedbackForAgent(agent, args.limit)),
+        async (args) => asText(await readFeedbackForAgent(agent, args.limit)),
       ),
       tool(
         "list_sources",
         "List the registered sources (local sites worth checking) with status and quality signals.",
         {},
-        async () => asText(listSources()),
+        async () => asText(await listSources()),
       ),
       tool(
         "upsert_source",
@@ -285,7 +212,7 @@ export function buildLocalfindsServer(
             .optional()
             .describe("iCal feed URL for this source, if it has one (e.g. The Events Calendar ?ical=1)"),
         },
-        async (args) => asText(recordSourceUpsert(args, agent, counters)),
+        async (args) => asText(await recordSourceUpsert(args, agent, counters)),
       ),
       tool(
         "fetch_ical",
@@ -295,80 +222,6 @@ export function buildLocalfindsServer(
           limit: z.number().optional().describe("Max upcoming events to return, default 30, capped at 60"),
         },
         async (args) => formatIcalResult(await runIcalFetch(args.url), args.limit),
-      ),
-      tool(
-        "osm_query",
-        "Query the LocalFinds OSM directory (self-hosted PostGIS) for businesses in an area. Pass EITHER `town` (an admin area name) OR `bbox` ('s,w,n,e' in WGS84). Optionally narrow to specific business keys with `keys` (amenity | shop | tourism | office | craft | leisure); omit to return all. Returns a projected, named, capped array already in the exact shape upsert_businesses accepts — pass its `elements` straight through. If `truncated` is true, narrow (a smaller bbox or fewer keys) and call again.\n\nExamples:\n  { \"town\": \"Rockland\", \"keys\": [\"shop\"] }\n  { \"bbox\": \"44.0,-69.2,44.2,-69.0\", \"keys\": [\"amenity\"] }",
-        {
-          town: z
-            .string()
-            .optional()
-            .describe("Admin area name (e.g. \"Rockland\"). Provide town OR bbox."),
-          bbox: z
-            .string()
-            .optional()
-            .describe("Bounding box 's,w,n,e' in WGS84. Provide town OR bbox."),
-          keys: z
-            .array(z.string())
-            .optional()
-            .describe(
-              "Business keys to include: amenity, shop, tourism, office, craft, leisure. Omit for all.",
-            ),
-          limit: z
-            .number()
-            .optional()
-            .describe("Max elements to return, default 200."),
-        },
-        async (args) =>
-          formatOsmResult(
-            await runOsmQuery({
-              town: args.town,
-              bbox: args.bbox,
-              keys: args.keys,
-              limit: args.limit,
-            }),
-            args.limit,
-          ),
-      ),
-      tool(
-        "upsert_business",
-        "Save or update one business in the directory (matched by osm_id). Store exact facts only — put any judgment in your workspace note. Returns whether it was 'created' or 'updated'. To save many at once, prefer upsert_businesses.",
-        businessShape,
-        async (args) => asText(upsertOneBusiness(args, agent, counters)),
-      ),
-      tool(
-        "upsert_businesses",
-        "Save or update MANY businesses in one call — each matched by osm_id, same fields as upsert_business. PREFER THIS when saving the results of a scan: one call per (town × category) cell instead of one call per business cuts turns and budget. Returns counts of created/updated plus any per-item errors (e.g. an invalid osm_id) — a bad row is skipped, the rest still save.",
-        {
-          items: z
-            .array(businessSchema)
-            .min(1)
-            .max(200)
-            .describe(
-              "Businesses to upsert; skip unnamed elements and Tier 4 kinds before calling.",
-            ),
-        },
-        async (args) => {
-          const results = args.items.map((item) =>
-            upsertOneBusiness(item, agent, counters),
-          );
-          const errors = results.filter(
-            (r): r is { osm_id: string; error: string } => "error" in r,
-          );
-          const created = results.filter(
-            (r) => "outcome" in r && r.outcome === "created",
-          ).length;
-          const updated = results.filter(
-            (r) => "outcome" in r && r.outcome === "updated",
-          ).length;
-          return asText({
-            count: args.items.length,
-            created,
-            updated,
-            errors: errors.length,
-            ...(errors.length ? { errorDetails: errors } : {}),
-          });
-        },
       ),
       tool(
         "list_businesses",
@@ -393,7 +246,7 @@ export function buildLocalfindsServer(
           limit: z.number().optional().describe("Default 500"),
         },
         async (args) => {
-          const { rows, total } = listBusinessesRanked({
+          const { rows, total } = await listBusinessesRanked({
             town: args.town,
             tag: args.tag,
             status: args.status,
@@ -412,7 +265,6 @@ export function buildLocalfindsServer(
             // phone, and timestamps keeps a tier-wide list from blowing the token
             // budget. The full record is available via the /businesses page.
             businesses: rows.map((r) => ({
-              id: r.business.id,
               osmId: r.business.osmId,
               name: r.business.name,
               kind: r.business.kind,

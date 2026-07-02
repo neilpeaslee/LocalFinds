@@ -33,20 +33,20 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   const region = readRegionConfig();
   const { towns } = readTownsConfig();
   const boundaries = readTownBoundaries();
 
-  const pins = listMapPins();
+  const pins = await listMapPins();
   const mapCfg = readMapCategories();
   const mapThemes = [
     ...mapCfg.themes.map((t) => ({ key: t.key, label: t.label, color: t.color })),
     { key: mapCfg.otherKey, label: mapCfg.otherLabel, color: mapCfg.otherColor },
   ];
-  const businessCount = countBusinesses();
+  const businessCount = await countBusinesses();
 
-  const finds = getFeed({ view: "default" });
+  const finds = await getFeed({ view: "default" });
   const recent = finds.slice(0, COMPACT_FINDS);
 
   return (

@@ -9,9 +9,9 @@ import {
 
 let nextId = 1;
 function row(over: Partial<DedupeRow> = {}): DedupeRow {
+  const n = nextId++;
   return {
-    id: nextId++,
-    osmId: `way/${1000 + nextId}`,
+    osmId: `way/${1000 + n}`,
     name: "Test Place",
     kind: null,
     tags: [],
@@ -23,7 +23,6 @@ function row(over: Partial<DedupeRow> = {}): DedupeRow {
     phone: null,
     brand: null,
     status: "active",
-    discoveredAt: "2026-01-01T00:00:00.000Z",
     ...over,
   };
 }
@@ -110,19 +109,19 @@ describe("chooseCanonical", () => {
       address: "a",
     });
     const activeSparse = row({ status: "active" });
-    expect(chooseCanonical([closedRich, activeSparse]).id).toBe(activeSparse.id);
+    expect(chooseCanonical([closedRich, activeSparse]).osmId).toBe(activeSparse.osmId);
   });
 
   it("among same status, prefers the richest", () => {
     const sparse = row({});
     const rich = row({ website: "http://x.com" });
-    expect(chooseCanonical([sparse, rich]).id).toBe(rich.id);
+    expect(chooseCanonical([sparse, rich]).osmId).toBe(rich.osmId);
   });
 
-  it("breaks ties by oldest discoveredAt then lowest id", () => {
-    const older = row({ discoveredAt: "2026-01-01T00:00:00.000Z" });
-    const newer = row({ discoveredAt: "2026-02-01T00:00:00.000Z" });
-    expect(chooseCanonical([newer, older]).id).toBe(older.id);
+  it("breaks ties (same status + richness) by lowest osm_id", () => {
+    const a = row({ osmId: "way/100" });
+    const b = row({ osmId: "way/200" });
+    expect(chooseCanonical([b, a]).osmId).toBe("way/100");
   });
 });
 

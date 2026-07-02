@@ -1,43 +1,75 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
-import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
-import { db } from "./client";
-import { readCategoryConfig, readMapCategories } from "./config";
-import { resolvePage } from "./pagination";
-import {
-  chooseCanonical,
-  groupBusinessDuplicates,
-  mergeFacts,
-} from "./business-dedupe";
+import { chooseCanonical, groupBusinessDuplicates } from "./business-dedupe";
 import {
   type BusinessSort,
   type SortDir,
   sortRankedBusinesses,
 } from "./business-sort";
+import { execute, query, queryOne, tx } from "./client";
+import { readCategoryConfig, readMapCategories } from "./config";
 import { findKey } from "./dedupe";
-import {
-  type Business,
-  type Find,
-  type FetchClass,
-  type Source,
-  businesses,
-  feedback,
-  fetches,
-  finds,
-  runs,
-  sources,
+import { resolvePage } from "./pagination";
+import type {
+  Fetch,
+  FetchClass,
+  FeedbackAction,
+  Find,
+  FindStatus,
+  Place,
+  Run,
+  Source,
 } from "./schema";
 
-// Exact-element match against a JSON text-array column (tags). Shared by the
-// finds feed and the businesses directory so the json_each idiom lives once.
-function jsonArrayHas(column: AnySQLiteColumn, value: string) {
-  return sql`exists (select 1 from json_each(${column}) where json_each.value = ${value})`;
+// Build $N placeholders for a dynamic query: each call pushes a value onto the
+// shared params array and returns its positional placeholder. Keeps every value
+// parameterized (never string-interpolated) even in dynamically-assembled WHERE.
+function pusher(params: unknown[]) {
+  return (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
 }
 
-// Escape LIKE metacharacters so a user's search text is matched literally
+// Escape LIKE/ILIKE metacharacters so a user's search text is matched literally
 // (e.g. "50%" must not become a wildcard). Pair with `escape '\'` in the query.
 function likeContains(term: string): string {
   return `%${term.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 }
+
+// --- Column lists: SQL returns snake_case; alias to the camelCase row types.
+// One constant per table keeps the aliases DRY and avoids SELECT *.
+
+const FIND_COLS = `id, title, url, url_hash AS "urlHash", summary,
+  event_start AS "eventStart", event_end AS "eventEnd", expires_at AS "expiresAt",
+  published_at AS "publishedAt", discovered_at AS "discoveredAt", status, agent,
+  source_id AS "sourceId", tags, score, type, place_osm_id AS "placeOsmId"`;
+
+const SOURCE_COLS = `id, url, name, notes_path AS "notesPath", ical_url AS "icalUrl",
+  status, quality_score AS "qualityScore", finds_count AS "findsCount",
+  last_find_at AS "lastFindAt", last_checked_at AS "lastCheckedAt",
+  added_by AS "addedBy", created_at AS "createdAt"`;
+
+const RUN_COLS = `id, agent, started_at AS "startedAt", finished_at AS "finishedAt",
+  status, items_added AS "itemsAdded", items_updated AS "itemsUpdated", warnings,
+  num_turns AS "numTurns", cost_usd AS "costUsd", usage_json::text AS "usageJson",
+  session_id AS "sessionId", error`;
+
+const FETCH_COLS = `id, run_id AS "runId", agent, host, url, method, status, klass, via, ts`;
+
+// localfinds.places is osm_places ⋈ annotations; geom/point are NOT selected.
+// tags is the full OSM jsonb tag set, bridged to a key=value[] (C7).
+const PLACE_TAGS_SQL = `COALESCE(
+  (SELECT array_agg(kv.key || '=' || kv.value ORDER BY kv.key)
+   FROM jsonb_each_text(pl.tags) AS kv), '{}'::text[])`;
+
+const PLACE_COLS = `pl.osm_id AS "osmId", pl.name, pl.kind, pl.lat, pl.lng,
+  pl.town, pl.address, pl.website, pl.phone, pl.brand,
+  ${PLACE_TAGS_SQL} AS tags,
+  pl.status, pl.status_override AS "statusOverride",
+  pl.annotation_note AS "annotationNote", pl.duplicate_of AS "duplicateOf"`;
+
+// ===========================================================================
+// Finds + feed (the gated group)
+// ===========================================================================
 
 export interface NewFindInput {
   title: string;
@@ -52,9 +84,10 @@ export interface NewFindInput {
   sourceUrl?: string | null;
   // Free-text find type ("event" default, "lead", ...). cf. finds.type.
   type?: string;
-  // FK to a businesses row (a lead's OSM business). Null for non-lead finds.
-  businessId?: number | null;
-  // 0-1 fit/quality score. Persisted here (insertFind previously dropped it).
+  // The OSM place a lead points at. insertFind upserts the annotation anchor so
+  // the place_osm_id FK always resolves. Null for non-lead finds.
+  placeOsmId?: string | null;
+  // 0-1 fit/quality score.
   score?: number | null;
   /** Defaults to "new". Set "provisional" for an interview sample run's leads. */
   status?: FindStatus;
@@ -65,63 +98,76 @@ export interface SaveFindResult {
   id: number;
 }
 
-export function insertFind(input: NewFindInput): SaveFindResult {
+export async function insertFind(input: NewFindInput): Promise<SaveFindResult> {
   const urlHash = findKey({ url: input.url, title: input.title });
-  const now = new Date().toISOString();
 
-  let sourceId: number | undefined;
-  if (input.sourceUrl) {
-    sourceId = db()
-      .select({ id: sources.id })
-      .from(sources)
-      .where(eq(sources.url, input.sourceUrl))
-      .get()?.id;
-  }
-
-  const inserted = db()
-    .insert(finds)
-    .values({
-      title: input.title,
-      url: input.url ?? null,
-      urlHash,
-      summary: input.summary ?? null,
-      eventStart: input.eventStart ?? null,
-      eventEnd: input.eventEnd ?? null,
-      expiresAt: input.expiresAt ?? null,
-      publishedAt: input.publishedAt ?? null,
-      discoveredAt: now,
-      agent: input.agent,
-      sourceId: sourceId ?? null,
-      tags: input.tags ?? [],
-      type: input.type ?? "event",
-      businessId: input.businessId ?? null,
-      score: input.score ?? null,
-      status: input.status ?? "new",
-    })
-    .onConflictDoNothing({ target: finds.urlHash })
-    .returning({ id: finds.id })
-    .get();
-
-  if (inserted) {
-    if (sourceId !== undefined) {
-      db()
-        .update(sources)
-        .set({
-          findsCount: sql`${sources.findsCount} + 1`,
-          lastFindAt: now,
-        })
-        .where(eq(sources.id, sourceId))
-        .run();
+  return tx(async (c) => {
+    let sourceId: number | undefined;
+    if (input.sourceUrl) {
+      sourceId = (
+        await c.query<{ id: number }>(`SELECT id FROM localfinds.sources WHERE url = $1`, [
+          input.sourceUrl,
+        ])
+      ).rows[0]?.id;
     }
-    return { outcome: "created", id: inserted.id };
-  }
 
-  const existing = db()
-    .select({ id: finds.id })
-    .from(finds)
-    .where(eq(finds.urlHash, urlHash))
-    .get();
-  return { outcome: "duplicate", id: existing!.id };
+    // Lead→place link contract (SP1): ensure the annotation anchor exists before
+    // the FK insert so place_osm_id always resolves. No-op for non-lead finds.
+    if (input.placeOsmId) {
+      await c.query(
+        `INSERT INTO localfinds.place_annotations (osm_id, added_by) VALUES ($1, $2)
+         ON CONFLICT (osm_id) DO NOTHING`,
+        [input.placeOsmId, input.agent],
+      );
+    }
+
+    const inserted = (
+      await c.query<{ id: number }>(
+        `INSERT INTO localfinds.finds
+           (title, url, url_hash, summary, event_start, event_end, expires_at, published_at,
+            agent, source_id, tags, score, type, place_osm_id, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         ON CONFLICT (url_hash) DO NOTHING
+         RETURNING id`,
+        [
+          input.title,
+          input.url ?? null,
+          urlHash,
+          input.summary ?? null,
+          input.eventStart ?? null,
+          input.eventEnd ?? null,
+          input.expiresAt ?? null,
+          input.publishedAt ?? null,
+          input.agent,
+          sourceId ?? null,
+          input.tags ?? [],
+          input.score ?? null,
+          input.type ?? "event",
+          input.placeOsmId ?? null,
+          input.status ?? "new",
+        ],
+      )
+    ).rows[0];
+
+    if (inserted) {
+      if (sourceId !== undefined) {
+        await c.query(
+          `UPDATE localfinds.sources SET finds_count = finds_count + 1, last_find_at = now()
+           WHERE id = $1`,
+          [sourceId],
+        );
+      }
+      return { outcome: "created" as const, id: inserted.id };
+    }
+
+    const existing = (
+      await c.query<{ id: number }>(
+        `SELECT id FROM localfinds.finds WHERE url_hash = $1`,
+        [urlHash],
+      )
+    ).rows[0];
+    return { outcome: "duplicate" as const, id: existing!.id };
+  });
 }
 
 export type FeedView = "default" | "starred" | "hidden" | "all";
@@ -131,8 +177,7 @@ export interface FeedFilters {
   view?: FeedView;
   days?: number;
   // Inclusive event-date range (ISO YYYY-MM-DD) filtering on eventStart. When
-  // set, finds with no eventStart drop out. Distinct from `days`, which is a
-  // recently-discovered window over discoveredAt.
+  // set, finds with no eventStart drop out.
   from?: string;
   to?: string;
   tag?: string;
@@ -154,286 +199,262 @@ export interface FeedPage {
   pageCount: number;
 }
 
-// Items stay visible through their expiry date (date-prefix comparison works
-// for both date and datetime ISO strings).
-function notExpired() {
-  const today = new Date().toISOString().slice(0, 10);
-  return sql`(${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})`;
-}
-
-// Provisional leads belong to an in-progress interview's sample run and must
-// never surface in the feed until promoted to "new".
-function notProvisional() {
-  return ne(finds.status, "provisional");
-}
-
-// Shared WHERE-building for the feed, used by both getFeed (array) and
-// getFeedPage (paginated) so their filter semantics never drift.
-function feedConditions(filters: FeedFilters) {
-  const conditions = [];
+// Shared WHERE-building for the feed, used by both getFeed and getFeedPage so
+// their filter semantics never drift. Items stay visible through their expiry
+// date (date-prefix comparison works for both date and datetime ISO strings).
+function feedWhere(filters: FeedFilters, params: unknown[]): string {
+  const p = pusher(params);
+  const where: string[] = [];
   const view = filters.view ?? "default";
+  const today = new Date().toISOString().slice(0, 10);
   if (view === "default") {
-    conditions.push(ne(finds.status, "hidden"), notProvisional(), notExpired());
+    where.push(
+      `status <> 'hidden'`,
+      `status <> 'provisional'`,
+      `(expires_at IS NULL OR expires_at >= ${p(today)})`,
+    );
   }
   if (view === "starred") {
-    conditions.push(eq(finds.status, "starred"), notExpired());
+    where.push(`status = 'starred'`, `(expires_at IS NULL OR expires_at >= ${p(today)})`);
   }
-  if (view === "hidden") conditions.push(eq(finds.status, "hidden"));
+  if (view === "hidden") where.push(`status = 'hidden'`);
   if (filters.days) {
-    const since = new Date(
-      Date.now() - filters.days * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    conditions.push(gte(finds.discoveredAt, since));
+    where.push(
+      `discovered_at >= ${p(new Date(Date.now() - filters.days * 864e5).toISOString())}`,
+    );
   }
-  // Event-date range on eventStart. `to` covers the whole end day, so an event
-  // timestamped that evening still matches a same-day upper bound.
-  if (filters.from) conditions.push(gte(finds.eventStart, filters.from));
-  if (filters.to)
-    conditions.push(lte(finds.eventStart, `${filters.to}T23:59:59.999Z`));
-  if (filters.tag) {
-    // tags is a JSON string array — exact-element match on the serialized form
-    conditions.push(jsonArrayHas(finds.tags, filters.tag));
-  }
-  if (filters.type) conditions.push(eq(finds.type, filters.type));
-  if (filters.excludeTypes && filters.excludeTypes.length > 0) {
-    conditions.push(notInArray(finds.type, filters.excludeTypes));
-  }
-  return conditions;
+  if (filters.from) where.push(`event_start >= ${p(filters.from)}`);
+  if (filters.to) where.push(`event_start <= ${p(`${filters.to}T23:59:59.999Z`)}`);
+  if (filters.tag) where.push(`${p(filters.tag)} = ANY(tags)`);
+  if (filters.type) where.push(`type = ${p(filters.type)}`);
+  if (filters.excludeTypes?.length) where.push(`type <> ALL(${p(filters.excludeTypes)})`);
+  return where.length ? `WHERE ${where.join(" AND ")}` : "";
 }
 
-// Feed ordering. "newest"/"oldest" use discovery time; "soonest" uses the
-// event start date (earliest first), with undated finds pushed to the end.
-function feedOrder(sort: FeedSort | undefined) {
+// Feed ordering. "newest"/"oldest" use discovery time; "soonest" uses the event
+// start date (earliest first), with undated finds pushed to the end.
+function feedOrderSql(sort: FeedSort | undefined): string {
   switch (sort) {
     case "oldest":
-      return [asc(finds.discoveredAt)];
+      return "ORDER BY discovered_at ASC";
     case "soonest":
-      return [sql`${finds.eventStart} is null`, asc(finds.eventStart)];
+      return "ORDER BY (event_start IS NULL), event_start ASC";
     default:
-      return [desc(finds.discoveredAt)];
+      return "ORDER BY discovered_at DESC";
   }
 }
 
-export function getFeed(filters: FeedFilters = {}) {
-  const conditions = feedConditions(filters);
-  return db()
-    .select()
-    .from(finds)
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(finds.discoveredAt))
-    .limit(filters.limit ?? 200)
-    .all();
+export async function getFeed(filters: FeedFilters = {}): Promise<Find[]> {
+  const params: unknown[] = [];
+  const whereSql = feedWhere(filters, params);
+  const lp = pusher(params);
+  return query<Find>(
+    `SELECT ${FIND_COLS} FROM localfinds.finds ${whereSql}
+     ORDER BY discovered_at DESC LIMIT ${lp(filters.limit ?? 200)}`,
+    params,
+  );
 }
 
 // Paginated feed for /feed: same filters as getFeed plus page/pageSize/sort,
 // returning the page slice with the total match count for the pager.
-export function getFeedPage(filters: FeedFilters = {}): FeedPage {
-  const conditions = feedConditions(filters);
-  const where = conditions.length ? and(...conditions) : undefined;
-  const order = feedOrder(filters.sort);
-
+export async function getFeedPage(filters: FeedFilters = {}): Promise<FeedPage> {
+  const params: unknown[] = [];
+  const whereSql = feedWhere(filters, params);
   const total =
-    db().select({ n: sql<number>`count(*)` }).from(finds).where(where).get()?.n ??
-    0;
+    (
+      await queryOne<{ n: number }>(
+        `SELECT count(*)::int AS n FROM localfinds.finds ${whereSql}`,
+        params,
+      )
+    )?.n ?? 0;
+  const order = feedOrderSql(filters.sort);
 
   // No page size -> the full matching set on a single page.
   if (!filters.pageSize || filters.pageSize <= 0) {
-    const rows = db().select().from(finds).where(where).orderBy(...order).all();
+    const rows = await query<Find>(
+      `SELECT ${FIND_COLS} FROM localfinds.finds ${whereSql} ${order}`,
+      params,
+    );
     return { rows, total, page: 1, pageCount: 1 };
   }
 
-  const { page, pageCount, start } = resolvePage(
-    total,
-    filters.page ?? 1,
-    filters.pageSize,
+  const { page, pageCount, start } = resolvePage(total, filters.page ?? 1, filters.pageSize);
+  const lp = pusher(params);
+  const rows = await query<Find>(
+    `SELECT ${FIND_COLS} FROM localfinds.finds ${whereSql} ${order}
+     LIMIT ${lp(filters.pageSize)} OFFSET ${lp(start)}`,
+    params,
   );
-  const rows = db()
-    .select()
-    .from(finds)
-    .where(where)
-    .orderBy(...order)
-    .limit(filters.pageSize)
-    .offset(start)
-    .all();
   return { rows, total, page, pageCount };
 }
 
 // Distinct tags among currently feed-visible items, for the filter bar.
-export function listActiveTags(limit = 30): string[] {
-  const rows = db().all<{ tag: string; n: number }>(
-    sql`select json_each.value as tag, count(*) as n
-        from ${finds}, json_each(${finds.tags})
-        where ${finds.status} not in ('hidden', 'provisional') and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${new Date().toISOString().slice(0, 10)})
-        group by tag order by n desc limit ${limit}`,
+export async function listActiveTags(limit = 30): Promise<string[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await query<{ tag: string }>(
+    `SELECT t AS tag, count(*) AS n FROM localfinds.finds, unnest(tags) AS t
+     WHERE status NOT IN ('hidden', 'provisional')
+       AND (expires_at IS NULL OR expires_at >= $1)
+     GROUP BY t ORDER BY n DESC LIMIT $2`,
+    [today, limit],
   );
   return rows.map((r) => r.tag);
 }
 
 // Distinct find types among currently feed-visible items, for the filter bar.
-// Ordered by count desc so the common types (events) lead. "event" always
-// appears (it's the default), so a single-type feed still shows one chip.
-export function listFindTypes(): string[] {
+// Ordered by count desc so the common types (events) lead.
+export async function listFindTypes(): Promise<string[]> {
   const today = new Date().toISOString().slice(0, 10);
-  const rows = db().all<{ type: string; n: number }>(
-    sql`select ${finds.type} as type, count(*) as n
-        from ${finds}
-        where ${finds.status} not in ('hidden', 'provisional') and (${finds.expiresAt} is null or ${finds.expiresAt} >= ${today})
-        group by ${finds.type} order by n desc`,
+  const rows = await query<{ type: string }>(
+    `SELECT type, count(*) AS n FROM localfinds.finds
+     WHERE status NOT IN ('hidden', 'provisional')
+       AND (expires_at IS NULL OR expires_at >= $1)
+     GROUP BY type ORDER BY n DESC`,
+    [today],
   );
   return rows.map((r) => r.type);
 }
 
-export function costLastNDays(days = 30): number {
-  const since = new Date(
-    Date.now() - days * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const row = db().get<{ total: number | null }>(
-    sql`select sum(${runs.costUsd}) as total from ${runs} where ${runs.startedAt} >= ${since}`,
-  );
-  return row?.total ?? 0;
-}
-
-// First render of a `new` find flips it to `shown`
-export function markFindsShown(ids: number[]): void {
+// First render of a `new` find flips it to `shown`.
+export async function markFindsShown(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
-  db()
-    .update(finds)
-    .set({ status: "shown" })
-    .where(and(inArray(finds.id, ids), eq(finds.status, "new")))
-    .run();
+  await execute(
+    `UPDATE localfinds.finds SET status = 'shown' WHERE id = ANY($1) AND status = 'new'`,
+    [ids],
+  );
 }
 
-export type FindStatus = "new" | "shown" | "hidden" | "starred" | "provisional";
-
-export function listRecentFinds(
+export async function listRecentFinds(
   opts: { days?: number; status?: FindStatus; limit?: number } = {},
-) {
-  const since = new Date(
-    Date.now() - (opts.days ?? 7) * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const conditions = [gte(finds.discoveredAt, since)];
-  if (opts.status) conditions.push(eq(finds.status, opts.status));
-  else conditions.push(notProvisional());
-  return db()
-    .select()
-    .from(finds)
-    .where(and(...conditions))
-    .orderBy(desc(finds.discoveredAt))
-    .limit(opts.limit ?? 100)
-    .all();
+): Promise<Find[]> {
+  const since = new Date(Date.now() - (opts.days ?? 7) * 864e5).toISOString();
+  const params: unknown[] = [];
+  const p = pusher(params);
+  const where = [`discovered_at >= ${p(since)}`];
+  if (opts.status) where.push(`status = ${p(opts.status)}`);
+  else where.push(`status <> 'provisional'`);
+  const lim = p(opts.limit ?? 100);
+  return query<Find>(
+    `SELECT ${FIND_COLS} FROM localfinds.finds WHERE ${where.join(" AND ")}
+     ORDER BY discovered_at DESC LIMIT ${lim}`,
+    params,
+  );
 }
 
-export function updateFindStatus(id: number, status: FindStatus): boolean {
-  return db().update(finds).set({ status }).where(eq(finds.id, id)).run()
-    .changes > 0;
+export async function updateFindStatus(id: number, status: FindStatus): Promise<boolean> {
+  return (await execute(`UPDATE localfinds.finds SET status = $1 WHERE id = $2`, [status, id])) > 0;
 }
 
-export function setFindExpiry(id: number, expiresAt: string): boolean {
-  return db().update(finds).set({ expiresAt }).where(eq(finds.id, id)).run()
-    .changes > 0;
+export async function setFindExpiry(id: number, expiresAt: string): Promise<boolean> {
+  return (
+    (await execute(`UPDATE localfinds.finds SET expires_at = $1 WHERE id = $2`, [expiresAt, id])) > 0
+  );
 }
 
-export function listProvisionalFinds(): Find[] {
-  return db().select().from(finds).where(eq(finds.status, "provisional")).all() as Find[];
+export async function listProvisionalFinds(): Promise<Find[]> {
+  return query<Find>(`SELECT ${FIND_COLS} FROM localfinds.finds WHERE status = 'provisional'`);
 }
 
-export function promoteProvisionalFinds(): number {
-  return db()
-    .update(finds)
-    .set({ status: "new" })
-    .where(eq(finds.status, "provisional"))
-    .run().changes;
+export async function promoteProvisionalFinds(): Promise<number> {
+  return execute(`UPDATE localfinds.finds SET status = 'new' WHERE status = 'provisional'`);
 }
 
-export function discardProvisionalFinds(): number {
-  return db().delete(finds).where(eq(finds.status, "provisional")).run().changes;
+export async function discardProvisionalFinds(): Promise<number> {
+  return execute(`DELETE FROM localfinds.finds WHERE status = 'provisional'`);
 }
 
 // Bulk status changes for feed management. Status-only (no feedback rows) so a
 // sweep of the visible page doesn't flood the agents' taste signal.
-export function updateFindStatuses(ids: number[], status: FindStatus): number {
+export async function updateFindStatuses(ids: number[], status: FindStatus): Promise<number> {
   if (ids.length === 0) return 0;
-  return db().update(finds).set({ status }).where(inArray(finds.id, ids)).run()
-    .changes;
+  return execute(`UPDATE localfinds.finds SET status = $1 WHERE id = ANY($2)`, [status, ids]);
 }
 
-export function unhideAll(): number {
-  return db()
-    .update(finds)
-    .set({ status: "shown" })
-    .where(eq(finds.status, "hidden"))
-    .run().changes;
+export async function unhideAll(): Promise<number> {
+  return execute(`UPDATE localfinds.finds SET status = 'shown' WHERE status = 'hidden'`);
 }
 
-export function recordFeedback(
+export async function recordFeedback(
   findId: number,
-  action: typeof feedback.$inferInsert.action,
+  action: FeedbackAction,
   note?: string,
-): void {
-  db()
-    .insert(feedback)
-    .values({ findId, action, note, createdAt: new Date().toISOString() })
-    .run();
+): Promise<void> {
+  await execute(`INSERT INTO localfinds.feedback (find_id, action, note) VALUES ($1, $2, $3)`, [
+    findId,
+    action,
+    note ?? null,
+  ]);
 }
 
-function lastSuccessfulRunStart(agent: string): string | null {
-  // A budget-capped run ("capped") still completed step 1 (read_feedback)
-  // before the cap, so it counts as a baseline for "unread feedback" too.
-  return (
-    db()
-      .select({ startedAt: runs.startedAt })
-      .from(runs)
-      .where(
-        and(
-          eq(runs.agent, agent),
-          inArray(runs.status, ["success", "capped"]),
-        ),
-      )
-      .orderBy(desc(runs.startedAt))
-      .limit(1)
-      .get()?.startedAt ?? null
+// A budget-capped run ("capped") still completed step 1 (read_feedback) before
+// the cap, so it counts as a baseline for "unread feedback" too.
+async function lastSuccessfulRunStart(agent: string): Promise<string | null> {
+  const row = await queryOne<{ startedAt: string }>(
+    `SELECT started_at AS "startedAt" FROM localfinds.runs
+     WHERE agent = $1 AND status IN ('success', 'capped')
+     ORDER BY started_at DESC LIMIT 1`,
+    [agent],
   );
+  return row?.startedAt ?? null;
+}
+
+export interface AgentFeedback {
+  id: number;
+  action: FeedbackAction;
+  note: string | null;
+  createdAt: string;
+  findId: number;
+  findTitle: string;
+  findUrl: string | null;
+  findTags: string[];
+  foundBy: string;
 }
 
 // An agent's "unread feedback" is everything newer than its last successful run.
-export function readFeedbackForAgent(agent: string, limit = 200) {
-  const cutoff = lastSuccessfulRunStart(agent);
-  return db()
-    .select({
-      id: feedback.id,
-      action: feedback.action,
-      note: feedback.note,
-      createdAt: feedback.createdAt,
-      findId: feedback.findId,
-      findTitle: finds.title,
-      findUrl: finds.url,
-      findTags: finds.tags,
-      foundBy: finds.agent,
-    })
-    .from(feedback)
-    .innerJoin(finds, eq(feedback.findId, finds.id))
-    .where(cutoff ? gte(feedback.createdAt, cutoff) : undefined)
-    .orderBy(desc(feedback.createdAt))
-    .limit(limit)
-    .all();
+export async function readFeedbackForAgent(agent: string, limit = 200): Promise<AgentFeedback[]> {
+  const cutoff = await lastSuccessfulRunStart(agent);
+  const params: unknown[] = [];
+  const p = pusher(params);
+  const where = cutoff ? `WHERE fb.created_at >= ${p(cutoff)}` : "";
+  const lim = p(limit);
+  return query<AgentFeedback>(
+    `SELECT fb.id, fb.action, fb.note, fb.created_at AS "createdAt", fb.find_id AS "findId",
+            f.title AS "findTitle", f.url AS "findUrl", f.tags AS "findTags", f.agent AS "foundBy"
+     FROM localfinds.feedback fb
+     INNER JOIN localfinds.finds f ON fb.find_id = f.id
+     ${where}
+     ORDER BY fb.created_at DESC LIMIT ${lim}`,
+    params,
+  );
 }
 
-export function listSources() {
-  return db().select().from(sources).orderBy(sources.url).all();
+export async function costLastNDays(days = 30): Promise<number> {
+  const since = new Date(Date.now() - days * 864e5).toISOString();
+  const row = await queryOne<{ total: number | null }>(
+    `SELECT sum(cost_usd) AS total FROM localfinds.runs WHERE started_at >= $1`,
+    [since],
+  );
+  return row?.total ?? 0;
 }
 
-export function getSourceById(id: number): Source | undefined {
-  return db().select().from(sources).where(eq(sources.id, id)).get();
+// ===========================================================================
+// Sources
+// ===========================================================================
+
+export async function listSources(): Promise<Source[]> {
+  return query<Source>(`SELECT ${SOURCE_COLS} FROM localfinds.sources ORDER BY url`);
 }
 
-export function listFindsBySource(sourceId: number, limit = 10): Find[] {
-  return db()
-    .select()
-    .from(finds)
-    .where(eq(finds.sourceId, sourceId))
-    .orderBy(desc(finds.discoveredAt))
-    .limit(limit)
-    .all();
+export async function getSourceById(id: number): Promise<Source | undefined> {
+  return queryOne<Source>(`SELECT ${SOURCE_COLS} FROM localfinds.sources WHERE id = $1`, [id]);
+}
+
+export async function listFindsBySource(sourceId: number, limit = 10): Promise<Find[]> {
+  return query<Find>(
+    `SELECT ${FIND_COLS} FROM localfinds.finds WHERE source_id = $1
+     ORDER BY discovered_at DESC LIMIT $2`,
+    [sourceId, limit],
+  );
 }
 
 export interface UpsertSourceInput {
@@ -451,115 +472,41 @@ export interface UpsertSourceResult {
   outcome: "created" | "updated";
 }
 
-export function upsertSource(input: UpsertSourceInput): UpsertSourceResult {
-  const now = new Date().toISOString();
-  // Look up existence before the upsert so we can report created vs updated —
-  // the run summary counts a brand-new source as "added", a re-check as "updated".
-  const existing = db()
-    .select({ id: sources.id })
-    .from(sources)
-    .where(eq(sources.url, input.url))
-    .get();
+// Look up existence before the upsert so we can report created vs updated. Only
+// fields the caller supplied are overwritten; last_checked_at always advances.
+export async function upsertSource(input: UpsertSourceInput): Promise<UpsertSourceResult> {
+  const existing = await queryOne<{ id: number }>(
+    `SELECT id FROM localfinds.sources WHERE url = $1`,
+    [input.url],
+  );
 
-  const set: Record<string, unknown> = { lastCheckedAt: now };
-  if (input.name !== undefined) set.name = input.name;
-  if (input.status !== undefined) set.status = input.status;
-  if (input.qualityScore !== undefined) set.qualityScore = input.qualityScore;
-  if (input.notesPath !== undefined) set.notesPath = input.notesPath;
-  if (input.icalUrl !== undefined) set.icalUrl = input.icalUrl;
-  const row = db()
-    .insert(sources)
-    .values({
-      url: input.url,
-      name: input.name,
-      status: input.status ?? "active",
-      qualityScore: input.qualityScore,
-      notesPath: input.notesPath,
-      icalUrl: input.icalUrl,
-      addedBy: input.addedBy,
-      createdAt: now,
-      lastCheckedAt: now,
-    })
-    .onConflictDoUpdate({ target: sources.url, set })
-    .returning({ id: sources.id })
-    .get()!;
+  const params: unknown[] = [];
+  const p = pusher(params);
+  const set = [`last_checked_at = now()`];
+  if (input.name !== undefined) set.push(`name = ${p(input.name)}`);
+  if (input.status !== undefined) set.push(`status = ${p(input.status)}`);
+  if (input.qualityScore !== undefined) set.push(`quality_score = ${p(input.qualityScore)}`);
+  if (input.notesPath !== undefined) set.push(`notes_path = ${p(input.notesPath)}`);
+  if (input.icalUrl !== undefined) set.push(`ical_url = ${p(input.icalUrl)}`);
 
-  return { id: row.id, outcome: existing ? "updated" : "created" };
+  const row = await queryOne<{ id: number }>(
+    `INSERT INTO localfinds.sources
+       (url, name, status, quality_score, notes_path, ical_url, added_by, last_checked_at)
+     VALUES (${p(input.url)}, ${p(input.name ?? null)}, ${p(input.status ?? "active")},
+             ${p(input.qualityScore ?? null)}, ${p(input.notesPath ?? null)},
+             ${p(input.icalUrl ?? null)}, ${p(input.addedBy)}, now())
+     ON CONFLICT (url) DO UPDATE SET ${set.join(", ")}
+     RETURNING id`,
+    params,
+  );
+  return { id: row!.id, outcome: existing ? "updated" : "created" };
 }
 
-export interface UpsertBusinessInput {
-  osmId: string;
-  name: string;
-  kind?: string | null;
-  tags?: string[];
-  address?: string | null;
-  town?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-  website?: string | null;
-  phone?: string | null;
-  brand?: string | null;
-  status?: "active" | "closed" | "unknown";
-  notesPath?: string | null;
-  addedBy: string;
-}
-
-export interface UpsertBusinessResult {
-  id: number;
-  outcome: "created" | "updated";
-}
-
-// Matched by osmId. Only fields the caller actually supplied are overwritten, so
-// a sparse re-scan never wipes facts a fuller scan captured. lastSeenAt always
-// advances — it's the "still present in OSM" signal for the closure sweep.
-export function upsertBusiness(input: UpsertBusinessInput): UpsertBusinessResult {
-  const now = new Date().toISOString();
-  const existing = db()
-    .select({ id: businesses.id })
-    .from(businesses)
-    .where(eq(businesses.osmId, input.osmId))
-    .get();
-
-  const set: Record<string, unknown> = { lastSeenAt: now };
-  if (input.name !== undefined) set.name = input.name;
-  if (input.kind !== undefined) set.kind = input.kind;
-  if (input.tags !== undefined) set.tags = input.tags;
-  if (input.address !== undefined) set.address = input.address;
-  if (input.town !== undefined) set.town = input.town;
-  if (input.lat !== undefined) set.lat = input.lat;
-  if (input.lng !== undefined) set.lng = input.lng;
-  if (input.website !== undefined) set.website = input.website;
-  if (input.phone !== undefined) set.phone = input.phone;
-  if (input.brand !== undefined) set.brand = input.brand;
-  if (input.status !== undefined) set.status = input.status;
-  if (input.notesPath !== undefined) set.notesPath = input.notesPath;
-
-  const row = db()
-    .insert(businesses)
-    .values({
-      osmId: input.osmId,
-      name: input.name,
-      kind: input.kind ?? null,
-      tags: input.tags ?? [],
-      address: input.address ?? null,
-      town: input.town ?? null,
-      lat: input.lat ?? null,
-      lng: input.lng ?? null,
-      website: input.website ?? null,
-      phone: input.phone ?? null,
-      brand: input.brand ?? null,
-      status: input.status ?? "active",
-      notesPath: input.notesPath ?? null,
-      addedBy: input.addedBy,
-      discoveredAt: now,
-      lastSeenAt: now,
-    })
-    .onConflictDoUpdate({ target: businesses.osmId, set })
-    .returning({ id: businesses.id })
-    .get()!;
-
-  return { id: row.id, outcome: existing ? "updated" : "created" };
-}
+// ===========================================================================
+// Places (osm_places ⋈ annotations via localfinds.places). Read-only catalog;
+// the LocalFinds-owned overlay (status_override, note, duplicate_of) is writable
+// via place_annotations. Dedicated tests land in Tasks 5–6.
+// ===========================================================================
 
 export interface BusinessFilters {
   town?: string;
@@ -569,67 +516,62 @@ export interface BusinessFilters {
   limit?: number;
   /** Only rows with a non-empty website (i.e. candidate sources). */
   hasWebsite?: boolean;
-  /** Include rows marked as duplicates of another business. Default false. */
+  /** Include rows marked as duplicates of another place. Default false. */
   includeDuplicates?: boolean;
 }
 
-export function listBusinesses(filters: BusinessFilters = {}) {
-  const conditions = [];
-  if (!filters.includeDuplicates) conditions.push(isNull(businesses.duplicateOf));
-  if (filters.town) conditions.push(eq(businesses.town, filters.town));
-  if (filters.status) conditions.push(eq(businesses.status, filters.status));
+export async function listBusinesses(filters: BusinessFilters = {}): Promise<Place[]> {
+  const params: unknown[] = [];
+  const p = pusher(params);
+  const where: string[] = [];
+  if (!filters.includeDuplicates) where.push(`pl.duplicate_of IS NULL`);
+  if (filters.town) where.push(`pl.town = ${p(filters.town)}`);
+  if (filters.status) where.push(`pl.status = ${p(filters.status)}`);
   if (filters.tag) {
-    conditions.push(jsonArrayHas(businesses.tags, filters.tag));
+    // The catalog tags column is the raw OSM jsonb set. The filter is an OSM
+    // key existence check (e.g. "amenity" → any amenity place). This matches
+    // the old SQLite "array contains key" semantics while letting PLACE_TAGS_SQL
+    // still return the full derived key=value[] for display (C7). To filter by
+    // a specific value, callers should use BusinessFilters.kind (TODO).
+    where.push(`pl.tags ? ${p(filters.tag)}`);
   }
-  if (filters.q) {
-    conditions.push(
-      sql`${businesses.name} like ${likeContains(filters.q)} escape '\\'`,
-    );
-  }
-  if (filters.hasWebsite) {
-    conditions.push(sql`${businesses.website} is not null and ${businesses.website} != ''`);
-  }
-  return db()
-    .select()
-    .from(businesses)
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(businesses.town, businesses.name)
-    .limit(filters.limit ?? 500)
-    .all();
+  if (filters.q) where.push(`pl.name ILIKE ${p(likeContains(filters.q))} ESCAPE '\\'`);
+  if (filters.hasWebsite) where.push(`pl.website IS NOT NULL AND pl.website <> ''`);
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const lim = p(filters.limit ?? 500);
+  return query<Place>(
+    `SELECT ${PLACE_COLS} FROM localfinds.places pl ${whereSql}
+     ORDER BY pl.town, pl.name LIMIT ${lim}`,
+    params,
+  );
 }
 
-// Collapse OSM elements that describe the same real business (same normalized
-// name, within ~50m) into one canonical row. Reads only unmarked rows, so it is
-// idempotent; merges the duplicates' missing facts onto the canonical, then
-// points each loser's duplicate_of at the canonical osm_id. Run after a
-// cartographer scan and as a one-time cleanup. Facts are merged onto the
-// canonical once, at collapse time; a later re-scan of an already-marked
-// duplicate does not re-merge its newly-changed facts.
-export function dedupeBusinesses(): { groups: number; marked: number } {
-  const rows = db()
-    .select()
-    .from(businesses)
-    .where(isNull(businesses.duplicateOf))
-    .all();
+export async function getPlaceByOsmId(osmId: string): Promise<Place | undefined> {
+  return queryOne<Place>(`SELECT ${PLACE_COLS} FROM localfinds.places pl WHERE pl.osm_id = $1`, [
+    osmId,
+  ]);
+}
 
+// Collapse OSM elements that describe the same real place (same normalized name,
+// within ~50m) by marking the losers' place_annotations.duplicate_of with the
+// canonical osm_id. Reads only unmarked rows, so it is idempotent. Facts are NOT
+// merged (the osm_places matview is read-only — facts come from OSM).
+export async function dedupeBusinesses(): Promise<{ groups: number; marked: number }> {
+  const rows = await listBusinesses({ limit: 1_000_000 });
   const groups = groupBusinessDuplicates(rows);
   let marked = 0;
 
-  db().transaction((tx) => {
+  await tx(async (c) => {
     for (const group of groups) {
       const canonical = chooseCanonical(group);
-      const others = group.filter((r) => r.id !== canonical.id);
-
-      const fill = mergeFacts(canonical, others);
-      if (Object.keys(fill).length > 0) {
-        tx.update(businesses).set(fill).where(eq(businesses.id, canonical.id)).run();
-      }
-
-      for (const dup of others) {
-        tx.update(businesses)
-          .set({ duplicateOf: canonical.osmId })
-          .where(eq(businesses.id, dup.id))
-          .run();
+      for (const dup of group) {
+        if (dup.osmId === canonical.osmId) continue;
+        await c.query(
+          `INSERT INTO localfinds.place_annotations (osm_id, duplicate_of, added_by)
+           VALUES ($1, $2, 'dedupe')
+           ON CONFLICT (osm_id) DO UPDATE SET duplicate_of = EXCLUDED.duplicate_of, updated_at = now()`,
+          [dup.osmId, canonical.osmId],
+        );
         marked++;
       }
     }
@@ -639,7 +581,7 @@ export function dedupeBusinesses(): { groups: number; marked: number } {
 }
 
 export interface RankedBusiness {
-  business: Business;
+  business: Place;
   /** Search-priority tier (1 = highest) from categories.json. */
   tier: number;
   /** OSM brand present = national/regional chain. */
@@ -664,34 +606,27 @@ export interface RankedBusinessFilters extends BusinessFilters {
 }
 
 export interface RankedBusinessList {
-  /** The current page of ranked rows (or the full set when not paging). */
   rows: RankedBusiness[];
-  /** Total rows matching the DB filters, before tier/chain visibility. */
   total: number;
-  /** Rows after tier4/chain visibility — the set being paged. */
   matched: number;
-  /** Clamped current page (1 when not paging). */
   page: number;
-  /** Total pages (1 when not paging, or when `matched` is 0). */
   pageCount: number;
   tier4Count: number;
   chainCount: number;
 }
 
-// Annotate each business with its search-priority tier + chain flag, apply the
-// tier4/chain visibility rules, then order via sortRankedBusinesses — the
-// default (no `sort` filter) is chains-last then tier then name, overridden by
-// the `sort`/`dir` filters. One place owns "rank/exclude by search priority" —
-// the /businesses page and the agents' list_businesses tool both use it instead
-// of re-deriving it.
-export function listBusinessesRanked(
+// Annotate each place with its search-priority tier + chain flag, apply the
+// tier4/chain visibility rules, then order via sortRankedBusinesses. One place
+// owns "rank/exclude by search priority" — the /businesses page and the agents'
+// list_businesses tool both use it instead of re-deriving it.
+export async function listBusinessesRanked(
   filters: RankedBusinessFilters = {},
-): RankedBusinessList {
+): Promise<RankedBusinessList> {
   const cfg = readCategoryConfig();
   const showTier4 = filters.includeTier4 ?? !cfg.hideInDirectory.tier4;
   const showChains = filters.includeChains ?? !cfg.hideInDirectory.chains;
 
-  const annotated: RankedBusiness[] = listBusinesses(filters).map((business) => ({
+  const annotated: RankedBusiness[] = (await listBusinesses(filters)).map((business) => ({
     business,
     tier: cfg.tierOf(business.kind),
     isChain: Boolean(business.brand),
@@ -726,12 +661,8 @@ export function listBusinessesRanked(
   return { rows, total: annotated.length, matched, page, pageCount, tier4Count, chainCount };
 }
 
-export function getBusinessById(id: number): Business | undefined {
-  return db().select().from(businesses).where(eq(businesses.id, id)).get();
-}
-
 export interface MapPin {
-  id: number;
+  osmId: string;
   name: string;
   kind: string | null;
   lat: number;
@@ -750,26 +681,19 @@ export interface MapPin {
   tags: string[];
 }
 
-// Every coordinate-bearing, non-duplicate business, annotated for the region map.
+// Every coordinate-bearing, non-duplicate place, annotated for the region map.
 // No row limit — the single source for the dashboard map and the /map page.
-export function listMapPins(): MapPin[] {
+export async function listMapPins(): Promise<MapPin[]> {
   const cfg = readCategoryConfig();
   const mapCfg = readMapCategories();
-  const rows = db()
-    .select()
-    .from(businesses)
-    .where(
-      and(
-        isNull(businesses.duplicateOf),
-        isNotNull(businesses.lat),
-        isNotNull(businesses.lng),
-      ),
-    )
-    .all();
+  const rows = await query<Place>(
+    `SELECT ${PLACE_COLS} FROM localfinds.places pl
+     WHERE pl.duplicate_of IS NULL AND pl.lat IS NOT NULL AND pl.lng IS NOT NULL`,
+  );
   return rows.map((b) => {
     const t = mapCfg.themeOf(b.kind);
     return {
-      id: b.id,
+      osmId: b.osmId,
       name: b.name,
       kind: b.kind,
       lat: b.lat as number,
@@ -786,34 +710,34 @@ export function listMapPins(): MapPin[] {
   });
 }
 
-// Total catalogued businesses (non-duplicate), incl. coordinate-less rows pins omit.
-export function countBusinesses(): number {
-  const row = db()
-    .select({ n: sql<number>`count(*)` })
-    .from(businesses)
-    .where(isNull(businesses.duplicateOf))
-    .get();
+// Total catalogued places (non-duplicate), incl. coordinate-less rows pins omit.
+export async function countBusinesses(): Promise<number> {
+  const row = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n FROM localfinds.places pl WHERE pl.duplicate_of IS NULL`,
+  );
   return row?.n ?? 0;
 }
 
-// Distinct towns with business counts, for the directory's town filter.
-// Excludes duplicate-marked rows so the pill counts match the deduped listing.
-export function listBusinessTowns(): { town: string; n: number }[] {
-  return db().all<{ town: string; n: number }>(
-    sql`select ${businesses.town} as town, count(*) as n
-        from ${businesses}
-        where ${businesses.town} is not null
-          and ${businesses.duplicateOf} is null
-        group by town order by town`,
+// Distinct towns with place counts, for the directory's town filter. Excludes
+// duplicate-marked rows so the pill counts match the deduped listing.
+export async function listBusinessTowns(): Promise<{ town: string; n: number }[]> {
+  return query<{ town: string; n: number }>(
+    `SELECT pl.town AS town, count(*)::int AS n FROM localfinds.places pl
+     WHERE pl.town IS NOT NULL AND pl.duplicate_of IS NULL
+     GROUP BY pl.town ORDER BY pl.town`,
   );
 }
 
-export function startRun(agent: string): number {
-  return db()
-    .insert(runs)
-    .values({ agent, startedAt: new Date().toISOString() })
-    .returning({ id: runs.id })
-    .get()!.id;
+// ===========================================================================
+// Runs
+// ===========================================================================
+
+export async function startRun(agent: string): Promise<number> {
+  const row = await queryOne<{ id: number }>(
+    `INSERT INTO localfinds.runs (agent) VALUES ($1) RETURNING id`,
+    [agent],
+  );
+  return row!.id;
 }
 
 export interface FinishRunPatch {
@@ -828,23 +752,36 @@ export interface FinishRunPatch {
   error?: string;
 }
 
-export function finishRun(id: number, patch: FinishRunPatch): void {
-  db()
-    .update(runs)
-    .set({ finishedAt: new Date().toISOString(), ...patch })
-    .where(eq(runs.id, id))
-    .run();
+export async function finishRun(id: number, patch: FinishRunPatch): Promise<void> {
+  const params: unknown[] = [];
+  const p = pusher(params);
+  const set = [`finished_at = now()`, `status = ${p(patch.status)}`];
+  if (patch.itemsAdded !== undefined) set.push(`items_added = ${p(patch.itemsAdded)}`);
+  if (patch.itemsUpdated !== undefined) set.push(`items_updated = ${p(patch.itemsUpdated)}`);
+  if (patch.warnings !== undefined) set.push(`warnings = ${p(patch.warnings)}`);
+  if (patch.numTurns !== undefined) set.push(`num_turns = ${p(patch.numTurns)}`);
+  if (patch.costUsd !== undefined) set.push(`cost_usd = ${p(patch.costUsd)}`);
+  if (patch.usageJson !== undefined) set.push(`usage_json = ${p(patch.usageJson)}`);
+  if (patch.sessionId !== undefined) set.push(`session_id = ${p(patch.sessionId)}`);
+  if (patch.error !== undefined) set.push(`error = ${p(patch.error)}`);
+  await execute(`UPDATE localfinds.runs SET ${set.join(", ")} WHERE id = ${p(id)}`, params);
 }
 
-export function listRuns(limit = 50) {
-  return db().select().from(runs).orderBy(desc(runs.startedAt)).limit(limit).all();
+export async function listRuns(limit = 50): Promise<Run[]> {
+  return query<Run>(`SELECT ${RUN_COLS} FROM localfinds.runs ORDER BY started_at DESC LIMIT $1`, [
+    limit,
+  ]);
 }
 
-export function getRun(id: number) {
-  return db().select().from(runs).where(eq(runs.id, id)).get();
+export async function getRun(id: number): Promise<Run | undefined> {
+  return queryOne<Run>(`SELECT ${RUN_COLS} FROM localfinds.runs WHERE id = $1`, [id]);
 }
 
-export function recordFetch(input: {
+// ===========================================================================
+// Fetches
+// ===========================================================================
+
+export async function recordFetch(input: {
   runId: number;
   agent: string;
   host: string;
@@ -852,46 +789,32 @@ export function recordFetch(input: {
   status: number | null;
   klass: FetchClass;
   via?: string;
-}): void {
-  db()
-    .insert(fetches)
-    .values({
-      runId: input.runId,
-      agent: input.agent,
-      host: input.host,
-      url: input.url,
-      status: input.status,
-      klass: input.klass,
-      via: input.via ?? "webfetch",
-      ts: new Date().toISOString(),
-    })
-    .run();
+}): Promise<void> {
+  await execute(
+    `INSERT INTO localfinds.fetches (run_id, agent, host, url, status, klass, via)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [input.runId, input.agent, input.host, input.url, input.status, input.klass, input.via ?? "webfetch"],
+  );
 }
 
 // Manual un-block: drop a host's fetch history so it is no longer hard-blocked.
-export function clearFetchHistory(host: string): number {
-  return db().delete(fetches).where(eq(fetches.host, host)).run().changes;
+export async function clearFetchHistory(host: string): Promise<number> {
+  return execute(`DELETE FROM localfinds.fetches WHERE host = $1`, [host]);
 }
 
-export function listFetchesForHost(host: string) {
-  return db()
-    .select()
-    .from(fetches)
-    .where(eq(fetches.host, host))
-    .orderBy(asc(fetches.id))
-    .all();
+export async function listFetchesForHost(host: string): Promise<Fetch[]> {
+  return query<Fetch>(`SELECT ${FETCH_COLS} FROM localfinds.fetches WHERE host = $1 ORDER BY id ASC`, [
+    host,
+  ]);
 }
 
-// Hosts to hard-block: those whose most-recent `strikes` fetch outcomes were
-// all blocked (403/401), uninterrupted. Newest-first is by id (insertion order),
+// Hosts to hard-block: those whose most-recent `strikes` fetch outcomes were all
+// blocked (403/401), uninterrupted. Newest-first is by id (insertion order),
 // which is monotonic and deterministic — no dependence on ts clock resolution.
-export function blockedHosts(strikes = 3): string[] {
-  const rows = db()
-    .select({ host: fetches.host, klass: fetches.klass })
-    .from(fetches)
-    .orderBy(desc(fetches.id))
-    .limit(2000)
-    .all();
+export async function blockedHosts(strikes = 3): Promise<string[]> {
+  const rows = await query<{ host: string; klass: string }>(
+    `SELECT host, klass FROM localfinds.fetches ORDER BY id DESC LIMIT 2000`,
+  );
 
   const state = new Map<string, { streak: number; done: boolean }>();
   const blocked: string[] = [];

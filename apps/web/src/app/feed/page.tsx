@@ -35,7 +35,7 @@ export default async function FeedPage({
   const settings = await readSettings();
   const r = resolveFeed(params, settings);
 
-  const { rows, total, page, pageCount } = getFeedPage({
+  const { rows, total, page, pageCount } = await getFeedPage({
     view: r.view,
     days: r.days,
     from: r.from,
@@ -46,7 +46,7 @@ export default async function FeedPage({
     page: r.page,
     pageSize: r.pageSize === "all" ? undefined : r.pageSize,
   });
-  markFindsShown(rows.filter((f) => f.status === "new").map((f) => f.id));
+  await markFindsShown(rows.filter((f) => f.status === "new").map((f) => f.id));
 
   // Pager links carry the resolved filters; feedHref keeps them clean against
   // the cookie defaults and re-adds `page` (>1) explicitly.
@@ -65,6 +65,8 @@ export default async function FeedPage({
 
   const start = r.pageSize === "all" ? 0 : (page - 1) * r.pageSize;
   const ids = rows.map((f) => f.id).join(",");
+  const tags = await listActiveTags();
+  const types = await listFindTypes();
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,8 +74,8 @@ export default async function FeedPage({
       <FilterBar
         resolved={r}
         defaults={settings.feed}
-        tags={listActiveTags()}
-        types={listFindTypes()}
+        tags={tags}
+        types={types}
       />
 
       {rows.length === 0 ? (
