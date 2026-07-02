@@ -5,12 +5,14 @@ import { curator } from "./agents/curator";
 import { prospector } from "./agents/prospector";
 import { scout } from "./agents/scout";
 import { sourceKeeper } from "./agents/source-keeper";
+import { concierge } from "./agents/concierge";
 
 export const registry: Record<string, AgentDefinition> = {
   scout,
   "source-keeper": sourceKeeper,
   prospector,
   curator,
+  concierge,
 };
 // prospector runs before curator (so curator prunes leads the same cycle).
 export const rosterOrder = [
