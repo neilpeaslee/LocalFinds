@@ -84,15 +84,21 @@ export default async function BusinessDetailPage({
             </a>
           )}
           {place.phone && <span>{place.phone}</span>}
-          <a
-            href={`https://www.openstreetmap.org/${place.osmId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-            aria-label={`View ${place.name} on OpenStreetMap (opens in a new tab)`}
-          >
-            {place.osmId}
-          </a>
+          {place.osmId.startsWith("custom/") ? (
+            <span title="Added by LocalFinds — not an OpenStreetMap feature">
+              {place.osmId}
+            </span>
+          ) : (
+            <a
+              href={`https://www.openstreetmap.org/${place.osmId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+              aria-label={`View ${place.name} on OpenStreetMap (opens in a new tab)`}
+            >
+              {place.osmId}
+            </a>
+          )}
         </div>
 
         {place.tags.length > 0 && (
