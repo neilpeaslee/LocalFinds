@@ -18,6 +18,7 @@ fi
 : "${DEPLOY_PATH:?set in deploy.env}"
 : "${DEPLOY_NVM_PREFIX:?set in deploy.env}"
 : "${DEPLOY_PM2_NAME:?set in deploy.env}"
+: "${DEPLOY_GIT_REMOTE:?set in deploy.env}"
 
 DRY_RUN=0
 for arg in "$@"; do
