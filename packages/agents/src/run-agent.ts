@@ -174,7 +174,7 @@ export async function runAgent(
 
   const workspace = ensureWorkspace(opts.workspaceDir ?? agentWorkspaceDir(def.name));
   const profile = fs.readFileSync(path.join(workspace, "profile.md"), "utf8");
-  const counters: RunCounters = { added: 0, updated: 0 };
+  const counters: RunCounters = { added: 0, updated: 0, placesAdded: 0 };
   const maxTurns = opts.maxTurns ?? def.defaultMaxTurns;
 
   const categories = formatCategoryPriorities(readCategoryConfig());
