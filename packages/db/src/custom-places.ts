@@ -44,8 +44,11 @@ export async function insertCustomPlace(
       `SELECT osm_id FROM localfinds.places
        WHERE ${NORM("name")} = ${NORM("$1")}
          AND (lower(town) = lower($2)
-              OR ST_DWithin(point,
-                   ST_Transform(ST_SetSRID(ST_MakePoint($3, $4), 4326), 3857), 100))
+              -- geography, not planar 3857: at ~44°N a Mercator "100" is only
+              -- ~72 m of ground distance (scale 1/cos(lat)); both dedupe
+              -- checks must apply the same true geodesic 100 m.
+              OR ST_DWithin(ST_Transform(point, 4326)::geography,
+                            ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, 100))
        LIMIT 1`,
       [input.name, input.city, input.lng, input.lat],
     );

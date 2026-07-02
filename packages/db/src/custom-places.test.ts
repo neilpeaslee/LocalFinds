@@ -84,6 +84,22 @@ describe("insertCustomPlace", () => {
     expect(dup.outcome).toBe("duplicate");
     expect(dup.osmId).toBe("node/1");
   });
+
+  it("returns duplicate for a matview place ~85 m away (geodesic, not Mercator-planar)", async () => {
+    // node/1 "Rock City Coffee" is at (44.10, -69.11); +0.000765° lat ≈ 85 m
+    // north — inside a true geodesic 100 m, but ~118 planar 3857 units at
+    // ~44°N (Mercator scale 1/cos(44.1°) ≈ 1.39), so a planar
+    // ST_DWithin(point, ..., 100) misses this band. node/1 exists ONLY in the
+    // matview (not custom_places), pinning the matview-side check specifically.
+    const dup = await insertCustomPlace({
+      ...BASE,
+      name: "Rock City Coffee",
+      category: "amenity=cafe",
+      city: "Elsewhere", // town mismatch — proximity match must do the work
+      lat: 44.100765, lng: -69.11,
+    });
+    expect(dup).toEqual({ outcome: "duplicate", osmId: "node/1" });
+  });
 });
 
 describe("upsertPlaceAnnotation", () => {
