@@ -39,6 +39,11 @@ def _ts(val: Optional[str]) -> Optional[datetime]:
     """Parse an ISO 8601 text timestamp from SQLite into an aware datetime."""
     if not val:
         return None
+    # JS agents write ISO strings with a trailing Z (e.g. 2026-06-30T11:03:50.545Z);
+    # strptime has no directive for it, and the value is UTC — which is what the
+    # naive branches below already assume.
+    if val.endswith("Z"):
+        val = val[:-1]
     for fmt in (
         "%Y-%m-%dT%H:%M:%S.%f",
         "%Y-%m-%dT%H:%M:%S",

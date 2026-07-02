@@ -11,15 +11,34 @@ place so the session container reflects a realistic post-ETL state.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import asyncpg
 import pytest
 
 # The etl package is installed from db/pyproject.toml ([tool.setuptools] packages=["etl"])
-from etl.migrate_sqlite_to_pg import migrate
+from etl.migrate_sqlite_to_pg import _ts, migrate
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+# ---------------------------------------------------------------------------
+# _ts unit tests — the real SQLite data stores JS ISO strings with a trailing Z
+# ---------------------------------------------------------------------------
+
+def test_ts_parses_trailing_z_with_millis():
+    # e.g. runs.started_at, finds.discovered_at, fetches.ts
+    assert _ts("2026-06-30T11:03:50.545Z") == datetime(
+        2026, 6, 30, 11, 3, 50, 545000, tzinfo=timezone.utc
+    )
+
+
+def test_ts_parses_trailing_z_seconds_only():
+    # e.g. finds.expires_at
+    assert _ts("2026-06-20T00:00:00Z") == datetime(
+        2026, 6, 20, 0, 0, 0, tzinfo=timezone.utc
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -116,16 +135,17 @@ def _build_sqlite(path: Path) -> None:
         (find2_id, "star", "nice one", "2024-01-03T00:00:00"),
     )
 
-    # One run + one fetch
+    # One run + one fetch — timestamps use the REAL data shape (trailing Z),
+    # exactly as the JS agents wrote them into SQLite.
     conn.execute(
         "INSERT INTO runs (agent,started_at,finished_at,status,items_added,items_updated,warnings) "
-        "VALUES ('prospector','2024-01-01T01:00:00','2024-01-01T01:05:00','success',4,0,0)"
+        "VALUES ('prospector','2024-01-01T01:00:00.123Z','2024-01-01T01:05:00.456Z','success',4,0,0)"
     )
     run_id = conn.execute("SELECT id FROM runs").fetchone()[0]
     conn.execute(
         "INSERT INTO fetches (run_id,agent,host,url,method,status,klass,via,ts) VALUES (?,?,?,?,?,?,?,?,?)",
         (run_id, "prospector", "etl-test.example", "https://etl-test.example/feed",
-         "GET", 200, "ok", "webfetch", "2024-01-01T01:00:30"),
+         "GET", 200, "ok", "webfetch", "2024-01-01T01:00:30.789Z"),
     )
 
     conn.commit()
@@ -259,6 +279,16 @@ async def test_feedback_find_id_remapped(check):
         "SELECT COUNT(*) FROM localfinds.feedback WHERE find_id=$1", new_find_id
     )
     assert count == 2
+
+
+async def test_run_timestamps_carried(check):
+    # The Z-suffixed source timestamps must land verbatim — NOT the ETL wall
+    # clock (started_at) and NOT NULL (finished_at). Regression: GL3 cutover.
+    row = await check.fetchrow(
+        "SELECT started_at, finished_at FROM localfinds.runs WHERE agent='prospector'"
+    )
+    assert row["started_at"] == datetime(2024, 1, 1, 1, 0, 0, 123000, tzinfo=timezone.utc)
+    assert row["finished_at"] == datetime(2024, 1, 1, 1, 5, 0, 456000, tzinfo=timezone.utc)
 
 
 async def test_fetch_run_id_remapped(check):
