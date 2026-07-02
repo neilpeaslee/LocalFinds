@@ -20,8 +20,14 @@ else
   rsync -az --files-from=<(git ls-files) ./ "$DEPLOY_HOST:$DEPLOY_PATH/"
 fi
 
-echo "deploy-code: rsync gitignored config reals (region/categories/towns/boundaries)"
+echo "deploy-code: rsync gitignored config reals (region/categories/towns/boundaries + map themes)"
 CONFIG_REALS=(data/config/region.md data/config/categories.json data/config/towns.json data/config/town-boundaries.json)
+# map-categories.json is OPTIONAL (readers fall back to the committed .example), so
+# append it only once a real exists — but never let its absence break a deploy the
+# way a missing required real (above) loudly should.
+if [ -f data/config/map-categories.json ]; then
+  CONFIG_REALS+=(data/config/map-categories.json)
+fi
 if [ "$DRY_RUN" = 1 ]; then
   echo "DRY rsync> ${CONFIG_REALS[*]} -> $DEPLOY_HOST:$DEPLOY_PATH/data/config/"
 else
