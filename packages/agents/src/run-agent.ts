@@ -10,6 +10,7 @@ import {
   readCategoryConfig,
   recordFetch,
   readRegionConfig,
+  refreshOsmPlaces,
   startRun,
   type FindStatus,
   type RunEvent,
@@ -68,10 +69,14 @@ export interface AgentDefinition {
    * model default (high). Sonnet 4.6 supports low | medium | high | max.
    */
   effort?: ReasoningEffort;
+  /** Per-run budget cap when the CLI doesn't pass --max-budget-usd. Defaults to 1.0. */
+  defaultMaxBudgetUsd?: number;
   buildTaskPrompt(ctx: {
     region: string;
     profile: string;
     categories: string;
+    /** The user's request for a user-directed run (concierge --query). */
+    query?: string;
   }): string;
 }
 
@@ -86,6 +91,8 @@ export interface RunOptions {
   workspaceDir?: string;
   /** Stamp save_find inserts with this status (interview runs pass "provisional"). */
   findStatusOverride?: FindStatus;
+  /** User-directed request, threaded into buildTaskPrompt (concierge --query). */
+  query?: string;
 }
 
 export interface RunOutcome {
@@ -161,6 +168,11 @@ export function statusFromResult(
   return "error";
 }
 
+/** CLI flag wins, then the agent's own default, then the historical $1 cap. */
+export function effectiveMaxBudgetUsd(def: AgentDefinition, opts: RunOptions): number {
+  return opts.maxBudgetUsd ?? def.defaultMaxBudgetUsd ?? 1.0;
+}
+
 export async function runAgent(
   def: AgentDefinition,
   opts: RunOptions = {},
@@ -174,11 +186,11 @@ export async function runAgent(
 
   const workspace = ensureWorkspace(opts.workspaceDir ?? agentWorkspaceDir(def.name));
   const profile = fs.readFileSync(path.join(workspace, "profile.md"), "utf8");
-  const counters: RunCounters = { added: 0, updated: 0 };
+  const counters: RunCounters = { added: 0, updated: 0, placesAdded: 0 };
   const maxTurns = opts.maxTurns ?? def.defaultMaxTurns;
 
   const categories = formatCategoryPriorities(readCategoryConfig());
-  let prompt = def.buildTaskPrompt({ region: region.raw, profile, categories });
+  let prompt = def.buildTaskPrompt({ region: region.raw, profile, categories, query: opts.query });
   if (maxTurns <= 10) {
     prompt +=
       "\n\nBudget note: this is a quick capped test run. Still do step 1 (feedback), then a minimal version of your remaining work: at most 2 web searches/fetches and at most 3 saving/updating tool calls, then stop and summarize.";
@@ -238,7 +250,7 @@ export async function runAgent(
         allowedTools: def.allowedTools,
         disallowedTools: ["Bash", "Agent", "Task", "AskUserQuestion"],
         maxTurns,
-        maxBudgetUsd: opts.maxBudgetUsd ?? 1.0,
+        maxBudgetUsd: effectiveMaxBudgetUsd(def, opts),
         hooks: {
           PreToolUse: [
             {
@@ -315,6 +327,18 @@ export async function runAgent(
       error: status === "error" ? (result?.subtype ?? message) : undefined,
     });
     if (!result) throw err;
+  } finally {
+    if (counters.placesAdded > 0) {
+      try {
+        await refreshOsmPlaces();
+        console.log(`[${def.name}] osm_places refreshed (${counters.placesAdded} place(s) added)`);
+      } catch (err) {
+        console.error(
+          `[${def.name}] REFRESH osm_places FAILED — new places invisible until a manual refresh:`,
+          err,
+        );
+      }
+    }
   }
 
   console.log(

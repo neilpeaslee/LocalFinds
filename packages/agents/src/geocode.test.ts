@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { geocodeTown, geocodeTowns } from "./geocode";
+import { geocodeTown, geocodeTowns, geocodeAddress } from "./geocode";
 
 // A canned Nominatim /search response: a same-name decoy in another state
 // (listed first) alongside the real Knox County, Maine administrative boundary.
@@ -132,5 +132,55 @@ describe("geocodeTowns", () => {
     expect("error" in results[0]).toBe(false);
     expect("error" in results[1]).toBe(true);
     expect(results[1].name).toBe("Nowhere");
+  });
+});
+
+describe("geocodeAddress", () => {
+  const hit = (lat: string, lon: string) =>
+    ({
+      ok: true,
+      json: async () => [{ lat, lon, display_name: "10, School Street, Rockland, Maine" }],
+    }) as unknown as Response;
+
+  it("builds a freeform query from the address parts and returns lat/lng", async () => {
+    let requested = "";
+    const result = await geocodeAddress(
+      { housenumber: "10", street: "School Street", city: "Rockland", postcode: "04841" },
+      async (url) => {
+        requested = String(url);
+        return hit("44.1040043", "-69.1096507");
+      },
+    );
+    expect(result).toEqual({
+      ok: true,
+      lat: 44.1040043,
+      lng: -69.1096507,
+      displayName: "10, School Street, Rockland, Maine",
+    });
+    const q = new URL(requested).searchParams.get("q");
+    expect(q).toBe("10 School Street, Rockland, ME, 04841");
+  });
+
+  it("returns ok:false when Nominatim has no match", async () => {
+    const result = await geocodeAddress(
+      { street: "Nowhere Lane", city: "Rockland" },
+      async () => ({ ok: true, json: async () => [] }) as unknown as Response,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/No geocoding match/);
+  });
+
+  it("returns ok:false on HTTP and network errors", async () => {
+    const http = await geocodeAddress(
+      { street: "School Street", city: "Rockland" },
+      async () => ({ ok: false, status: 503 }) as unknown as Response,
+    );
+    expect(http).toEqual({ ok: false, error: "Nominatim HTTP 503" });
+
+    const network = await geocodeAddress(
+      { street: "School Street", city: "Rockland" },
+      async () => { throw new Error("ECONNRESET"); },
+    );
+    expect(network).toEqual({ ok: false, error: "ECONNRESET" });
   });
 });

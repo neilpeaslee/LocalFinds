@@ -1,5 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import {
+  insertCustomPlace,
   insertFind,
   listBusinessesRanked,
   listRecentFinds,
@@ -7,15 +8,19 @@ import {
   readFeedbackForAgent,
   setFindExpiry,
   updateFindStatus,
+  upsertPlaceAnnotation,
   upsertSource,
   type FindStatus,
 } from "@localfinds/db";
 import { z } from "zod";
 import { formatIcalResult, runIcalFetch } from "./ical";
+import { geocodeAddress, type AddressGeocodeResult, type AddressInput } from "./geocode";
 
 export interface RunCounters {
   added: number;
   updated: number;
+  /** Custom places created this run — post-run osm_places refresh trigger. */
+  placesAdded: number;
 }
 
 // The status a save_find insert should use. undefined → insertFind defaults to
@@ -64,14 +69,135 @@ export async function recordSourceUpsert(
   return result;
 }
 
+const PLACE_CATEGORY_KEYS = ["amenity", "shop", "tourism", "office", "craft", "leisure"];
+
+export interface SavePlaceArgs {
+  name: string;
+  category: string;
+  housenumber?: string;
+  street: string;
+  city: string;
+  state?: string;
+  postcode?: string;
+  website?: string;
+  phone?: string;
+  source_url: string;
+}
+
+export type SavePlaceResult =
+  | { outcome: "created" | "duplicate"; osmId: string }
+  | { outcome: "error"; reason: string };
+
+export type GeocodeAddressFn = (input: AddressInput) => Promise<AddressGeocodeResult>;
+
+// save_place handler, geocoder injected for tests. The tool owns coordinates:
+// the agent supplies a street address + the page it confirmed it at, never lat/lng.
+export async function recordPlaceSave(
+  args: SavePlaceArgs,
+  agent: string,
+  counters: RunCounters,
+  geocode: GeocodeAddressFn,
+): Promise<SavePlaceResult> {
+  const parts = args.category.split("=");
+  const [key, value] = parts;
+  if (parts.length !== 2 || !PLACE_CATEGORY_KEYS.includes(key) || !value) {
+    return {
+      outcome: "error",
+      reason: `category must be exactly key=value (one "=", both parts non-empty) with key one of ${PLACE_CATEGORY_KEYS.join("|")} (got "${args.category}")`,
+    };
+  }
+  if (!args.street?.trim()) {
+    return {
+      outcome: "error",
+      reason: "street is required — save_place only with a real, confirmed street address. If you cannot confirm one, save your find without a place link instead.",
+    };
+  }
+  const state = args.state?.trim() || undefined;
+  const geo = await geocode({
+    housenumber: args.housenumber,
+    street: args.street,
+    city: args.city,
+    state,
+    postcode: args.postcode,
+  });
+  if (!geo.ok) {
+    return {
+      outcome: "error",
+      reason: `geocoding failed: ${geo.error}. Save your find without a place link and record the failure in your scan note.`,
+    };
+  }
+  const result = await insertCustomPlace({
+    name: args.name,
+    category: args.category,
+    housenumber: args.housenumber,
+    street: args.street,
+    city: args.city,
+    state,
+    postcode: args.postcode,
+    lat: geo.lat,
+    lng: geo.lng,
+    website: args.website,
+    phone: args.phone,
+    sourceUrl: args.source_url,
+    addedBy: agent,
+  });
+  if (result.outcome === "created") {
+    counters.added++;
+    counters.placesAdded++;
+  }
+  return result;
+}
+
+export interface AnnotatePlaceArgs {
+  osm_id: string;
+  note?: string;
+  status_override?: "closed" | "unknown" | "clear";
+  duplicate_of?: string;
+}
+
+export async function recordPlaceAnnotation(
+  args: AnnotatePlaceArgs,
+  agent: string,
+  counters: RunCounters,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (args.note === undefined && args.status_override === undefined && args.duplicate_of === undefined) {
+    return { ok: false, reason: "provide at least one of note, status_override, duplicate_of" };
+  }
+  const result = await upsertPlaceAnnotation({
+    osmId: args.osm_id,
+    note: args.note,
+    statusOverride: args.status_override,
+    duplicateOf: args.duplicate_of,
+    addedBy: agent,
+  });
+  if (result.ok) counters.updated++;
+  return result;
+}
+
 const findStatus = z.enum(["new", "shown", "hidden", "starred"]);
 
 // All tools are defined on one server; each agent's allowedTools picks its subset.
 export function buildLocalfindsServer(
   agent: string,
   counters: RunCounters,
-  opts: { findStatusOverride?: FindStatus } = {},
+  opts: {
+    findStatusOverride?: FindStatus;
+    geocodeAddressImpl?: GeocodeAddressFn;
+    geocodeThrottleMs?: number;
+  } = {},
 ) {
+  // Nominatim etiquette: ≤1 req/s across a whole run. The throttle lives here
+  // (not in geocodeAddress) so it spans every save_place call this run makes.
+  const geocodeImpl = opts.geocodeAddressImpl ?? geocodeAddress;
+  const throttleMs = opts.geocodeThrottleMs ?? 1100;
+  let lastGeocodeAt = 0;
+  const throttledGeocode: GeocodeAddressFn = async (input) => {
+    const wait = lastGeocodeAt + throttleMs - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastGeocodeAt = Date.now();
+    return geocodeImpl(input);
+  };
+
   return createSdkMcpServer({
     name: "localfinds",
     version: "1.0.0",
@@ -111,7 +237,9 @@ export function buildLocalfindsServer(
           place_osm_id: z
             .string()
             .optional()
-            .describe("For a lead: the osm_id of the linked place (from list_businesses)."),
+            .describe(
+              "For a lead: the osm_id of the linked place (from list_businesses, or returned by save_place).",
+            ),
           score: z
             .number()
             .optional()
@@ -278,6 +406,42 @@ export function buildLocalfindsServer(
             })),
           });
         },
+      ),
+      tool(
+        "save_place",
+        "Add a business to the directory that is missing from it. ONLY for businesses physically located in the region, confirmed at a real page (source_url). The tool geocodes the address itself — give the real street address, never invent one. Returns the new place's osm_id (custom/<n>) — use it as place_osm_id when you save a lead for this business. Returns 'duplicate' with the existing osm_id if the place is already in the directory.",
+        {
+          name: z.string().describe(`Business name. ${PLAIN_TEXT}`),
+          category: z
+            .string()
+            .describe("OSM key=value, e.g. office=lawyer. Key must be one of amenity|shop|tourism|office|craft|leisure."),
+          housenumber: z.string().optional(),
+          street: z
+            .string()
+            .describe(
+              'Street name, e.g. "School Street" — required; save_place is only for businesses with a real, confirmed street address.',
+            ),
+          city: z.string().describe("Town the business is in"),
+          state: z.string().optional().describe("Default ME"),
+          postcode: z.string().optional(),
+          website: z.string().optional(),
+          phone: z.string().optional(),
+          source_url: z
+            .string()
+            .describe("URL of the page where you confirmed this business exists — required."),
+        },
+        async (args) => asText(await recordPlaceSave(args, agent, counters, throttledGeocode)),
+      ),
+      tool(
+        "annotate_place",
+        "Record what you learned about an EXISTING directory entry: a correction note (renamed, moved, new site), a status_override ('closed' | 'unknown' | 'clear' to reset), or duplicate_of (osm_id of the canonical entry). Provide at least one field.",
+        {
+          osm_id: z.string().describe("The place's osm_id from list_businesses (or save_place)"),
+          note: z.string().optional().describe(`Dated one-liner, e.g. "2026-07-02 scan: now Cumler, Lynch & Stiles". ${PLAIN_TEXT}`),
+          status_override: z.enum(["closed", "unknown", "clear"]).optional(),
+          duplicate_of: z.string().optional(),
+        },
+        async (args) => asText(await recordPlaceAnnotation(args, agent, counters)),
       ),
     ],
   });

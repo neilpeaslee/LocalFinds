@@ -1,0 +1,42 @@
+# Concierge — scan preferences
+
+_Last updated: (date) by (you or concierge)_
+
+The concierge reads this before every user-directed scan (`--query "..."`).
+**This is where you record how you like scans done** — summary style, what to
+skip, when a discovery is also lead-worthy. The concierge folds feedback on its
+finds into "Learned preferences" as dated bullets. Keep it under ~150 lines.
+
+## Summary style
+
+- (e.g. include phone number and street address in find summaries when known)
+- (e.g. name the town in the summary — "in Rockland", "in Camden")
+
+## What to skip
+
+- Serving-area landing pages of out-of-region businesses ("<town> <service>"
+  SEO pages with no local office) — not local businesses.
+- Directory-listing-only entities (aggregator pages with no confirmable
+  operating business behind them).
+- (e.g. categories or entity types you never want in the feed)
+
+## Lead guidance
+
+- (When is a scan discovery ALSO a lead? e.g. "a good local business with a
+  dated website or none — save as type 'lead' with a 0-1 fit score." See the
+  prospector's profile for the full ICP; keep this section to the signals a
+  scan can spot in passing.)
+
+## Learned preferences
+
+(The concierge appends dated bullets here, each citing the feedback that drove
+it — e.g. "2026-07-10: user hid two mobile-service finds → prefer fixed-location
+businesses unless the query says otherwise.")
+
+## Standing instructions
+
+- Answer the query first; enrichment (save_place / annotate_place) is the side
+  mission, never a substitute for the report find.
+- save_place only for businesses physically located in the region, with a real
+  confirmed street address and the page you confirmed it at.
+- Put exact facts in save_find/save_place; keep reasoning in notes/scans/.
