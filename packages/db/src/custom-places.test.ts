@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { resetDb, setupPgDatabase, teardownPgDatabase } from "../test/harness";
-import { pool, queryOne } from "./client";
+import { queryOne } from "./client";
 import {
   insertCustomPlace,
   refreshOsmPlaces,

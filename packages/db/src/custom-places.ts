@@ -1,4 +1,4 @@
-import { execute, query, queryOne, tx } from "./client";
+import { execute, tx } from "./client";
 
 // Writes for LocalFinds-added places (localfinds.custom_places) and the
 // annotation overlay. Reads still go through localfinds.places.

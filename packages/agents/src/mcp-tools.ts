@@ -75,7 +75,7 @@ export interface SavePlaceArgs {
   name: string;
   category: string;
   housenumber?: string;
-  street?: string;
+  street: string;
   city: string;
   state?: string;
   postcode?: string;
@@ -98,18 +98,26 @@ export async function recordPlaceSave(
   counters: RunCounters,
   geocode: GeocodeAddressFn,
 ): Promise<SavePlaceResult> {
-  const [key, value] = args.category.split("=");
-  if (!PLACE_CATEGORY_KEYS.includes(key) || !value) {
+  const parts = args.category.split("=");
+  const [key, value] = parts;
+  if (parts.length !== 2 || !PLACE_CATEGORY_KEYS.includes(key) || !value) {
     return {
       outcome: "error",
-      reason: `category must be key=value with key one of ${PLACE_CATEGORY_KEYS.join("|")} (got "${args.category}")`,
+      reason: `category must be exactly key=value (one "=", both parts non-empty) with key one of ${PLACE_CATEGORY_KEYS.join("|")} (got "${args.category}")`,
     };
   }
+  if (!args.street?.trim()) {
+    return {
+      outcome: "error",
+      reason: "street is required — save_place only with a real, confirmed street address. If you cannot confirm one, save your find without a place link instead.",
+    };
+  }
+  const state = args.state?.trim() || undefined;
   const geo = await geocode({
     housenumber: args.housenumber,
     street: args.street,
     city: args.city,
-    state: args.state,
+    state,
     postcode: args.postcode,
   });
   if (!geo.ok) {
@@ -124,7 +132,7 @@ export async function recordPlaceSave(
     housenumber: args.housenumber,
     street: args.street,
     city: args.city,
-    state: args.state,
+    state,
     postcode: args.postcode,
     lat: geo.lat,
     lng: geo.lng,
@@ -229,7 +237,9 @@ export function buildLocalfindsServer(
           place_osm_id: z
             .string()
             .optional()
-            .describe("For a lead: the osm_id of the linked place (from list_businesses)."),
+            .describe(
+              "For a lead: the osm_id of the linked place (from list_businesses, or returned by save_place).",
+            ),
           score: z
             .number()
             .optional()
@@ -406,7 +416,11 @@ export function buildLocalfindsServer(
             .string()
             .describe("OSM key=value, e.g. office=lawyer. Key must be one of amenity|shop|tourism|office|craft|leisure."),
           housenumber: z.string().optional(),
-          street: z.string().optional().describe('Street name, e.g. "School Street"'),
+          street: z
+            .string()
+            .describe(
+              'Street name, e.g. "School Street" — required; save_place is only for businesses with a real, confirmed street address.',
+            ),
           city: z.string().describe("Town the business is in"),
           state: z.string().optional().describe("Default ME"),
           postcode: z.string().optional(),

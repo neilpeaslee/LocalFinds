@@ -81,7 +81,10 @@ describe("recordPlaceSave", () => {
     let geocodeCalls = 0;
     const counters = { added: 0, updated: 0, placesAdded: 0 };
     const result = await recordPlaceSave(
-      { name: "X", category: "building=yes", city: "Rockland", source_url: "https://x.example" },
+      {
+        name: "X", category: "building=yes",
+        street: "Main Street", city: "Rockland", source_url: "https://x.example",
+      },
       "concierge", counters,
       async (input) => { geocodeCalls++; return okGeocode(input); },
     );
@@ -94,7 +97,10 @@ describe("recordPlaceSave", () => {
     const { recordPlaceSave } = await import("./mcp-tools");
     const counters = { added: 0, updated: 0, placesAdded: 0 };
     const result = await recordPlaceSave(
-      { name: "X", category: "office=lawyer", city: "Rockland", source_url: "https://x.example" },
+      {
+        name: "X", category: "office=lawyer",
+        street: "Main Street", city: "Rockland", source_url: "https://x.example",
+      },
       "concierge", counters,
       async () => ({ ok: false, error: "No geocoding match for \"X\"" }),
     );
@@ -115,6 +121,58 @@ describe("recordPlaceSave", () => {
     const result = await recordPlaceSave(args, "concierge", counters, okGeocode);
     expect(result.outcome).toBe("duplicate");
     expect(counters).toEqual({ added: 0, updated: 0, placesAdded: 0 });
+  });
+
+  it("rejects a blank street without geocoding", async () => {
+    const { recordPlaceSave } = await import("./mcp-tools");
+    let geocodeCalls = 0;
+    const counters = { added: 0, updated: 0, placesAdded: 0 };
+    const result = await recordPlaceSave(
+      {
+        name: "X", category: "office=lawyer",
+        street: "   ", city: "Rockland", source_url: "https://x.example",
+      },
+      "concierge", counters,
+      async (input) => { geocodeCalls++; return okGeocode(input); },
+    );
+    expect(result.outcome).toBe("error");
+    if (result.outcome === "error") expect(result.reason).toMatch(/street/);
+    expect(geocodeCalls).toBe(0);
+    expect(counters).toEqual({ added: 0, updated: 0, placesAdded: 0 });
+  });
+
+  it("rejects a category with more than one '=' without geocoding", async () => {
+    const { recordPlaceSave } = await import("./mcp-tools");
+    let geocodeCalls = 0;
+    const counters = { added: 0, updated: 0, placesAdded: 0 };
+    const result = await recordPlaceSave(
+      {
+        name: "X", category: "office=lawyer=extra",
+        street: "Main Street", city: "Rockland", source_url: "https://x.example",
+      },
+      "concierge", counters,
+      async (input) => { geocodeCalls++; return okGeocode(input); },
+    );
+    expect(result.outcome).toBe("error");
+    expect(geocodeCalls).toBe(0);
+    expect(counters.placesAdded).toBe(0);
+  });
+
+  it("normalizes a blank state to undefined so the ME default applies", async () => {
+    const { recordPlaceSave } = await import("./mcp-tools");
+    const counters = { added: 0, updated: 0, placesAdded: 0 };
+    let capturedInput: AddressInput | undefined;
+    const result = await recordPlaceSave(
+      {
+        name: "Blank State Co", category: "office=lawyer",
+        street: "Main Street", city: "Rockland", state: "",
+        source_url: "https://blankstate.example",
+      },
+      "concierge", counters,
+      async (input) => { capturedInput = input; return okGeocode(input); },
+    );
+    expect(result.outcome).toBe("created");
+    expect(capturedInput?.state).toBeUndefined();
   });
 });
 
