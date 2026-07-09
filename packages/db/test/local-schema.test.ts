@@ -23,14 +23,22 @@ async function connect(c: StartedPostgreSqlContainer) {
   return client;
 }
 
-// Column signature (name + udt) of a relation, ordered by name for comparison.
+// Column signature (name + type) of a relation, ordered by name for comparison.
+// Reads pg_catalog directly (not information_schema.columns) so this also
+// works for materialized views (relkind 'm'), which information_schema.columns
+// excludes.
 async function cols(client: pg.Client, schema: string, table: string) {
   const r = await client.query(
-    `SELECT column_name, udt_name FROM information_schema.columns
-      WHERE table_schema=$1 AND table_name=$2 ORDER BY column_name`,
+    `SELECT a.attname AS column_name, format_type(a.atttypid, a.atttypmod) AS type
+       FROM pg_attribute a
+       JOIN pg_class c ON c.oid = a.attrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1 AND c.relname = $2
+        AND a.attnum > 0 AND NOT a.attisdropped
+      ORDER BY a.attname`,
     [schema, table],
   );
-  return r.rows.map((x) => `${x.column_name}:${x.udt_name}`);
+  return r.rows.map((x) => `${x.column_name}:${x.type}`);
 }
 
 beforeAll(async () => {
@@ -60,7 +68,9 @@ afterAll(async () => {
 });
 
 it("local osm_places column set matches the migration-built matview", async () => {
-  expect(await cols(loc, "public", "osm_places")).toEqual(await cols(mig, "public", "osm_places"));
+  const local = await cols(loc, "public", "osm_places");
+  expect(local.length).toBeGreaterThan(0);
+  expect(local).toEqual(await cols(mig, "public", "osm_places"));
 });
 
 it("local custom_places matches the migration table", async () => {
