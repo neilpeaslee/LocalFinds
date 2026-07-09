@@ -66,6 +66,23 @@ Live user access on a working platform.
 - **data/** — ALL runtime state and personal config. Gitignored except
   `*.example` templates: keep PII out of git.
 
+## Local development
+
+Run the app and agents against a local Postgres/PostGIS seeded from live:
+
+1. `docker compose up -d` — starts PostGIS on `localhost:5434`.
+2. `cp .env.local.example .env` and copy the same `LOCALFINDS_DATABASE_URL`
+   into `apps/web/.env.local` (Next only auto-loads env from `apps/web`).
+3. In another shell: `bash scripts/db-tunnel.sh` (opens the tunnel to live).
+4. `npm run db:pull` — snapshots a live subset into `data/db/snapshots/`.
+5. `npm run db:load` — rebuilds the local DB from the latest snapshot.
+6. `npm run dev` (web) and/or `npm run agent <name> -- ...` (agents) — both
+   now hit `localhost:5434`.
+
+Re-run `db:pull` + `db:load` anytime to refresh dev data. The OSM directory is
+a frozen snapshot (no planet import locally); local `save_place` writes work and
+resolve town from the snapshotted region boundaries.
+
 ## Setup
 
 ```sh
