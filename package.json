@@ -12,6 +12,7 @@
     "interview": "npm -w @localfinds/agents run interview --",
     "test": "npm -w @localfinds/db run test && npm -w @localfinds/agents run test && npm -w @localfinds/web run test",
     "db:seed": "npm -w @localfinds/db run seed",
+    "db:pull": "bash scripts/dev/db-pull.sh",
     "db:load": "bash scripts/dev/db-load.sh",
     "boundaries:fetch": "node scripts/fetch-town-boundaries.mjs",
     "deploy": "bash scripts/deploy/deploy.sh",

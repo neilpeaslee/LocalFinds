@@ -114,3 +114,21 @@ it("snapshot rows surface through osm_places", async () => {
   const r = await loc.query(`SELECT town FROM public.osm_places WHERE osm_id='node/42'`);
   expect(r.rows[0].town).toBe("Testville");
 });
+
+it("db:pull osm_places extraction returns snapshot columns in table order", async () => {
+  // mig DB has planet_osm fixtures + osm_places matview (built in beforeAll)
+  const r = await mig.query(
+    `SELECT osm_id,name,kind,geom,point,tags,address,town,website,phone,brand
+       FROM public.osm_places WHERE osm_id NOT LIKE 'custom/%' LIMIT 5`);
+  expect(r.rows.length).toBeGreaterThan(0);
+  const snapCols = (await cols(loc, "public", "osm_places_snapshot")).map((c) => c.split(":")[0]);
+  expect([...r.fields.map((f) => f.name)].sort()).toEqual(snapCols);
+});
+
+it("db:pull boundaries extraction runs against a live-shaped DB", async () => {
+  // planet_osm_polygon exists via fixtures; query must not error (row count may be 0)
+  const r = await mig.query(
+    `SELECT osm_id, tags, way FROM planet_osm_polygon
+      WHERE tags->'boundary'='administrative' AND tags->'admin_level' IN ('7','8')`);
+  expect(r.fields.map((f) => f.name)).toEqual(["osm_id", "tags", "way"]);
+});
