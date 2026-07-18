@@ -2,7 +2,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import {
   insertCustomPlace,
   insertFind,
-  listBusinessesRanked,
+  listPlacesRanked,
   listRecentFinds,
   listSources,
   readFeedbackForAgent,
@@ -374,7 +374,7 @@ export function buildLocalfindsServer(
           limit: z.number().optional().describe("Default 500"),
         },
         async (args) => {
-          const { rows, total } = await listBusinessesRanked({
+          const { rows, total } = await listPlacesRanked({
             town: args.town,
             tag: args.tag,
             status: args.status,
@@ -393,14 +393,14 @@ export function buildLocalfindsServer(
             // phone, and timestamps keeps a tier-wide list from blowing the token
             // budget. The full record is available via the /businesses page.
             businesses: rows.map((r) => ({
-              osmId: r.business.osmId,
-              name: r.business.name,
-              kind: r.business.kind,
-              tags: r.business.tags,
-              town: r.business.town,
-              address: r.business.address,
-              website: r.business.website,
-              status: r.business.status,
+              osmId: r.place.osmId,
+              name: r.place.name,
+              kind: r.place.kind,
+              tags: r.place.tags,
+              town: r.place.town,
+              address: r.place.address,
+              website: r.place.website,
+              status: r.place.status,
               tier: r.tier,
               isChain: r.isChain,
             })),

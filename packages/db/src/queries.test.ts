@@ -412,23 +412,23 @@ describe("status mutations", () => {
 
 describe("places", () => {
   it("lists all 7 seeded non-duplicate places", async () => {
-    const places = await q.listBusinesses({});
+    const places = await q.listPlaces({});
     expect(places.length).toBe(7);
     // All in Rockland — verifies the town polygon join fired
     expect(places.every((p) => p.town === "Rockland")).toBe(true);
   });
 
   it("q search is case-insensitive (ILIKE)", async () => {
-    const upper = await q.listBusinesses({ q: "COFFEE" });
-    const lower = await q.listBusinesses({ q: "coffee" });
+    const upper = await q.listPlaces({ q: "COFFEE" });
+    const lower = await q.listPlaces({ q: "coffee" });
     expect(lower.length).toBeGreaterThan(0);
     expect(upper.map((p) => p.osmId).sort()).toEqual(lower.map((p) => p.osmId).sort());
   });
 
   it("town filter restricts to that town", async () => {
-    const rockland = await q.listBusinesses({ town: "Rockland" });
+    const rockland = await q.listPlaces({ town: "Rockland" });
     expect(rockland.length).toBe(7);
-    const none = await q.listBusinesses({ town: "Portland" });
+    const none = await q.listPlaces({ town: "Portland" });
     expect(none.length).toBe(0);
   });
 
@@ -441,8 +441,8 @@ describe("places", () => {
        ON CONFLICT (osm_id) DO UPDATE SET status_override='closed'`,
       [target],
     );
-    expect((await q.listBusinesses({ status: "closed" })).map((p) => p.osmId)).toContain(target);
-    expect((await q.listBusinesses({ status: "active" })).map((p) => p.osmId)).not.toContain(target);
+    expect((await q.listPlaces({ status: "closed" })).map((p) => p.osmId)).toContain(target);
+    expect((await q.listPlaces({ status: "active" })).map((p) => p.osmId)).not.toContain(target);
   });
 
   it("tags is a key=value string[] derived from jsonb", async () => {
@@ -459,11 +459,11 @@ describe("places", () => {
 
   it("tag filter matches by OSM key existence (not key=value)", async () => {
     // filters.tag = "amenity" → places that have any amenity tag
-    const amenity = await q.listBusinesses({ tag: "amenity" });
+    const amenity = await q.listPlaces({ tag: "amenity" });
     expect(amenity.map((p) => p.osmId)).toContain("node/1"); // Rock City Coffee (amenity=cafe)
     expect(amenity.map((p) => p.osmId)).not.toContain("way/2"); // Hannaford (shop, not amenity)
 
-    const shop = await q.listBusinesses({ tag: "shop" });
+    const shop = await q.listPlaces({ tag: "shop" });
     expect(shop.map((p) => p.osmId)).toContain("way/2"); // Hannaford (shop=supermarket)
     expect(shop.map((p) => p.osmId)).not.toContain("node/1"); // Rock City Coffee (amenity, not shop)
   });
@@ -500,35 +500,35 @@ describe("places", () => {
        VALUES ('node/1','way/2','test')
        ON CONFLICT (osm_id) DO UPDATE SET duplicate_of='way/2'`,
     );
-    const withoutDups = await q.listBusinesses({});
+    const withoutDups = await q.listPlaces({});
     expect(withoutDups.map((p) => p.osmId)).not.toContain("node/1");
     expect(withoutDups.length).toBe(6); // 7 − 1 duplicate
 
-    const withDups = await q.listBusinesses({ includeDuplicates: true });
+    const withDups = await q.listPlaces({ includeDuplicates: true });
     const dup = withDups.find((p) => p.osmId === "node/1");
     expect(dup).toBeDefined();
     expect(dup!.duplicateOf).toBe("way/2");
   });
 
-  it("countBusinesses excludes duplicate-marked rows", async () => {
-    expect(await q.countBusinesses()).toBe(7);
+  it("countPlaces excludes duplicate-marked rows", async () => {
+    expect(await q.countPlaces()).toBe(7);
     const { pool } = await import("./client");
     await pool().query(
       `INSERT INTO localfinds.place_annotations (osm_id, duplicate_of, added_by)
        VALUES ('node/1','way/2','test')
        ON CONFLICT (osm_id) DO UPDATE SET duplicate_of='way/2'`,
     );
-    expect(await q.countBusinesses()).toBe(6);
+    expect(await q.countPlaces()).toBe(6);
   });
 
-  it("listBusinessTowns returns town + count, excluding duplicates", async () => {
-    const towns = await q.listBusinessTowns();
+  it("listPlaceTowns returns town + count, excluding duplicates", async () => {
+    const towns = await q.listPlaceTowns();
     const rockland = towns.find((t) => t.town === "Rockland");
     expect(rockland).toBeDefined();
     expect(rockland!.n).toBe(7);
   });
 
-  it("dedupeBusinesses marks a near-duplicate pair (groups:1 marked:1)", async () => {
+  it("dedupePlaces marks a near-duplicate pair (groups:1 marked:1)", async () => {
     const { pool } = await import("./client");
     // Insert a near-duplicate of Rock City Coffee (node/1, lat≈44.10, lng≈-69.11).
     // node/999 has the same name + is ~3 m away — well within DUP_RADIUS_M=50.
@@ -539,7 +539,7 @@ describe("places", () => {
     `);
     await pool().query(`REFRESH MATERIALIZED VIEW CONCURRENTLY public.osm_places`);
     try {
-      const result = await q.dedupeBusinesses();
+      const result = await q.dedupePlaces();
       expect(result.groups).toBe(1);
       expect(result.marked).toBe(1);
       // The loser (less-rich node/999) should have duplicate_of set

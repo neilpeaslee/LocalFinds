@@ -1,9 +1,9 @@
-import { chooseCanonical, groupBusinessDuplicates } from "./business-dedupe";
+import { chooseCanonical, groupPlaceDuplicates } from "./place-dedupe";
 import {
-  type BusinessSort,
+  type PlaceSort,
   type SortDir,
-  sortRankedBusinesses,
-} from "./business-sort";
+  sortRankedPlaces,
+} from "./place-sort";
 import { execute, query, queryOne, tx } from "./client";
 import { readCategoryConfig, readMapCategories } from "./config";
 import { findKey } from "./dedupe";
@@ -508,7 +508,7 @@ export async function upsertSource(input: UpsertSourceInput): Promise<UpsertSour
 // via place_annotations. Dedicated tests land in Tasks 5–6.
 // ===========================================================================
 
-export interface BusinessFilters {
+export interface PlaceFilters {
   town?: string;
   tag?: string;
   status?: "active" | "closed" | "unknown";
@@ -520,7 +520,7 @@ export interface BusinessFilters {
   includeDuplicates?: boolean;
 }
 
-export async function listBusinesses(filters: BusinessFilters = {}): Promise<Place[]> {
+export async function listPlaces(filters: PlaceFilters = {}): Promise<Place[]> {
   const params: unknown[] = [];
   const p = pusher(params);
   const where: string[] = [];
@@ -532,7 +532,7 @@ export async function listBusinesses(filters: BusinessFilters = {}): Promise<Pla
     // key existence check (e.g. "amenity" → any amenity place). This matches
     // the old SQLite "array contains key" semantics while letting PLACE_TAGS_SQL
     // still return the full derived key=value[] for display (C7). To filter by
-    // a specific value, callers should use BusinessFilters.kind (TODO).
+    // a specific value, callers should use PlaceFilters.kind (TODO).
     where.push(`pl.tags ? ${p(filters.tag)}`);
   }
   if (filters.q) where.push(`pl.name ILIKE ${p(likeContains(filters.q))} ESCAPE '\\'`);
@@ -556,9 +556,9 @@ export async function getPlaceByOsmId(osmId: string): Promise<Place | undefined>
 // within ~50m) by marking the losers' place_annotations.duplicate_of with the
 // canonical osm_id. Reads only unmarked rows, so it is idempotent. Facts are NOT
 // merged (the osm_places matview is read-only — facts come from OSM).
-export async function dedupeBusinesses(): Promise<{ groups: number; marked: number }> {
-  const rows = await listBusinesses({ limit: 1_000_000 });
-  const groups = groupBusinessDuplicates(rows);
+export async function dedupePlaces(): Promise<{ groups: number; marked: number }> {
+  const rows = await listPlaces({ limit: 1_000_000 });
+  const groups = groupPlaceDuplicates(rows);
   let marked = 0;
 
   await tx(async (c) => {
@@ -580,15 +580,15 @@ export async function dedupeBusinesses(): Promise<{ groups: number; marked: numb
   return { groups: groups.length, marked };
 }
 
-export interface RankedBusiness {
-  business: Place;
+export interface RankedPlace {
+  place: Place;
   /** Search-priority tier (1 = highest) from categories.json. */
   tier: number;
   /** OSM brand present = national/regional chain. */
   isChain: boolean;
 }
 
-export interface RankedBusinessFilters extends BusinessFilters {
+export interface RankedPlaceFilters extends PlaceFilters {
   /** Drop rows whose tier is worse (numerically greater) than this. */
   maxTier?: number;
   /** Include Tier-4 ("not a business") rows. Defaults to the config's hide rule. */
@@ -600,13 +600,13 @@ export interface RankedBusinessFilters extends BusinessFilters {
   /** Positive page size. Omit (or <= 0) to return the full ranked set. */
   pageSize?: number;
   /** Column sort. Omit for the default search-priority ranking. */
-  sort?: BusinessSort;
+  sort?: PlaceSort;
   /** Sort direction (default "asc"). Ignored when `sort` is omitted. */
   dir?: SortDir;
 }
 
-export interface RankedBusinessList {
-  rows: RankedBusiness[];
+export interface RankedPlaceList {
+  rows: RankedPlace[];
   total: number;
   matched: number;
   page: number;
@@ -616,20 +616,20 @@ export interface RankedBusinessList {
 }
 
 // Annotate each place with its search-priority tier + chain flag, apply the
-// tier4/chain visibility rules, then order via sortRankedBusinesses. One place
+// tier4/chain visibility rules, then order via sortRankedPlaces. One place
 // owns "rank/exclude by search priority" — the /businesses page and the agents'
 // list_businesses tool both use it instead of re-deriving it.
-export async function listBusinessesRanked(
-  filters: RankedBusinessFilters = {},
-): Promise<RankedBusinessList> {
+export async function listPlacesRanked(
+  filters: RankedPlaceFilters = {},
+): Promise<RankedPlaceList> {
   const cfg = readCategoryConfig();
   const showTier4 = filters.includeTier4 ?? !cfg.hideInDirectory.tier4;
   const showChains = filters.includeChains ?? !cfg.hideInDirectory.chains;
 
-  const annotated: RankedBusiness[] = (await listBusinesses(filters)).map((business) => ({
-    business,
-    tier: cfg.tierOf(business.kind),
-    isChain: Boolean(business.brand),
+  const annotated: RankedPlace[] = (await listPlaces(filters)).map((place) => ({
+    place,
+    tier: cfg.tierOf(place.kind),
+    isChain: Boolean(place.brand),
   }));
 
   let tier4Count = 0;
@@ -645,7 +645,7 @@ export async function listBusinessesRanked(
       (showChains || !a.isChain) &&
       (filters.maxTier == null || a.tier <= filters.maxTier),
   );
-  const ordered = sortRankedBusinesses(visible, filters.sort, filters.dir ?? "asc");
+  const ordered = sortRankedPlaces(visible, filters.sort, filters.dir ?? "asc");
 
   const matched = ordered.length;
   let rows = ordered;
@@ -711,7 +711,7 @@ export async function listMapPins(): Promise<MapPin[]> {
 }
 
 // Total catalogued places (non-duplicate), incl. coordinate-less rows pins omit.
-export async function countBusinesses(): Promise<number> {
+export async function countPlaces(): Promise<number> {
   const row = await queryOne<{ n: number }>(
     `SELECT count(*)::int AS n FROM localfinds.places pl WHERE pl.duplicate_of IS NULL`,
   );
@@ -720,7 +720,7 @@ export async function countBusinesses(): Promise<number> {
 
 // Distinct towns with place counts, for the directory's town filter. Excludes
 // duplicate-marked rows so the pill counts match the deduped listing.
-export async function listBusinessTowns(): Promise<{ town: string; n: number }[]> {
+export async function listPlaceTowns(): Promise<{ town: string; n: number }[]> {
   return query<{ town: string; n: number }>(
     `SELECT pl.town AS town, count(*)::int AS n FROM localfinds.places pl
      WHERE pl.town IS NOT NULL AND pl.duplicate_of IS NULL

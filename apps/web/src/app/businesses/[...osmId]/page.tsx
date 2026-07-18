@@ -19,7 +19,7 @@ const TIER_STYLE: Record<number, string> = {
   4: "bg-stone-100 text-stone-400",
 };
 
-export default async function BusinessDetailPage({
+export default async function PlaceDetailPage({
   params,
 }: {
   params: Promise<{ osmId: string[] }>;
@@ -105,7 +105,7 @@ export default async function BusinessDetailPage({
           <div className="flex flex-wrap gap-1">
             {place.tags.map((t) => (
               // Link uses the bare key (before "=") so it matches the jsonb key-existence
-              // filter in listBusinesses. SP5 will add server-side value-level tag filtering.
+              // filter in listPlaces. SP5 will add server-side value-level tag filtering.
               <Link
                 key={t}
                 href={`/businesses?tag=${encodeURIComponent(t.split("=")[0])}`}

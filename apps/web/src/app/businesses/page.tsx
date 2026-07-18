@@ -1,10 +1,10 @@
 import {
   type Place,
-  type BusinessSort,
+  type PlaceSort,
   type SortDir,
-  listBusinessTowns,
-  listBusinessesRanked,
-  parseBusinessSort,
+  listPlaceTowns,
+  listPlacesRanked,
+  parsePlaceSort,
   parseDir,
   readCategoryConfig,
 } from "@localfinds/db";
@@ -23,7 +23,7 @@ const TIER_STYLE: Record<number, string> = {
   4: "bg-stone-100 text-stone-400",
 };
 
-const COLUMNS: { key: BusinessSort; label: string }[] = [
+const COLUMNS: { key: PlaceSort; label: string }[] = [
   { key: "tier", label: "Tier" },
   { key: "name", label: "Name" },
   { key: "kind", label: "Kind" },
@@ -49,7 +49,7 @@ function pill(active: boolean): string {
   }`;
 }
 
-export default async function BusinessesPage({
+export default async function PlacesPage({
   searchParams,
 }: {
   searchParams: Promise<Filters & Record<string, string | string[] | undefined>>;
@@ -66,7 +66,7 @@ export default async function BusinessesPage({
   const chains = first(params.chains);
   const size = parsePageSize(first(params.size));
   const pageReq = Math.max(1, Number.parseInt(first(params.page) ?? "", 10) || 1);
-  const sort = parseBusinessSort(first(params.sort));
+  const sort = parsePlaceSort(first(params.sort));
   const dir = parseDir(first(params.dir));
   // `size`/`sort`/`dir` ride along on filter/pager links; their defaults
   // (50 / ranking / asc) stay implicit to keep URLs clean. `page` is
@@ -89,7 +89,7 @@ export default async function BusinessesPage({
   const showChains = chains === "1" || !cfg.hideInDirectory.chains;
 
   const { rows, total, matched, page, pageCount, tier4Count, chainCount } =
-    await listBusinessesRanked({
+    await listPlacesRanked({
       town,
       status,
       tag,
@@ -103,7 +103,7 @@ export default async function BusinessesPage({
       dir,
     });
   const start = size === "all" ? 0 : (page - 1) * size;
-  const towns = await listBusinessTowns();
+  const towns = await listPlaceTowns();
   const hasFilters = Boolean(town || status || tag || q);
 
   const orderLabel = !sort
@@ -273,7 +273,7 @@ export default async function BusinessesPage({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ business: b, tier, isChain }) => (
+              {rows.map(({ place: b, tier, isChain }) => (
                 <tr key={b.osmId} className="border-b border-stone-100 last:border-0">
                   <td className="px-3 py-2">
                     <span
