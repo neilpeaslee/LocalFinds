@@ -115,12 +115,9 @@ export default async function PlacesPage({
   if (total === 0 && !hasFilters) {
     return (
       <p className="py-12 text-center text-sm text-stone-500">
-        No businesses yet. The cartographer agent populates this from
-        OpenStreetMap on its first run (run{" "}
-        <code className="rounded bg-stone-100 px-1">
-          npm run agent -- cartographer
-        </code>
-        ).
+        No places yet. The directory is built from the OpenStreetMap{" "}
+        <code className="rounded bg-stone-100 px-1">osm_places</code> materialized
+        view, refreshed daily.
       </p>
     );
   }

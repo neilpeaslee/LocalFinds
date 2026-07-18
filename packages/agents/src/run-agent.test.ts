@@ -58,7 +58,7 @@ describe("workspaceSystemNote", () => {
   });
 
   it("warns against the root-anchored paths the agents actually tried", () => {
-    // Cartographer used /notes/coverage.md; scout used /workspace/notes/...,
+    // An earlier agent used /notes/coverage.md; scout used /workspace/notes/...,
     // both denied. The note must steer the model off those forms.
     const note = workspaceSystemNote(workspace);
     expect(note).toContain("/notes/");

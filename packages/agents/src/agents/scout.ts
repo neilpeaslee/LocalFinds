@@ -10,7 +10,7 @@ export const scout: AgentDefinition = {
   // of its $0.75 Sonnet bill on output tokens and got cut off by the $1 budget
   // cap mid-run (only 8 finds vs run #25's 12). Scout's work is mostly triage —
   // search, judge snippets, save — not deep reasoning, so medium effort buys
-  // more finds under the same cap. (Cartographer, pure ETL, went to "low".)
+  // more finds under the same cap.
   // Drop to "low" if cost still bites; raise back to default if find quality drops.
   effort: "medium",
   allowedTools: [
@@ -60,7 +60,7 @@ ${categories}
 3. Read notes/coverage.md if it exists; diversify away from what recent runs already covered.
 4. Run no more than 8 web searches (hard cap — stop searching once you reach 8) targeting the region: events, org/company announcements, official notices, openings/closings. Prefer pages from registered sources (list_sources) and primary sources over aggregators.
    - Fetch deliberately — WebFetch is by far the most expensive thing you do. Triage with the search-result snippets first and only fetch a page when (a) the snippet already looks like a genuine local, current item likely worth saving, and (b) you need the page to confirm it or to pin exact dates / the item's own URL. Skip dead-end or clearly off-region pages, and prefer a focused primary-source page over a large aggregator/roundup page. Aim for at most ~8 fetches per run. The honesty rule still stands — confirm every item you save at its real page; this just means don't spend fetches on pages you won't save.
-   - You may also call list_places (with max_tier: 2 and exclude_chains: true) to use the cartographer's directory as monitoring targets: prefer businesses with a website, and check whether they have current news, events, sales, or an opening/closing worth a find.
+   - You may also call list_places (with max_tier: 2 and exclude_chains: true) to use the places directory as monitoring targets: prefer businesses with a website, and check whether they have current news, events, sales, or an opening/closing worth a find.
    - Check registered sources that have an ical_url (from list_sources): call fetch_ical with that ical_url to get their upcoming events directly as structured data. This is the reliable way to cover venues whose HTML blocks fetching. Each returned event has its own url — use it when you save_find. Feed events are confirmed at the venue's own calendar, so they satisfy the honesty rule without a separate fetch.
 5. For each genuine item, call save_find with: title, url, a 1-2 sentence summary written for the feed, event dates if any, published date if visible, and a few lowercase free-form tags. Quality over quantity — 5 to 15 good saves is a great run.
    - Dedupe is by URL: when one roundup page mentions several distinct items, give each item its own page URL if one exists; if a distinct item truly has no URL of its own, omit url (the title is then used for dedupe).
