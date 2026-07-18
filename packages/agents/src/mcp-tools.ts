@@ -392,7 +392,7 @@ export function buildLocalfindsServer(
             // by town/name, or weigh it as a candidate source) — dropping coords,
             // phone, and timestamps keeps a tier-wide list from blowing the token
             // budget. The full record is available via the /places page.
-            businesses: rows.map((r) => ({
+            places: rows.map((r) => ({
               osmId: r.place.osmId,
               name: r.place.name,
               kind: r.place.kind,

@@ -226,14 +226,14 @@ export default async function PlacesPage({
 
       <p className="text-xs text-stone-500">
         {size === "all" || matched === 0
-          ? `${matched} ${matched === 1 ? "business" : "businesses"}`
-          : `Showing ${start + 1}–${start + rows.length} of ${matched} businesses`}
+          ? `${matched} ${matched === 1 ? "place" : "places"}`
+          : `Showing ${start + 1}–${start + rows.length} of ${matched} places`}
         {hasFilters ? " matching filters" : ""}, {orderLabel}
       </p>
 
       {matched === 0 ? (
         <p className="py-8 text-center text-sm text-stone-500">
-          No businesses match these filters.
+          No places match these filters.
         </p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">

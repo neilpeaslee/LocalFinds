@@ -95,7 +95,7 @@ export function FindCard({
             href={`/places/${find.placeOsmId}`}
             className="rounded bg-stone-100 px-1.5 py-0.5 hover:bg-stone-200"
           >
-            Business ↗
+            Place ↗
           </Link>
         )}
         {eventStart && (

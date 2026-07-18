@@ -34,7 +34,7 @@ export default function RootLayout({
                 Sources
               </a>
               <a href="/places" className="hover:text-stone-900">
-                Businesses
+                Places
               </a>
               <a href="/agents" className="hover:text-stone-900">
                 Agents

@@ -37,7 +37,7 @@ export default async function PlaceDetailPage({
   return (
     <div className="flex flex-col gap-4">
       <Link href="/places" className="text-xs text-blue-700 hover:underline">
-        ← Back to businesses
+        ← Back to places
       </Link>
 
       <div className="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-4">
