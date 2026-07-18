@@ -408,7 +408,7 @@ export function buildInterviewerServer(io: InterviewIO, deps: InterviewerDeps = 
         "Write the business-category search tiers (OSM key=value). Tier 1 = highest priority, 4 = excluded. Use \"key=*\" to match any value of a key.",
         {
           default_tier: z.number().describe("Tier for categories not listed (the live default is 3)."),
-          hide_tier4: z.boolean().describe("Hide tier-4 categories from the /businesses directory."),
+          hide_tier4: z.boolean().describe("Hide tier-4 categories from the /places directory."),
           hide_chains: z.boolean().describe("Hide national/regional chains from the directory."),
           tiers: z
             .record(z.string(), z.array(z.string()))

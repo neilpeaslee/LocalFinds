@@ -156,7 +156,7 @@ export default function RegionMap({ towns, boundaries, places, themes }: RegionM
   // business tier (1–3) at all zooms so clustering conserves — every in-view
   // business is either a pin or counted in a cluster, so zooming never makes a
   // pin vanish without a cluster count rising. Tier 4 ("not a business") stays
-  // hidden, matching the /businesses default. Clustering (not tier) controls
+  // hidden, matching the /places default. Clustering (not tier) controls
   // density; lower tiers reveal by declustering as you zoom in.
   const placeTiers = useMemo(
     () => new Set(availableTiers.filter((t) => t !== 4)),

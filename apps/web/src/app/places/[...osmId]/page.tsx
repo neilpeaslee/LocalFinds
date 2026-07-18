@@ -36,7 +36,7 @@ export default async function PlaceDetailPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/businesses" className="text-xs text-blue-700 hover:underline">
+      <Link href="/places" className="text-xs text-blue-700 hover:underline">
         ← Back to businesses
       </Link>
 
@@ -108,7 +108,7 @@ export default async function PlaceDetailPage({
               // filter in listPlaces. SP5 will add server-side value-level tag filtering.
               <Link
                 key={t}
-                href={`/businesses?tag=${encodeURIComponent(t.split("=")[0])}`}
+                href={`/places?tag=${encodeURIComponent(t.split("=")[0])}`}
                 className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
               >
                 {t}

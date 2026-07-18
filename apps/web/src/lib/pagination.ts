@@ -1,4 +1,4 @@
-// View-side pagination helpers for the /businesses directory. The query layer
+// View-side pagination helpers for the /places directory. The query layer
 // (packages/db) owns the slice math; this owns the URL page-size vocabulary and
 // the numbered-pager sequence.
 

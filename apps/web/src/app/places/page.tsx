@@ -128,7 +128,7 @@ export default async function PlacesPage({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-white p-3">
-        <form action="/businesses" className="flex gap-2">
+        <form action="/places" className="flex gap-2">
           {town && <input type="hidden" name="town" value={town} />}
           {status && <input type="hidden" name="status" value={status} />}
           {tag && <input type="hidden" name="tag" value={tag} />}
@@ -154,11 +154,11 @@ export default async function PlacesPage({
 
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-xs font-medium text-stone-500">Status</span>
-          <a href={hrefWith("/businesses", current, { status: undefined })} className={pill(!status)}>
+          <a href={hrefWith("/places", current, { status: undefined })} className={pill(!status)}>
             all
           </a>
           {STATUSES.map((s) => (
-            <a key={s} href={hrefWith("/businesses", current, { status: s })} className={pill(status === s)}>
+            <a key={s} href={hrefWith("/places", current, { status: s })} className={pill(status === s)}>
               {s}
             </a>
           ))}
@@ -167,13 +167,13 @@ export default async function PlacesPage({
         {towns.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs font-medium text-stone-500">Town</span>
-            <a href={hrefWith("/businesses", current, { town: undefined })} className={pill(!town)}>
+            <a href={hrefWith("/places", current, { town: undefined })} className={pill(!town)}>
               all
             </a>
             {towns.map((t) => (
               <a
                 key={t.town}
-                href={hrefWith("/businesses", current, { town: t.town })}
+                href={hrefWith("/places", current, { town: t.town })}
                 className={pill(town === t.town)}
               >
                 {t.town} <span className="opacity-60">{t.n}</span>
@@ -187,7 +187,7 @@ export default async function PlacesPage({
             <span className="mr-1 text-xs font-medium text-stone-500">Show</span>
             {chainCount > 0 && (
               <a
-                href={hrefWith("/businesses", current, { chains: showChains ? undefined : "1" })}
+                href={hrefWith("/places", current, { chains: showChains ? undefined : "1" })}
                 className={pill(showChains)}
               >
                 chains ({chainCount})
@@ -195,7 +195,7 @@ export default async function PlacesPage({
             )}
             {tier4Count > 0 && (
               <a
-                href={hrefWith("/businesses", current, { tier4: showTier4 ? undefined : "1" })}
+                href={hrefWith("/places", current, { tier4: showTier4 ? undefined : "1" })}
                 className={pill(showTier4)}
               >
                 excluded categories ({tier4Count})
@@ -209,7 +209,7 @@ export default async function PlacesPage({
           {PAGE_SIZES.map((s) => (
             <a
               key={s}
-              href={hrefWith("/businesses", current, { size: s === 50 ? undefined : String(s) })}
+              href={hrefWith("/places", current, { size: s === 50 ? undefined : String(s) })}
               className={pill(size === s)}
             >
               {s === "all" ? "All" : s}
@@ -220,7 +220,7 @@ export default async function PlacesPage({
         {tag && (
           <div className="text-xs text-stone-500">
             Tag: <span className="font-medium">{tag}</span>{" "}
-            <a href={hrefWith("/businesses", current, { tag: undefined })} className="text-blue-700 hover:underline">
+            <a href={hrefWith("/places", current, { tag: undefined })} className="text-blue-700 hover:underline">
               clear
             </a>
           </div>
@@ -256,7 +256,7 @@ export default async function PlacesPage({
                       className="px-3 py-2 text-left font-medium"
                     >
                       <a
-                        href={hrefWith("/businesses", current, {
+                        href={hrefWith("/places", current, {
                           sort: col.key,
                           dir: nextDir === "asc" ? undefined : nextDir,
                         })}
@@ -285,7 +285,7 @@ export default async function PlacesPage({
                   </td>
                   <td className="px-3 py-2">
                     <Link
-                      href={`/businesses/${b.osmId}`}
+                      href={`/places/${b.osmId}`}
                       className="font-medium text-stone-900 hover:underline"
                     >
                       {b.name}
@@ -324,7 +324,7 @@ export default async function PlacesPage({
         <nav className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
           {page > 1 ? (
             <a
-              href={hrefWith("/businesses", current, { page: String(page - 1) })}
+              href={hrefWith("/places", current, { page: String(page - 1) })}
               className={pill(false)}
               aria-label="Previous page"
             >
@@ -345,14 +345,14 @@ export default async function PlacesPage({
                 {p}
               </span>
             ) : (
-              <a key={p} href={hrefWith("/businesses", current, { page: String(p) })} className={pill(false)}>
+              <a key={p} href={hrefWith("/places", current, { page: String(p) })} className={pill(false)}>
                 {p}
               </a>
             ),
           )}
           {page < pageCount ? (
             <a
-              href={hrefWith("/businesses", current, { page: String(page + 1) })}
+              href={hrefWith("/places", current, { page: String(page + 1) })}
               className={pill(false)}
               aria-label="Next page"
             >

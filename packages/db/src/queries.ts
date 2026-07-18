@@ -617,7 +617,7 @@ export interface RankedPlaceList {
 
 // Annotate each place with its search-priority tier + chain flag, apply the
 // tier4/chain visibility rules, then order via sortRankedPlaces. One place
-// owns "rank/exclude by search priority" — the /businesses page and the agents'
+// owns "rank/exclude by search priority" — the /places page and the agents'
 // list_places tool both use it instead of re-deriving it.
 export async function listPlacesRanked(
   filters: RankedPlaceFilters = {},

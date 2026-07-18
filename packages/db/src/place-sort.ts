@@ -1,4 +1,4 @@
-// Ordering for the /businesses directory. The default (undefined sort) is the
+// Ordering for the /places directory. The default (undefined sort) is the
 // search-priority ranking — chains last, then tier, then name — shared by the
 // directory page and the agents' list_places tool, so it must not drift.
 // Any explicit sort overrides it. This lives in packages/db (not the web app)

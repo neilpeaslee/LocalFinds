@@ -52,7 +52,7 @@ export function agentWorkspaceDir(agent: string): string {
 }
 
 // Read a workspace-relative note for an agent, refusing any path that escapes
-// the agent's workspace. Shared by the /businesses and /sources pages so the
+// the agent's workspace. Shared by the /places and /sources pages so the
 // path-traversal guard lives in exactly one place.
 export function readAgentNote(
   agent: string,
