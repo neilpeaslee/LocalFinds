@@ -20,7 +20,7 @@ export const concierge: AgentDefinition = {
     "Grep",
     "mcp__localfinds__save_find",
     "mcp__localfinds__list_recent_finds",
-    "mcp__localfinds__list_businesses",
+    "mcp__localfinds__list_places",
     "mcp__localfinds__read_feedback",
     "mcp__localfinds__save_place",
     "mcp__localfinds__annotate_place",
@@ -57,7 +57,7 @@ ${query}
 Derive a scan slug from the query and today's date, e.g. "legal services" on 2026-07-02 → scan tag \`scan:legal-services-2026-07-02\`. Tag EVERY find you save this run with it.
 
 1. Call read_feedback. If there is feedback on your past finds, fold it into profile.md ("Learned preferences", dated bullets citing the feedback) BEFORE searching.
-2. Call list_recent_finds (last 14 days) so you don't re-save items already in the feed, and list_businesses filtered to the query's category/kind so you know what the directory already has. Note entries that look stale, renamed, or moved — they become annotate_place calls in step 5.
+2. Call list_recent_finds (last 14 days) so you don't re-save items already in the feed, and list_places filtered to the query's category/kind so you know what the directory already has. Note entries that look stale, renamed, or moved — they become annotate_place calls in step 5.
 3. Web sweep, scaled to the query — no more than 12 searches (hard cap). Triage with search-result snippets first; fetch a page only when the snippet already looks like a genuine answer to the query and you need the page to confirm it or pin details. Beware serving-area landing pages: an out-of-region firm with a "<town> services" page is NOT a local business.
 4. For each genuine answer to the query, call save_find: a type that fits the query (default "service"), title = the business/org name, url = its site, a 1-2 sentence summary written for the feed (include phone and street address when known), lowercase tags including the scan tag.
    - If it is ICP-relevant (see any lead guidance in your profile; classic signal: a good local business with a dated site or none), save it as type "lead" with a 0-1 score and place_osm_id instead — one find per URL, the lead form wins.

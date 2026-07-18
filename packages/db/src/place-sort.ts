@@ -1,6 +1,6 @@
 // Ordering for the /businesses directory. The default (undefined sort) is the
 // search-priority ranking — chains last, then tier, then name — shared by the
-// directory page and the agents' list_businesses tool, so it must not drift.
+// directory page and the agents' list_places tool, so it must not drift.
 // Any explicit sort overrides it. This lives in packages/db (not the web app)
 // because sorting must run before pagination, which happens in
 // listPlacesRanked. The RankedPlace import is type-only (erased), so
