@@ -49,7 +49,7 @@ export function writeRegionConfig(input: {
 export interface CategoryConfig {
   /** Tier for a business category (kind) not listed in any tier. */
   defaultTier: number;
-  /** Whether the /businesses page hides these by default. */
+  /** Whether the /places page hides these by default. */
   hideInDirectory: { tier4: boolean; chains: boolean };
   /** Raw tier → categories map, for display and prompt injection. */
   tiers: Record<string, string[]>;
@@ -130,7 +130,7 @@ export function readCategoryConfig(): CategoryConfig {
 // An OSM "key=value" kind, or a "key=*" wildcard. The key side is permissive
 // (whatever real OSM keys appear in the live config) but a single `=` and a
 // non-empty value are required, so a bare word or empty entry is rejected
-// rather than written into a file the prospector and /businesses page read.
+// rather than written into a file the prospector and /places page read.
 const CATEGORY_RE = /^[a-z_]+=(?:\*|[a-z0-9_:.-]+)$/;
 
 // Write categories.json from the same shape readCategoryConfig consumes (the

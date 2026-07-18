@@ -33,8 +33,8 @@ export default function RootLayout({
               <a href="/sources" className="hover:text-stone-900">
                 Sources
               </a>
-              <a href="/businesses" className="hover:text-stone-900">
-                Businesses
+              <a href="/places" className="hover:text-stone-900">
+                Places
               </a>
               <a href="/agents" className="hover:text-stone-900">
                 Agents

@@ -2,7 +2,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import {
   insertCustomPlace,
   insertFind,
-  listBusinessesRanked,
+  listPlacesRanked,
   listRecentFinds,
   listSources,
   readFeedbackForAgent,
@@ -48,8 +48,8 @@ export interface SourceUpsertArgs {
   ical_url?: string;
 }
 
-// Upsert a source and tally it against the run counters. Mirrors
-// upsertOneBusiness: a brand-new URL is `added`, an existing one is `updated`.
+// Upsert a source and tally it against the run counters. A brand-new URL is
+// `added`, an existing one is `updated`.
 export async function recordSourceUpsert(
   args: SourceUpsertArgs,
   agent: string,
@@ -238,7 +238,7 @@ export function buildLocalfindsServer(
             .string()
             .optional()
             .describe(
-              "For a lead: the osm_id of the linked place (from list_businesses, or returned by save_place).",
+              "For a lead: the osm_id of the linked place (from list_places, or returned by save_place).",
             ),
           score: z
             .number()
@@ -352,7 +352,7 @@ export function buildLocalfindsServer(
         async (args) => formatIcalResult(await runIcalFetch(args.url), args.limit),
       ),
       tool(
-        "list_businesses",
+        "list_places",
         "List businesses already in the directory — to dedupe your coverage, or to use them as monitoring targets / candidate sources. Each row includes `tier` (1 = highest search priority) and `isChain`. Filter by town, tag, status, name substring, `max_tier` (e.g. 2 = Tier 1-2 only), `exclude_chains`, or `has_website` (only businesses with a website — the candidate sources).",
         {
           town: z.string().optional(),
@@ -374,7 +374,7 @@ export function buildLocalfindsServer(
           limit: z.number().optional().describe("Default 500"),
         },
         async (args) => {
-          const { rows, total } = await listBusinessesRanked({
+          const { rows, total } = await listPlacesRanked({
             town: args.town,
             tag: args.tag,
             status: args.status,
@@ -391,16 +391,16 @@ export function buildLocalfindsServer(
             // Trim to the fields an agent needs to judge a directory row (dedupe
             // by town/name, or weigh it as a candidate source) — dropping coords,
             // phone, and timestamps keeps a tier-wide list from blowing the token
-            // budget. The full record is available via the /businesses page.
-            businesses: rows.map((r) => ({
-              osmId: r.business.osmId,
-              name: r.business.name,
-              kind: r.business.kind,
-              tags: r.business.tags,
-              town: r.business.town,
-              address: r.business.address,
-              website: r.business.website,
-              status: r.business.status,
+            // budget. The full record is available via the /places page.
+            places: rows.map((r) => ({
+              osmId: r.place.osmId,
+              name: r.place.name,
+              kind: r.place.kind,
+              tags: r.place.tags,
+              town: r.place.town,
+              address: r.place.address,
+              website: r.place.website,
+              status: r.place.status,
               tier: r.tier,
               isChain: r.isChain,
             })),
@@ -436,7 +436,7 @@ export function buildLocalfindsServer(
         "annotate_place",
         "Record what you learned about an EXISTING directory entry: a correction note (renamed, moved, new site), a status_override ('closed' | 'unknown' | 'clear' to reset), or duplicate_of (osm_id of the canonical entry). Provide at least one field.",
         {
-          osm_id: z.string().describe("The place's osm_id from list_businesses (or save_place)"),
+          osm_id: z.string().describe("The place's osm_id from list_places (or save_place)"),
           note: z.string().optional().describe(`Dated one-liner, e.g. "2026-07-02 scan: now Cumler, Lynch & Stiles". ${PLAIN_TEXT}`),
           status_override: z.enum(["closed", "unknown", "clear"]).optional(),
           duplicate_of: z.string().optional(),

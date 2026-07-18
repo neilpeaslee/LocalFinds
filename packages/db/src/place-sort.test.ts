@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Place } from "./schema";
 import {
-  parseBusinessSort,
+  parsePlaceSort,
   parseDir,
-  sortRankedBusinesses,
-} from "./business-sort";
+  sortRankedPlaces,
+} from "./place-sort";
 
-// Build a RankedBusiness; only the fields the comparator reads need to vary.
+// Build a RankedPlace; only the fields the comparator reads need to vary.
 function rb(
   over: Partial<Place> & { tier?: number; isChain?: boolean },
-): { business: Place; tier: number; isChain: boolean } {
+): { place: Place; tier: number; isChain: boolean } {
   const { tier = 1, isChain = false, ...bo } = over;
-  const business: Place = {
+  const place: Place = {
     osmId: "node/1",
-    name: "Business",
+    name: "Place",
     kind: null,
     lat: null,
     lng: null,
@@ -29,12 +29,12 @@ function rb(
     duplicateOf: null,
     ...bo,
   };
-  return { business, tier, isChain };
+  return { place, tier, isChain };
 }
 
-const names = (rows: ReturnType<typeof rb>[]) => rows.map((r) => r.business.name);
+const names = (rows: ReturnType<typeof rb>[]) => rows.map((r) => r.place.name);
 
-describe("sortRankedBusinesses — default ranking", () => {
+describe("sortRankedPlaces — default ranking", () => {
   it("orders chains last, then by tier, then by name", () => {
     const rows = [
       rb({ name: "Zeta", tier: 1 }),
@@ -42,7 +42,7 @@ describe("sortRankedBusinesses — default ranking", () => {
       rb({ name: "Beta", tier: 1 }),
       rb({ name: "AAA Chain", tier: 1, isChain: true }),
     ];
-    expect(names(sortRankedBusinesses(rows, undefined, "asc"))).toEqual([
+    expect(names(sortRankedPlaces(rows, undefined, "asc"))).toEqual([
       "Beta",
       "Zeta",
       "Alpha",
@@ -51,11 +51,11 @@ describe("sortRankedBusinesses — default ranking", () => {
   });
 });
 
-describe("sortRankedBusinesses — explicit columns", () => {
+describe("sortRankedPlaces — explicit columns", () => {
   it("sorts by name ascending and descending", () => {
     const rows = [rb({ name: "Beta" }), rb({ name: "alpha" }), rb({ name: "Gamma" })];
-    expect(names(sortRankedBusinesses(rows, "name", "asc"))).toEqual(["alpha", "Beta", "Gamma"]);
-    expect(names(sortRankedBusinesses(rows, "name", "desc"))).toEqual(["Gamma", "Beta", "alpha"]);
+    expect(names(sortRankedPlaces(rows, "name", "asc"))).toEqual(["alpha", "Beta", "Gamma"]);
+    expect(names(sortRankedPlaces(rows, "name", "desc"))).toEqual(["Gamma", "Beta", "alpha"]);
   });
 
   it("sorts by tier with a name tiebreak", () => {
@@ -64,7 +64,7 @@ describe("sortRankedBusinesses — explicit columns", () => {
       rb({ name: "A", tier: 2 }),
       rb({ name: "C", tier: 1 }),
     ];
-    expect(names(sortRankedBusinesses(rows, "tier", "asc"))).toEqual(["C", "A", "B"]);
+    expect(names(sortRankedPlaces(rows, "tier", "asc"))).toEqual(["C", "A", "B"]);
   });
 
   it("puts null town last in both directions", () => {
@@ -73,23 +73,23 @@ describe("sortRankedBusinesses — explicit columns", () => {
       rb({ name: "NoTown", town: null }),
       rb({ name: "AlsoTown", town: "Camden" }),
     ];
-    expect(names(sortRankedBusinesses(rows, "town", "asc"))).toEqual(["AlsoTown", "HasTown", "NoTown"]);
-    expect(names(sortRankedBusinesses(rows, "town", "desc"))).toEqual(["HasTown", "AlsoTown", "NoTown"]);
+    expect(names(sortRankedPlaces(rows, "town", "asc"))).toEqual(["AlsoTown", "HasTown", "NoTown"]);
+    expect(names(sortRankedPlaces(rows, "town", "desc"))).toEqual(["HasTown", "AlsoTown", "NoTown"]);
   });
 
   it("does not mutate the input", () => {
     const rows = [rb({ name: "B" }), rb({ name: "A" })];
-    sortRankedBusinesses(rows, "name", "asc");
+    sortRankedPlaces(rows, "name", "asc");
     expect(names(rows)).toEqual(["B", "A"]);
   });
 });
 
 describe("parsers", () => {
-  it("parseBusinessSort accepts known keys, else undefined", () => {
-    expect(parseBusinessSort("town")).toBe("town");
-    expect(parseBusinessSort("name")).toBe("name");
-    expect(parseBusinessSort("bogus")).toBeUndefined();
-    expect(parseBusinessSort(undefined)).toBeUndefined();
+  it("parsePlaceSort accepts known keys, else undefined", () => {
+    expect(parsePlaceSort("town")).toBe("town");
+    expect(parsePlaceSort("name")).toBe("name");
+    expect(parsePlaceSort("bogus")).toBeUndefined();
+    expect(parsePlaceSort(undefined)).toBeUndefined();
   });
 
   it("parseDir defaults to asc", () => {

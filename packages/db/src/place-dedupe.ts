@@ -60,7 +60,7 @@ const STATUS_RANK: Record<DedupeRow["status"], number> = {
 // Cluster rows that share a normalized name and fall within DUP_RADIUS_M of one
 // another (transitive: A~B and B~C groups all three). Rows without coordinates
 // are never grouped. Returns only clusters of 2+.
-export function groupBusinessDuplicates(rows: DedupeRow[]): DedupeRow[][] {
+export function groupPlaceDuplicates(rows: DedupeRow[]): DedupeRow[][] {
   const byName = new Map<string, DedupeRow[]>();
   for (const r of rows) {
     if (r.lat == null || r.lng == null) continue;

@@ -1,44 +1,44 @@
-// Ordering for the /businesses directory. The default (undefined sort) is the
+// Ordering for the /places directory. The default (undefined sort) is the
 // search-priority ranking — chains last, then tier, then name — shared by the
-// directory page and the agents' list_businesses tool, so it must not drift.
+// directory page and the agents' list_places tool, so it must not drift.
 // Any explicit sort overrides it. This lives in packages/db (not the web app)
 // because sorting must run before pagination, which happens in
-// listBusinessesRanked. The RankedBusiness import is type-only (erased), so
+// listPlacesRanked. The RankedPlace import is type-only (erased), so
 // there is no runtime import cycle with queries.ts.
-import type { RankedBusiness } from "./queries";
+import type { RankedPlace } from "./queries";
 
-export type BusinessSort = "tier" | "name" | "kind" | "town";
+export type PlaceSort = "tier" | "name" | "kind" | "town";
 export type SortDir = "asc" | "desc";
 
-const SORT_KEYS: BusinessSort[] = ["tier", "name", "kind", "town"];
+const SORT_KEYS: PlaceSort[] = ["tier", "name", "kind", "town"];
 
 // Default ranking, byte-for-byte identical to the prior inline comparator.
-function rankCompare(a: RankedBusiness, z: RankedBusiness): number {
+function rankCompare(a: RankedPlace, z: RankedPlace): number {
   return (
     Number(a.isChain) - Number(z.isChain) ||
     a.tier - z.tier ||
-    a.business.name.localeCompare(z.business.name)
+    a.place.name.localeCompare(z.place.name)
   );
 }
 
-export function sortRankedBusinesses(
-  rows: RankedBusiness[],
-  sort: BusinessSort | undefined,
+export function sortRankedPlaces(
+  rows: RankedPlace[],
+  sort: PlaceSort | undefined,
   dir: SortDir,
-): RankedBusiness[] {
+): RankedPlace[] {
   if (sort === undefined) return [...rows].sort(rankCompare);
 
   const factor = dir === "asc" ? 1 : -1;
-  const valueOf = (r: RankedBusiness): string | number | null => {
+  const valueOf = (r: RankedPlace): string | number | null => {
     switch (sort) {
       case "tier":
         return r.tier;
       case "name":
-        return r.business.name;
+        return r.place.name;
       case "kind":
-        return r.business.kind;
+        return r.place.kind;
       case "town":
-        return r.business.town;
+        return r.place.town;
     }
   };
 
@@ -54,12 +54,12 @@ export function sortRankedBusinesses(
         ? av - bv
         : String(av).localeCompare(String(bv));
     // Apply direction, then a stable name tiebreak.
-    return cmp * factor || a.business.name.localeCompare(z.business.name);
+    return cmp * factor || a.place.name.localeCompare(z.place.name);
   });
 }
 
-export function parseBusinessSort(raw: string | undefined): BusinessSort | undefined {
-  return SORT_KEYS.includes(raw as BusinessSort) ? (raw as BusinessSort) : undefined;
+export function parsePlaceSort(raw: string | undefined): PlaceSort | undefined {
+  return SORT_KEYS.includes(raw as PlaceSort) ? (raw as PlaceSort) : undefined;
 }
 
 export function parseDir(raw: string | undefined): SortDir {

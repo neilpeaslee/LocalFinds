@@ -45,7 +45,7 @@ export interface MapThemeProp {
 export interface RegionMapProps {
   towns: TownBoxProp[];
   boundaries: { features: BoundaryFeature[] };
-  businesses: MapPin[];
+  places: MapPin[];
   /** Theme key -> color/label, from readMapCategories (plus "other"). */
   themes: MapThemeProp[];
 }
@@ -138,7 +138,7 @@ function MapRef({ mapRef }: { mapRef: { current: LeafletMap | null } }) {
   return null;
 }
 
-export default function RegionMap({ towns, boundaries, businesses, themes }: RegionMapProps) {
+export default function RegionMap({ towns, boundaries, places, themes }: RegionMapProps) {
   const [vp, setVp] = useState<Vp | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
 
@@ -148,17 +148,17 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
   }, [themes]);
 
   const availableTiers = useMemo(
-    () => [...new Set(businesses.map((b) => b.tier))].sort((a, z) => a - z),
-    [businesses],
+    () => [...new Set(places.map((b) => b.tier))].sort((a, z) => a - z),
+    [places],
   );
 
   // Phase 1 default filters: all themes on, no closed/chains. Include every
   // business tier (1–3) at all zooms so clustering conserves — every in-view
   // business is either a pin or counted in a cluster, so zooming never makes a
   // pin vanish without a cluster count rising. Tier 4 ("not a business") stays
-  // hidden, matching the /businesses default. Clustering (not tier) controls
+  // hidden, matching the /places default. Clustering (not tier) controls
   // density; lower tiers reveal by declustering as you zoom in.
-  const businessTiers = useMemo(
+  const placeTiers = useMemo(
     () => new Set(availableTiers.filter((t) => t !== 4)),
     [availableTiers],
   );
@@ -168,13 +168,13 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
       themes: new Set([...themes.map((t) => t.key), "other"]),
       subtypes: new Map(),
       tags: [],
-      tiers: businessTiers,
+      tiers: placeTiers,
       showClosed: false,
       showChains: false,
       query: "",
     };
-    return selectVisible(businesses, filters, vp);
-  }, [vp, businesses, themes, businessTiers]);
+    return selectVisible(places, filters, vp);
+  }, [vp, places, themes, placeTiers]);
 
   // Cluster the WHOLE candidate set: supercluster merges nearby points, so an
   // isolated point comes back as a singleton (rendered as a themed pin) and any
@@ -216,7 +216,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
     return {
       fallbackTowns: fallback,
       coverageRings: rings,
-      bounds: computeBounds(rings, businesses),
+      bounds: computeBounds(rings, places),
       maskPositions: [
         [
           [85, -180],
@@ -227,7 +227,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
         ...rings,
       ],
     };
-  }, [towns, boundaries, businesses]);
+  }, [towns, boundaries, places]);
 
   return (
     <div className="relative h-72 w-full sm:h-96">
@@ -386,7 +386,7 @@ export default function RegionMap({ towns, boundaries, businesses, themes }: Reg
   );
 }
 
-function computeBounds(rings: Ring[], businesses: MapPin[]): LatLngBoundsExpression | undefined {
+function computeBounds(rings: Ring[], places: MapPin[]): LatLngBoundsExpression | undefined {
   let south = Infinity;
   let west = Infinity;
   let north = -Infinity;
@@ -400,7 +400,7 @@ function computeBounds(rings: Ring[], businesses: MapPin[]): LatLngBoundsExpress
     }
   }
   if (!rings.length) {
-    for (const b of businesses) {
+    for (const b of places) {
       south = Math.min(south, b.lat);
       west = Math.min(west, b.lng);
       north = Math.max(north, b.lat);

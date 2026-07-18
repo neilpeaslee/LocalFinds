@@ -1,5 +1,5 @@
 import {
-  countBusinesses,
+  countPlaces,
   getFeed,
   listMapPins,
   readMapCategories,
@@ -44,14 +44,14 @@ export default async function DashboardPage() {
     ...mapCfg.themes.map((t) => ({ key: t.key, label: t.label, color: t.color })),
     { key: mapCfg.otherKey, label: mapCfg.otherLabel, color: mapCfg.otherColor },
   ];
-  const businessCount = await countBusinesses();
+  const placeCount = await countPlaces();
 
   const finds = await getFeed({ view: "default" });
   const recent = finds.slice(0, COMPACT_FINDS);
 
   return (
     <div className="flex flex-col gap-6">
-      <RegionMapClient towns={towns} boundaries={boundaries} businesses={pins} themes={mapThemes} />
+      <RegionMapClient towns={towns} boundaries={boundaries} places={pins} themes={mapThemes} />
 
       <section>
         <h1 className="text-xl font-semibold tracking-tight">
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
         )}
         <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-600">
           <Stat label="towns covered" value={towns.length} />
-          <Stat label="businesses catalogued" value={businessCount} />
+          <Stat label="places catalogued" value={placeCount} />
           <Stat label="current finds" value={finds.length} />
         </dl>
       </section>

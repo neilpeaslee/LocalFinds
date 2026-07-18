@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseCanonical,
-  groupBusinessDuplicates,
+  groupPlaceDuplicates,
   mergeFacts,
   metersBetween,
   type DedupeRow,
-} from "./business-dedupe";
+} from "./place-dedupe";
 
 let nextId = 1;
 function row(over: Partial<DedupeRow> = {}): DedupeRow {
@@ -37,11 +37,11 @@ describe("metersBetween", () => {
   });
 });
 
-describe("groupBusinessDuplicates", () => {
+describe("groupPlaceDuplicates", () => {
   const base = { lat: 44.0942096, lng: -69.1380283 };
 
   it("groups same-name rows at identical coordinates", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "Dorman's Dairy Dream", lat: base.lat, lng: base.lng }),
       row({ name: "Dorman's Dairy Dream", lat: base.lat, lng: base.lng }),
     ]);
@@ -50,7 +50,7 @@ describe("groupBusinessDuplicates", () => {
   });
 
   it("groups a node/way pair a few meters apart", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "Cafe X", lat: base.lat, lng: base.lng }),
       row({ name: "Cafe X", lat: base.lat + 0.0000898, lng: base.lng }), // ~10m
     ]);
@@ -58,7 +58,7 @@ describe("groupBusinessDuplicates", () => {
   });
 
   it("ignores case/whitespace differences in the name", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "Dorman's  Dairy Dream", lat: base.lat, lng: base.lng }),
       row({ name: "dorman's dairy dream", lat: base.lat, lng: base.lng }),
     ]);
@@ -66,7 +66,7 @@ describe("groupBusinessDuplicates", () => {
   });
 
   it("does NOT group same-name rows more than 50m apart", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "Cafe Y", lat: base.lat, lng: base.lng }),
       row({ name: "Cafe Y", lat: base.lat + 0.001797, lng: base.lng }), // ~200m
     ]);
@@ -74,7 +74,7 @@ describe("groupBusinessDuplicates", () => {
   });
 
   it("does NOT group different names at the same point", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "Alpha", lat: base.lat, lng: base.lng }),
       row({ name: "Beta", lat: base.lat, lng: base.lng }),
     ]);
@@ -82,7 +82,7 @@ describe("groupBusinessDuplicates", () => {
   });
 
   it("clusters transitively (A~B, B~C within 50m, A-C beyond)", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "Chain", lat: base.lat, lng: base.lng }),
       row({ name: "Chain", lat: base.lat + 0.0003592, lng: base.lng }), // ~40m from #1
       row({ name: "Chain", lat: base.lat + 0.0007184, lng: base.lng }), // ~40m from #2, ~80m from #1
@@ -92,7 +92,7 @@ describe("groupBusinessDuplicates", () => {
   });
 
   it("excludes rows without coordinates", () => {
-    const groups = groupBusinessDuplicates([
+    const groups = groupPlaceDuplicates([
       row({ name: "NoGeo", lat: null, lng: null }),
       row({ name: "NoGeo", lat: null, lng: null }),
     ]);
