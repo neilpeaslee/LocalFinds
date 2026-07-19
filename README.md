@@ -21,7 +21,7 @@ This application is an alpha version for discovery.
 ### Selected resources include:
 
 - OpenStreetMap
-- Overpass API
+- PostGIS (spatial Postgres)
 - Leaflet (map JS library)
 - Custom agents for managing site data and content
 
@@ -49,20 +49,21 @@ Live user access on a working platform.
 
 ## Architecture
 
-- **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), business
-  directory (`/businesses`), agent profiles + run history (`/agents`).
-- **packages/agents** — five Claude Agent SDK agents, run sequentially:
-  **scout** (web-searches for new finds), **source-keeper** (maintains the
-  source registry + per-site notes), **cartographer** (mirrors every business
-  in the region from OpenStreetMap into the directory), **prospector**
-  (discovery-only local B2B lead-gen — qualifies the directory against an Ideal
-  Customer Profile and saves matches as `lead`-type finds), **curator**
-  (dedupes, prunes, expires, and keeps the taste profile). Finds carry a
-  free-text `type` (`event` by default, `lead`, …); the feed shows all types and
-  `/feed?type=lead` narrows it.
-- **packages/db** — Drizzle + SQLite for exact facts (finds, sources,
-  businesses, feedback, runs). Anything fuzzy lives in per-agent markdown under
-  `data/agents/<name>/` (profile.md is yours to edit too).
+- **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), places
+  directory (`/places`), agent profiles + run history (`/agents`).
+- **packages/agents** — Claude Agent SDK agents. Four run sequentially on a
+  schedule: **scout** (web-searches for new finds), **source-keeper** (maintains
+  the source registry + per-site notes), **prospector** (discovery-only local
+  B2B lead-gen — qualifies the places directory against an Ideal Customer Profile
+  and saves matches as `lead`-type finds), and **curator** (dedupes, prunes,
+  expires, and keeps the taste profile). **concierge** runs on demand
+  (`--query "..."`) to scan for and save the places a specific search asks for.
+  The OSM places directory itself is a Postgres materialized view (refreshed
+  daily), not an agent. Finds carry a free-text `type` (`event` by default,
+  `lead`, …); the feed shows all types and `/feed?type=lead` narrows it.
+- **packages/db** — Postgres/PostGIS (raw parameterized SQL) for exact facts
+  (finds, sources, places, feedback, runs). Anything fuzzy lives in per-agent
+  markdown under `data/agents/<name>/` (profile.md is yours to edit too).
 - **data/** — ALL runtime state and personal config. Gitignored except
   `*.example` templates: keep PII out of git.
 
@@ -87,31 +88,30 @@ resolve town from the snapshotted region boundaries.
 
 ```sh
 npm install
-cp .env.example .env                                  # add ANTHROPIC_API_KEY
+cp .env.example .env                                  # add ANTHROPIC_API_KEY + DB URL
 cp data/config/region.md.example data/config/region.md   # describe YOUR region
-npm run db:push && npm run db:seed
+# bring up the database — see "Local development" above (docker compose + db:load)
 npm run dev                                           # http://localhost:3000
 ```
 
 The schema is applied from the canonical SQL migrations in `db/migrations/*.sql`.
-After pulling changes that add a new migration, re-run `npm run db:migrate` to
-apply them to your existing database.
+After pulling changes that add a new migration, re-run `npm -w @localfinds/db run migrate`
+to apply them to your existing database.
 
 ## Running agents
 
 ```sh
-npm run agent -- scout --max-turns 8         # cheap capped test run
-npm run agent -- cartographer --max-turns 8  # populate /businesses from OpenStreetMap
-npm run agent -- prospector --max-turns 8    # qualify the directory into leads (needs an ICP profile)
-npm run agents:all                           # full roster, sequential
-npm test                                     # vitest (db package)
-npm run db:studio                            # inspect the database
+npm run agent -- scout --max-turns 8                    # cheap capped test run
+npm run agent -- prospector --max-turns 8               # qualify the directory into leads (needs an ICP profile)
+npm run agent -- concierge --query "..." --max-turns 8  # on-demand scan for specific places
+npm run agents:all                                      # full scheduled roster, sequential
+npm test                                                # vitest (all packages)
 ```
 
-The cartographer pulls businesses from OpenStreetMap via the Overpass API (no
-API key needed) and walks a (town × business-key) grid using
-`data/agents/cartographer/notes/coverage.md` as its cursor, so coverage builds
-up incrementally across runs.
+The places directory is a Postgres materialized view over an OpenStreetMap
+import (`planet_osm_*`), refreshed daily — there is no crawl step. Agents read
+it as the local place catalog; the concierge and prospector write new or
+annotated places back through the database.
 
 Schedule with cron once region + API key are real (see the comment in
 `scripts/run-agents.sh`):
@@ -130,8 +130,8 @@ surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
 ## Deploy
 
-The app is served as a snapshot from a single host behind nginx (public reads,
-auth-gated writes). Deploys run from this repo root on a clean tree — no sudo.
+The app is served from a single host behind nginx (public reads, auth-gated
+writes), reading the live Postgres database directly. Deploys run from this repo root on a clean tree — no sudo.
 The real infra values (host, path, process name) live in the gitignored
 `data/config/deploy.env`; the `deploy-localfinds` skill documents them.
 

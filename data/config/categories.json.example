@@ -1,5 +1,5 @@
 {
-  "_comment": "Search-priority tiers for business categories (OSM key=value). Tier 1 = highest priority, 4 = excluded from the directory. Use \"key=*\" to match any value of a key (e.g. craft=*). Anything not listed falls to default_tier. National/regional chains (OSM brand tag) are forced to lowest priority regardless of tier. Edit freely — agents read this each run and the /businesses page reads it per request; no re-scan needed.",
+  "_comment": "Search-priority tiers for business categories (OSM key=value). Tier 1 = highest priority, 4 = excluded from the directory. Use \"key=*\" to match any value of a key (e.g. craft=*). Anything not listed falls to default_tier. National/regional chains (OSM brand tag) are forced to lowest priority regardless of tier. Edit freely — agents read this each run and the /places page reads it per request; no re-scan needed.",
   "default_tier": 3,
   "hide_in_directory": { "tier4": true, "chains": true },
   "tiers": {
