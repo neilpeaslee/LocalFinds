@@ -528,12 +528,21 @@ export async function listPlaces(filters: PlaceFilters = {}): Promise<Place[]> {
   if (filters.town) where.push(`pl.town = ${p(filters.town)}`);
   if (filters.status) where.push(`pl.status = ${p(filters.status)}`);
   if (filters.tag) {
-    // The catalog tags column is the raw OSM jsonb set. The filter is an OSM
-    // key existence check (e.g. "amenity" → any amenity place). This matches
-    // the old SQLite "array contains key" semantics while letting PLACE_TAGS_SQL
-    // still return the full derived key=value[] for display (C7). To filter by
-    // a specific value, callers should use PlaceFilters.kind (TODO).
-    where.push(`pl.tags ? ${p(filters.tag)}`);
+    // Value-aware OSM tag filter. "amenity" → key existence (any amenity);
+    // "amenity=cafe" → exact value match. Split on the FIRST "=" so tag values
+    // that themselves contain "=" survive. A bare key, or "amenity=" with an
+    // empty value, falls back to key existence. Both the ? and @> operators are
+    // served by the plain gin(tags) index (migration 0006). hstore_to_jsonb
+    // values are all strings, so @> containment is exact string match.
+    const eq = filters.tag.indexOf("=");
+    if (eq > 0 && eq < filters.tag.length - 1) {
+      const key = filters.tag.slice(0, eq);
+      const value = filters.tag.slice(eq + 1);
+      where.push(`pl.tags @> ${p(JSON.stringify({ [key]: value }))}::jsonb`);
+    } else {
+      const key = eq > 0 ? filters.tag.slice(0, eq) : filters.tag;
+      where.push(`pl.tags ? ${p(key)}`);
+    }
   }
   if (filters.q) where.push(`pl.name ILIKE ${p(likeContains(filters.q))} ESCAPE '\\'`);
   if (filters.hasWebsite) where.push(`pl.website IS NOT NULL AND pl.website <> ''`);

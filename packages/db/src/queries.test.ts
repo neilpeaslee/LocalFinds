@@ -468,6 +468,44 @@ describe("places", () => {
     expect(shop.map((p) => p.osmId)).not.toContain("node/1"); // Rock City Coffee (amenity, not shop)
   });
 
+  it("tag filter matches by key=value (value-level)", async () => {
+    const cafes = await q.listPlaces({ tag: "amenity=cafe" });
+    expect(cafes.map((p) => p.osmId)).toContain("node/1"); // Rock City Coffee amenity=cafe
+    const restaurants = await q.listPlaces({ tag: "amenity=restaurant" });
+    expect(restaurants.map((p) => p.osmId)).not.toContain("node/1");
+  });
+
+  it("tag value-match works on non-primary keys", async () => {
+    const cuisine = await q.listPlaces({ tag: "cuisine=coffee_shop" });
+    expect(cuisine.map((p) => p.osmId)).toContain("node/1");
+  });
+
+  it("tag with empty value falls back to key existence", async () => {
+    const amenity = await q.listPlaces({ tag: "amenity=" });
+    expect(amenity.map((p) => p.osmId)).toContain("node/1"); // same as tag:"amenity"
+    expect(amenity.map((p) => p.osmId)).not.toContain("way/2"); // shop, not amenity
+  });
+
+  it("tag value containing '=' is split on the first '=' only", async () => {
+    const { pool } = await import("./client");
+    // Named amenity node carrying a tag whose VALUE contains '='.
+    await pool().query(`
+      INSERT INTO planet_osm_point (osm_id, tags, way) VALUES
+      (998, hstore(ARRAY['amenity','name','note'], ARRAY['cafe','Eq Test','a=b']),
+       ST_Transform(ST_SetSRID(ST_MakePoint(-69.118, 44.101), 4326), 3857))
+    `);
+    await pool().query(`REFRESH MATERIALIZED VIEW CONCURRENTLY public.osm_places`);
+    try {
+      const hit = await q.listPlaces({ tag: "note=a=b" });
+      expect(hit.map((p) => p.osmId)).toContain("node/998");
+      const miss = await q.listPlaces({ tag: "note=a" }); // wrong value, must not match
+      expect(miss.map((p) => p.osmId)).not.toContain("node/998");
+    } finally {
+      await pool().query(`DELETE FROM planet_osm_point WHERE osm_id = 998`);
+      await pool().query(`REFRESH MATERIALIZED VIEW CONCURRENTLY public.osm_places`);
+    }
+  });
+
   it("osm_places_tags_gin is a plain gin(tags) index (serves ? and @>)", async () => {
     const { queryOne } = await import("./client");
     const row = await queryOne<{ indexdef: string }>(
