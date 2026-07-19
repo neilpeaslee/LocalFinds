@@ -118,12 +118,15 @@ CREATE MATERIALIZED VIEW public.osm_places AS
     ) f
 WITH DATA;
 
--- Same indexes as 0002/0005 (unique osm_id REQUIRED for REFRESH ... CONCURRENTLY).
+-- Same indexes as 0002/0005 + the 0006 tags-index swap (unique osm_id REQUIRED
+-- for REFRESH ... CONCURRENTLY). tags uses plain gin(tags) (jsonb_ops) to match
+-- migration 0006 — serves both ? key-existence and @> value-match; the old
+-- jsonb_path_ops variant could not serve the ? filter.
 CREATE UNIQUE INDEX osm_places_osm_id_uidx ON public.osm_places (osm_id);
 CREATE INDEX osm_places_town_idx  ON public.osm_places (lower(town));
 CREATE INDEX osm_places_point_gist ON public.osm_places USING gist (point);
 CREATE INDEX osm_places_geom_gist  ON public.osm_places USING gist (geom);
-CREATE INDEX osm_places_tags_gin   ON public.osm_places USING gin (tags jsonb_path_ops);
+CREATE INDEX osm_places_tags_gin   ON public.osm_places USING gin (tags);
 CREATE INDEX osm_places_name_trgm  ON public.osm_places USING gin (name gin_trgm_ops);
 
 -- localfinds.places restored verbatim from 0003.
