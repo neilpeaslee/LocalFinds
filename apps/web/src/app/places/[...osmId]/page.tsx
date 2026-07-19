@@ -104,11 +104,10 @@ export default async function PlaceDetailPage({
         {place.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {place.tags.map((t) => (
-              // Link uses the bare key (before "=") so it matches the jsonb key-existence
-              // filter in listPlaces. SP5 will add server-side value-level tag filtering.
+              // Full key=value → value-level tag filter in listPlaces (PL2).
               <Link
                 key={t}
-                href={`/places?tag=${encodeURIComponent(t.split("=")[0])}`}
+                href={`/places?tag=${encodeURIComponent(t)}`}
                 className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
               >
                 {t}
