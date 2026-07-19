@@ -468,6 +468,19 @@ describe("places", () => {
     expect(shop.map((p) => p.osmId)).not.toContain("node/1"); // Rock City Coffee (amenity, not shop)
   });
 
+  it("osm_places_tags_gin is a plain gin(tags) index (serves ? and @>)", async () => {
+    const { queryOne } = await import("./client");
+    const row = await queryOne<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+       WHERE schemaname = 'public' AND indexname = 'osm_places_tags_gin'`,
+    );
+    expect(row).toBeDefined();
+    // Plain jsonb_ops serves BOTH key-existence (?) and containment (@>);
+    // jsonb_path_ops (the pre-0006 variant) serves only @>.
+    expect(row!.indexdef).toMatch(/USING gin \(tags\)/);
+    expect(row!.indexdef).not.toMatch(/jsonb_path_ops/);
+  });
+
   it("getPlaceByOsmId returns the correct place", async () => {
     const p = await q.getPlaceByOsmId("node/1");
     expect(p).toBeDefined();
