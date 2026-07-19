@@ -49,12 +49,16 @@ export async function GET(
           }
         }
 
-        // Fallback close: the run is no longer live and we've drained its events.
-        const fresh = await getRun(runId);
-        const ended = !fresh || fresh.status !== "running" || isRunStale(fresh, Date.now());
-        if (ended && events.length === 0) {
-          finish();
-          return;
+        // Fallback close: only when THIS batch was empty do we check whether the
+        // run has ended and we've drained its events. An active run streaming
+        // events never needs the extra getRun round-trip.
+        if (events.length === 0) {
+          const fresh = await getRun(runId);
+          const ended = !fresh || fresh.status !== "running" || isRunStale(fresh, Date.now());
+          if (ended) {
+            finish();
+            return;
+          }
         }
 
         if (!closed) timer = setTimeout(poll, POLL_MS);
