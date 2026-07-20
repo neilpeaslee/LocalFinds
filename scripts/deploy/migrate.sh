@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Migrate stage: dump the precious localfinds schema, apply versioned SQL migrations
 # via the tracked runner, then reload the app. Runs AFTER deploy-code (the migration
-# files + pg-backup.sh must be on the box first). Connects to the shared `gis` DB as
-# the osm_api role via a PASSWORD-FREE DSN sourced ON THE BOX from ~/localfinds-db.env;
+# files + pg-backup.sh must be on the box first). Connects to the `localfinds` DB as
+# the localfinds role via a PASSWORD-FREE DSN sourced ON THE BOX from ~/localfinds-db.env;
 # the password comes from ~/.pgpass (chmod 600) — never in a committed script, argv, or env.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -12,7 +12,7 @@ cd "$DEPLOY_ROOT"
 echo "migrate: pre-migration dump of the localfinds schema (keep 10)"
 remote "bash scripts/deploy/pg-backup.sh predeploy 10"
 
-echo "migrate: applying migrations on prod (gis)"
+echo "migrate: applying migrations on prod"
 remote "set -a && . \"\$HOME/localfinds-db.env\" && set +a && npx tsx packages/db/src/migrate.ts"
 
 echo "migrate: reload + verify"
