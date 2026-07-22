@@ -39,6 +39,9 @@ develop it, and deploy it. Where the project is headed lives in
 - **packages/db** — Postgres/PostGIS (raw parameterized SQL) for exact facts
   (finds, sources, places, feedback, runs). Anything fuzzy lives in per-agent
   markdown under `data/agents/<name>/` (profile.md is yours to edit too).
+- **phoenix/** — Elixir/Phoenix service exposing the external read-only OSM
+  places API at `api.localfinds.me` (`GET /osm/places`, bearer-token auth,
+  reads the same materialized view; excludes locally-curated places).
 - **data/** — ALL runtime state and personal config. Gitignored except
   `*.example` templates: keep PII out of git.
 

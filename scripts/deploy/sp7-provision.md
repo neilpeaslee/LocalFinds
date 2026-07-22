@@ -69,6 +69,13 @@ the localfinds schema. (P2 will widen this to the two auth tables — nothing el
 
 ## 6. systemd unit + deploy sudoers rule
 
+Set the app dir first (the DEPLOY_PATH value from dev's `data/config/deploy.env`) — the
+heredoc below expands it, and the grep check afterward fails loud on a forgotten value
+instead of letting a literal placeholder land in the unit (this bit the first provision:
+2026-07-22).
+
+    DEPLOY_PATH=CHANGE_ME   # <- the DEPLOY_PATH value in dev's data/config/deploy.env
+
     sudo tee /etc/systemd/system/localfinds-api.service >/dev/null <<EOF
     [Unit]
     Description=LocalFinds Phoenix API
@@ -76,16 +83,18 @@ the localfinds schema. (P2 will widen this to the two auth tables — nothing el
 
     [Service]
     User=ubuntu
-    WorkingDirectory=<DEPLOY_PATH>/phoenix
+    WorkingDirectory=$DEPLOY_PATH/phoenix
     EnvironmentFile=/etc/localfinds-api.env
-    ExecStart=<DEPLOY_PATH>/phoenix/_build/prod/rel/localfinds/bin/localfinds start
-    ExecStop=<DEPLOY_PATH>/phoenix/_build/prod/rel/localfinds/bin/localfinds stop
+    ExecStart=$DEPLOY_PATH/phoenix/_build/prod/rel/localfinds/bin/localfinds start
+    ExecStop=$DEPLOY_PATH/phoenix/_build/prod/rel/localfinds/bin/localfinds stop
     Restart=on-failure
     RestartSec=5
 
     [Install]
     WantedBy=multi-user.target
     EOF
+    ! grep -qE 'CHANGE_ME|<' /etc/systemd/system/localfinds-api.service \
+      && echo "unit paths OK" || echo "STOP: DEPLOY_PATH not substituted — fix and re-tee"
     sudo systemctl daemon-reload && sudo systemctl enable localfinds-api
 
     echo 'ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart localfinds-api' | \
