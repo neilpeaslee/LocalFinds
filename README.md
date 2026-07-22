@@ -14,43 +14,15 @@ your thumbs, stars, and hides train a taste profile they read before each run.
 Single-user and self-hosted: one region, one person's taste, and all personal
 data (database, taste profile, agent notes) stays local, never in git.
 
-## Version Alpha 1
-
-This application is an alpha version for discovery.
-
-### Selected resources include:
-
-- OpenStreetMap
-- PostGIS (spatial Postgres)
-- Leaflet (map JS library)
-- Custom agents for managing site data and content
-
-### Remaining tasks
-
-- Clean up UI/UX
-  - Breadcrumb, page title, navigation indicators
-- Tag filters: full-blown feature with schema upgrades
-  - tightly integrates/couples with OSM data schemes
-- Manually add new source (CRUD)
-
-## Version Beta 1
-
-Live user access on a working platform.
-
-### Planned changes include:
-
-- Integrate with AWS — more data storage, more memory
-- Individual user customization. Signup, auth, etc.
-- Downloaded OpenStreetMap data to feed app, gets regular updates
-- AI agent upgrades:
-  - Interviewer to customize user setup (location, routes, interests, etc.)
-  - More efficient web browsing/searching
-  - User credits
+This README describes what LocalFinds does **right now** — how to run it,
+develop it, and deploy it. Where the project is headed lives in
+[VISION.md](VISION.md).
 
 ## Architecture
 
-- **apps/web** — Next.js feed UI (`/`), source registry (`/sources`), places
-  directory (`/places`), agent profiles + run history (`/agents`).
+- **apps/web** — Next.js UI: dashboard with the region map (`/`), the feed
+  (`/feed`), places directory (`/places`), source registry (`/sources`), agent
+  profiles + run history (`/agents`).
 - **packages/agents** — Claude Agent SDK agents. Four run sequentially on a
   schedule: **scout** (web-searches for new finds), **source-keeper** (maintains
   the source registry + per-site notes), **prospector** (discovery-only local
@@ -58,7 +30,10 @@ Live user access on a working platform.
   and saves matches as `lead`-type finds), and **curator** (dedupes, prunes,
   expires, and keeps the taste profile). **concierge** runs on demand
   (`--query "..."`) to scan for and save the places a specific search asks for.
-  The OSM places directory itself is a Postgres materialized view (refreshed
+  The **interviewer** runs interactively (`npm run interview`) and builds your
+  region/category/ICP config through a conversation (or a prepared
+  questionnaire), test-runs the prospector on the result, and gates every
+  config write behind a before/after diff you confirm. The OSM places directory itself is a Postgres materialized view (refreshed
   daily), not an agent. Finds carry a free-text `type` (`event` by default,
   `lead`, …); the feed shows all types and `/feed?type=lead` narrows it.
 - **packages/db** — Postgres/PostGIS (raw parameterized SQL) for exact facts
@@ -105,6 +80,7 @@ npm run agent -- scout --max-turns 8                    # cheap capped test run
 npm run agent -- prospector --max-turns 8               # qualify the directory into leads (needs an ICP profile)
 npm run agent -- concierge --query "..." --max-turns 8  # on-demand scan for specific places
 npm run agents:all                                      # full scheduled roster, sequential
+npm run interview -- --depth=brief                      # interactive config interview (brief|medium|comprehensive; --prepared uses a filled questionnaire)
 npm test                                                # vitest (all packages)
 ```
 
@@ -141,9 +117,11 @@ npm run deploy -- --dry-run    # preview every remote action, change nothing
 ```
 
 Composable stages: `deploy:gate` (blocks unless on `main`, tree clean, tests +
-`tsc` pass), `deploy:code` (rsyncs the tree, installs, builds), `deploy:migrate`
-(dumps the prod Postgres DB, then applies pending `db/migrations/*.sql` via the
-tracked runner, then reloads pm2 and verifies GET=200 / POST=401).
+`tsc` pass), `deploy:code` (ships `main` via git — push to the box's bare repo,
+then fetch + reset + clean in its checkout — rsyncs the gitignored config reals,
+installs if the lockfile changed, builds), `deploy:migrate` (dumps the prod
+Postgres DB, then applies pending `db/migrations/*.sql` via the tracked runner,
+then reloads pm2 and verifies GET=200 / POST=401).
 
 Code ships before migrations apply, and the app reloads only after the migration
 runs, so it never serves new code against an unmigrated schema. After a deploy,
