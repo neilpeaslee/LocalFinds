@@ -5,7 +5,18 @@ defmodule LocalfindsWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/api", LocalfindsWeb do
+  pipeline :bearer do
+    plug LocalfindsWeb.Plugs.BearerAuth
+  end
+
+  scope "/", LocalfindsWeb do
     pipe_through :api
+    get "/health", HealthController, :show
+  end
+
+  scope "/osm", LocalfindsWeb do
+    pipe_through [:api, :bearer]
+    get "/places", PlaceController, :index
+    get "/places/*osm_id", PlaceController, :show
   end
 end
