@@ -104,3 +104,62 @@ async def test_run_events_pk_rejects_duplicate_seq(conn):
             "VALUES ($1, 0, 'assistant_text', '{}'::jsonb)",
             run_id,
         )
+
+
+async def test_users_email_unique_case_insensitive(conn):
+    await conn.execute(
+        "INSERT INTO localfinds.users (email, hashed_password, role)"
+        " VALUES ('a@b.c', 'x', 'steward')"
+    )
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await conn.execute(
+            "INSERT INTO localfinds.users (email, hashed_password) VALUES ('A@B.C', 'y')"
+        )
+
+
+async def test_users_role_check_rejects_bad_value(conn):
+    with pytest.raises(asyncpg.CheckViolationError):
+        await conn.execute(
+            "INSERT INTO localfinds.users (email, hashed_password, role)"
+            " VALUES ('r@b.c', 'x', 'admin')"
+        )
+
+
+async def test_users_role_defaults_to_member(conn):
+    await conn.execute(
+        "INSERT INTO localfinds.users (email, hashed_password) VALUES ('d@b.c', 'x')"
+    )
+    row = await conn.fetchrow("SELECT role FROM localfinds.users WHERE email = 'd@b.c'")
+    assert row["role"] == "member"
+
+
+async def test_users_tokens_cascade_on_user_delete(conn):
+    uid = await conn.fetchval(
+        "INSERT INTO localfinds.users (email, hashed_password) VALUES ('t@b.c', 'x')"
+        " RETURNING id"
+    )
+    await conn.execute(
+        "INSERT INTO localfinds.users_tokens (user_id, token, context)"
+        " VALUES ($1, 'tok', 'session')",
+        uid,
+    )
+    await conn.execute("DELETE FROM localfinds.users WHERE id = $1", uid)
+    assert await conn.fetchval("SELECT count(*) FROM localfinds.users_tokens") == 0
+
+
+async def test_users_tokens_context_token_unique(conn):
+    uid = await conn.fetchval(
+        "INSERT INTO localfinds.users (email, hashed_password) VALUES ('u@b.c', 'x')"
+        " RETURNING id"
+    )
+    await conn.execute(
+        "INSERT INTO localfinds.users_tokens (user_id, token, context)"
+        " VALUES ($1, 'dup', 'session')",
+        uid,
+    )
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await conn.execute(
+            "INSERT INTO localfinds.users_tokens (user_id, token, context)"
+            " VALUES ($1, 'dup', 'session')",
+            uid,
+        )
