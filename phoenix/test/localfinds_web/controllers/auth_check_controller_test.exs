@@ -5,11 +5,15 @@ defmodule LocalfindsWeb.AuthCheckControllerTest do
   alias Localfinds.Accounts
   alias Localfinds.Accounts.UserToken
   alias Localfinds.Repo
+  alias LocalfindsWeb.UserAuth
+
+  @remember_me_cookie "_localfinds_web_user_remember_me"
 
   setup do
     Localfinds.Repo.query!(
       "TRUNCATE localfinds.users_tokens, localfinds.users RESTART IDENTITY CASCADE"
     )
+
     :ok
   end
 
@@ -71,6 +75,32 @@ defmodule LocalfindsWeb.AuthCheckControllerTest do
 
     assert conn.status == 200
     refute conn.resp_cookies["_localfinds_web_user_remember_me"]
+    assert Repo.aggregate(UserToken, :count) == count_before
+  end
+
+  test "remember-me cookie alone (no session) authenticates a steward, read-only", %{conn: conn} do
+    user = create_user!("s@localfinds.me", "steward password 1", "steward")
+
+    login_conn =
+      conn
+      |> Map.replace!(:secret_key_base, LocalfindsWeb.Endpoint.config(:secret_key_base))
+      |> Plug.Test.init_test_session(%{})
+      |> Plug.Conn.fetch_cookies()
+      |> UserAuth.log_in_user(user, %{"remember_me" => "true"})
+
+    %{value: signed_cookie} = login_conn.resp_cookies[@remember_me_cookie]
+    count_before = Repo.aggregate(UserToken, :count)
+
+    check_conn =
+      build_conn()
+      |> Map.replace!(:secret_key_base, LocalfindsWeb.Endpoint.config(:secret_key_base))
+      |> Plug.Test.init_test_session(%{})
+      |> put_req_cookie(@remember_me_cookie, signed_cookie)
+      |> get(~p"/auth/check")
+
+    assert check_conn.status == 200
+    refute get_session(check_conn, :user_token)
+    assert check_conn.resp_cookies == %{}
     assert Repo.aggregate(UserToken, :count) == count_before
   end
 end

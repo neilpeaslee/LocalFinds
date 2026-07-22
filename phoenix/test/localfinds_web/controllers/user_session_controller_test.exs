@@ -63,6 +63,11 @@ defmodule LocalfindsWeb.UserSessionControllerTest do
       conn = post(conn, ~p"/auth/log-in", %{})
       assert redirected_to(conn) == ~p"/auth/log-in"
     end
+
+    test "redirects instead of crashing when the user param is incomplete", %{conn: conn} do
+      conn = post(conn, ~p"/auth/log-in", %{"user" => %{"email" => "no-password@example.com"}})
+      assert redirected_to(conn) == ~p"/auth/log-in"
+    end
   end
 
   describe "DELETE /auth/log-out" do

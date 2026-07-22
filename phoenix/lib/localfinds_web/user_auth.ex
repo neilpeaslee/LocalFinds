@@ -77,19 +77,25 @@ defmodule LocalfindsWeb.UserAuth do
   end
 
   @doc """
-  Authenticates the user by looking into the session, for routes that must
-  stay side-effect-free (e.g. the nginx auth_request gate). Unlike
-  `fetch_current_scope_for_user/2`, this never reissues the session token or
-  mutates the session/cookies — under auth_request any Set-Cookie response is
-  discarded by nginx, so a reissue there would just leak an orphan
-  users_tokens row on every gated write once the token crosses the reissue
-  age.
+  Authenticates the user by looking into the session and, falling back, the
+  signed remember-me cookie — for routes that must stay side-effect-free
+  (e.g. the nginx auth_request gate). Unlike `fetch_current_scope_for_user/2`,
+  this never reissues the session token or mutates the session/cookies —
+  under auth_request any Set-Cookie response is discarded by nginx, so a
+  reissue there would just leak an orphan users_tokens row on every gated
+  write once the token crosses the reissue age. The remember-me fallback
+  matters because the session cookie doesn't survive a browser restart while
+  the 14-day remember-me cookie does — without it, a steward who restarts
+  their browser gets 401s on writes until they visit an /auth/ page and
+  restore the session.
   """
   def fetch_current_scope_for_gate(conn, _opts) do
-    with token when is_binary(token) <- get_session(conn, :user_token),
-         {user, _token_inserted_at} <- Accounts.get_user_by_session_token(token) do
-      assign(conn, :current_scope, Scope.for_user(user))
-    else
+    token =
+      get_session(conn, :user_token) ||
+        fetch_cookies(conn, signed: [@remember_me_cookie]).cookies[@remember_me_cookie]
+
+    case token && Accounts.get_user_by_session_token(token) do
+      {user, _token_inserted_at} -> assign(conn, :current_scope, Scope.for_user(user))
       _ -> assign(conn, :current_scope, Scope.for_user(nil))
     end
   end
