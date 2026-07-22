@@ -15,6 +15,12 @@ defmodule LocalfindsWeb.Endpoint do
     secure: true
   ]
 
+  # Trust X-Forwarded-Proto from nginx so conn.scheme is :https behind the
+  # proxy — otherwise Plug sees :http and won't default `secure: true`
+  # cookies on (session cookie sets it explicitly, but this keeps
+  # conn.scheme itself correct generally).
+  plug Plug.RewriteOn, [:x_forwarded_proto]
+
   socket "/auth/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]]
 

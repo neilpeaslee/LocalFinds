@@ -58,6 +58,13 @@ defmodule LocalfindsWeb.UserSessionControllerTest do
     end
   end
 
+  describe "POST /auth/log-in - malformed params" do
+    test "redirects instead of crashing when the user param is missing", %{conn: conn} do
+      conn = post(conn, ~p"/auth/log-in", %{})
+      assert redirected_to(conn) == ~p"/auth/log-in"
+    end
+  end
+
   describe "DELETE /auth/log-out" do
     test "logs the user out", %{conn: conn, user: user} do
       conn = conn |> log_in_user(user) |> delete(~p"/auth/log-out")

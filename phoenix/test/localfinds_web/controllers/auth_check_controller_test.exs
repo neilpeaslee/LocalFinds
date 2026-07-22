@@ -3,6 +3,8 @@ defmodule LocalfindsWeb.AuthCheckControllerTest do
   import Localfinds.AuthCase, only: [create_user!: 3]
 
   alias Localfinds.Accounts
+  alias Localfinds.Accounts.UserToken
+  alias Localfinds.Repo
 
   setup do
     Localfinds.Repo.query!(
@@ -50,5 +52,25 @@ defmodule LocalfindsWeb.AuthCheckControllerTest do
       |> get(~p"/auth/check")
 
     assert conn.status == 401
+  end
+
+  test "does not insert or reissue a token even when the session token is old", %{conn: conn} do
+    user = create_user!("s@localfinds.me", "steward password 1", "steward")
+    token = Accounts.generate_user_session_token(user)
+
+    old = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+    {1, nil} = Repo.update_all(UserToken, set: [inserted_at: old])
+
+    count_before = Repo.aggregate(UserToken, :count)
+
+    conn =
+      conn
+      |> Plug.Test.init_test_session(%{})
+      |> Plug.Conn.put_session(:user_token, token)
+      |> get(~p"/auth/check")
+
+    assert conn.status == 200
+    refute conn.resp_cookies["_localfinds_web_user_remember_me"]
+    assert Repo.aggregate(UserToken, :count) == count_before
   end
 end

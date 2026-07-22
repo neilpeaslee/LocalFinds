@@ -14,7 +14,8 @@ defmodule LocalfindsWeb.UserAuth do
   @remember_me_options [
     sign: true,
     max_age: @max_cookie_age_in_days * 24 * 60 * 60,
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true
   ]
 
   # How old the session token should be before a new one is issued. When a request is made
@@ -72,6 +73,24 @@ defmodule LocalfindsWeb.UserAuth do
       |> maybe_reissue_user_session_token(user, token_inserted_at)
     else
       nil -> assign(conn, :current_scope, Scope.for_user(nil))
+    end
+  end
+
+  @doc """
+  Authenticates the user by looking into the session, for routes that must
+  stay side-effect-free (e.g. the nginx auth_request gate). Unlike
+  `fetch_current_scope_for_user/2`, this never reissues the session token or
+  mutates the session/cookies — under auth_request any Set-Cookie response is
+  discarded by nginx, so a reissue there would just leak an orphan
+  users_tokens row on every gated write once the token crosses the reissue
+  age.
+  """
+  def fetch_current_scope_for_gate(conn, _opts) do
+    with token when is_binary(token) <- get_session(conn, :user_token),
+         {user, _token_inserted_at} <- Accounts.get_user_by_session_token(token) do
+      assign(conn, :current_scope, Scope.for_user(user))
+    else
+      _ -> assign(conn, :current_scope, Scope.for_user(nil))
     end
   end
 

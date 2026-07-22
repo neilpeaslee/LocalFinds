@@ -25,6 +25,13 @@ defmodule LocalfindsWeb.UserSessionController do
     end
   end
 
+  # Malformed request: no "user" param (or missing email/password within it).
+  defp create(conn, _params, _info) do
+    conn
+    |> put_flash(:error, "Invalid request")
+    |> redirect(to: ~p"/auth/log-in")
+  end
+
   def delete(conn, _params) do
     conn
     |> put_flash(:info, "Logged out successfully.")

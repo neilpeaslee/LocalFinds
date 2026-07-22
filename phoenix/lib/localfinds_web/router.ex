@@ -13,7 +13,7 @@ defmodule LocalfindsWeb.Router do
 
   pipeline :gate do
     plug :fetch_session
-    plug :fetch_current_scope_for_user
+    plug :fetch_current_scope_for_gate
     plug LocalfindsWeb.Plugs.RequireSteward
   end
 
