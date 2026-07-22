@@ -11,6 +11,12 @@ defmodule LocalfindsWeb.Router do
     plug LocalfindsWeb.Plugs.BearerAuth
   end
 
+  pipeline :gate do
+    plug :fetch_session
+    plug :fetch_current_scope_for_user
+    plug LocalfindsWeb.Plugs.RequireSteward
+  end
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -30,6 +36,11 @@ defmodule LocalfindsWeb.Router do
     pipe_through [:api, :bearer]
     get "/places", PlaceController, :index
     get "/places/*osm_id", PlaceController, :show
+  end
+
+  scope "/auth", LocalfindsWeb do
+    pipe_through :gate
+    get "/check", AuthCheckController, :check
   end
 
   scope "/auth", LocalfindsWeb do
