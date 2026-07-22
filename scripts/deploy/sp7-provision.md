@@ -1,6 +1,6 @@
 # SP7 provisioning — one-time, before the first API deploy
 
-All commands run on the box (or in DNS/console) — Neil executes. Idempotent top to bottom.
+All commands run on the box (or in DNS/console) — Neil executes. Idempotent top to bottom, except §3 (see its re-run note).
 
 ## 1. DNS
 A record: `api.localfinds.me` → 52.20.249.147 (the EIP). Wait for `dig +short api.localfinds.me`
@@ -24,6 +24,8 @@ to answer before section 5.
       GRANT USAGE ON SCHEMA public TO localfinds_api;
       GRANT SELECT ON public.osm_places TO localfinds_api;"
     echo "$PW"   # goes into DATABASE_URL below, then forget it
+
+Re-run note: if the role already exists, skip CREATE ROLE and instead run: sudo -u postgres psql -c "ALTER ROLE localfinds_api PASSWORD '$PW'" — the GRANTs below are safely re-runnable.
 
 SELECT on the matview and nothing else: a bug in this app cannot write, let alone touch
 the localfinds schema. (P2 will widen this to the two auth tables — nothing else.)
@@ -82,6 +84,7 @@ the localfinds schema. (P2 will widen this to the two auth tables — nothing el
     echo 'ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart localfinds-api' | \
       sudo tee /etc/sudoers.d/localfinds-api
     sudo chmod 440 /etc/sudoers.d/localfinds-api
+    sudo visudo -cf /etc/sudoers.d/localfinds-api   # must print "parsed OK"
 
 Don't start the service yet — no release is built until the first deploy (Task 8).
 
