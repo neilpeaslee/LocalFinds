@@ -25,6 +25,13 @@ to answer before section 5.
       GRANT SELECT ON public.osm_places TO localfinds_api;"
     echo "$PW"   # goes into DATABASE_URL below, then forget it
 
+    sudo -u postgres psql -d localfinds -c \
+      "ALTER DEFAULT PRIVILEGES FOR ROLE localfinds IN SCHEMA public
+       GRANT SELECT ON TABLES TO localfinds_api;"
+
+Default privileges cover matview recreates: a future migration that drops+recreates
+osm_places (0005 was one) keeps the API's SELECT without a manual re-grant.
+
 Re-run note: if the role already exists, skip CREATE ROLE and instead run: sudo -u postgres psql -c "ALTER ROLE localfinds_api PASSWORD '$PW'" — the GRANTs below are safely re-runnable.
 
 SELECT on the matview and nothing else: a bug in this app cannot write, let alone touch

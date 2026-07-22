@@ -10,6 +10,7 @@ set -euo pipefail
 
 echo "deploy-api: building release on the box"
 remote "${DEPLOY_MIX_PREFIX} cd phoenix && mix local.hex --force --if-missing && \
+  mix local.rebar --force --if-missing && \
   mix deps.get --only prod && MIX_ENV=prod mix release --overwrite"
 
 echo "deploy-api: restarting service"
