@@ -8,12 +8,17 @@ Rollback at any point before step 8: restore the nginx site file from the .bak a
     npm run deploy            # gate → code → migrate; applies 0007
     bash scripts/deploy/deploy-api.sh   # rebuild + restart the Phoenix release
 
+Note: the first build on the box after this change needs one-time egress —
+`mix assets.setup` fetches the esbuild/tailwind binaries, and the heroicons
+dependency does a github fetch. Subsequent builds reuse the cached binaries.
+
 ## 2. Grant the app role write on the two auth tables (on the box)
 
 The Phoenix DATABASE_URL role is read-only (SP7). Find its name and the DB name:
 
     sudo grep DATABASE_URL /etc/localfinds-api.env
     # postgres://<ROLE>:...@127.0.0.1:5432/<DB>
+    # typically ROLE=localfinds_api, DB=localfinds (per sp7-provision.md §3/§4)
 
     sudo -u postgres psql -d <DB> -c "
       GRANT USAGE ON SCHEMA localfinds TO <ROLE>;
@@ -29,11 +34,20 @@ then re-run `npm run deploy:migrate` from dev.
 
 ## 3. Create the steward account (on the box)
 
-    cd <release dir> && sudo ./bin/localfinds eval \
-      'Localfinds.Release.create_user("npeaslee@gmail.com", "<CHOOSE>", "steward")'
+runtime.exs reads DATABASE_URL/BEARER_TOKEN/PHX_HOST/SECRET_KEY_BASE via
+`System.fetch_env!` — those only exist in root-owned `/etc/localfinds-api.env`
+(the systemd EnvironmentFile), so `eval` must source that file first:
+
+    sudo bash -c 'set -a; . /etc/localfinds-api.env; set +a; \
+      <DEPLOY_PATH>/phoenix/_build/prod/rel/localfinds/bin/localfinds eval \
+      "Localfinds.Release.create_user(\"npeaslee@gmail.com\", \"<CHOOSE>\", \"steward\")"'
 
 Expected output: `created npeaslee@gmail.com (steward)`.
 This doubles as the write-grant smoke test — it inserts as the app role.
+
+Note: the chosen password appears in shell history and process argv this way
+(single-user box, accepted risk) — prefix the command with a space to skip
+history if HISTCONTROL=ignorespace/ignoreboth is set, or `history -d` it after.
 
 ## 4. nginx: add the Phoenix locations (sudo)
 
@@ -86,6 +100,11 @@ paths proxy identically):
 
 Also DELETE the `location = /login` block (the basic-auth priming page — obsolete).
 
+Before reloading, confirm no other gated location was missed — grep for any
+remaining `limit_except`/`auth_basic` blocks the edit above should have removed:
+
+    grep -n limit_except /etc/nginx/sites-available/localfinds
+
     sudo nginx -t && sudo systemctl reload nginx
 
 ## 6. Verify
@@ -98,8 +117,9 @@ UI (thumbs a find) → works. Log out (or clear cookies) → the same write fail
 
 Member negative test:
 
-    sudo ./bin/localfinds eval \
-      'Localfinds.Release.create_user("member-test@localfinds.me", "<CHOOSE2>", "member")'
+    sudo bash -c 'set -a; . /etc/localfinds-api.env; set +a; \
+      <DEPLOY_PATH>/phoenix/_build/prod/rel/localfinds/bin/localfinds eval \
+      "Localfinds.Release.create_user(\"member-test@localfinds.me\", \"<CHOOSE2>\", \"member\")"'
 
 Incognito window: log in as member-test → any UI write must FAIL (401).
 
@@ -115,6 +135,6 @@ Incognito window: log in as member-test → any UI write must FAIL (401).
 After a day of normal use — agents ran, feed writes worked, no 401 surprises in
 `journalctl -u localfinds-api` / nginx error log:
 
-    rm /var/www/localfinds-auth/.htpasswd-localfinds
-    rmdir --ignore-fail-on-non-empty /var/www/localfinds-auth
+    sudo rm /var/www/localfinds-auth/.htpasswd-localfinds
+    sudo rmdir --ignore-fail-on-non-empty /var/www/localfinds-auth
     sudo rm /etc/nginx/sites-available/localfinds.bak-p2

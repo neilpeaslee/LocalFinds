@@ -11,7 +11,9 @@ set -euo pipefail
 echo "deploy-api: building release on the box"
 remote "${DEPLOY_MIX_PREFIX} cd phoenix && mix local.hex --force --if-missing && \
   mix local.rebar --force --if-missing && \
-  mix deps.get --only prod && MIX_ENV=prod mix release --overwrite"
+  mix deps.get --only prod && \
+  MIX_ENV=prod mix assets.setup && MIX_ENV=prod mix assets.deploy && \
+  MIX_ENV=prod mix release --overwrite"
 
 echo "deploy-api: restarting service"
 if [ "$DRY_RUN" = 1 ]; then
@@ -25,6 +27,7 @@ if [ "$DRY_RUN" != 1 ]; then
   sleep 3
   curl -sS -o /dev/null -w "health %{http_code}\n" "https://api.localfinds.me/health"
   curl -sS -o /dev/null -w "noauth %{http_code}\n" "https://api.localfinds.me/osm/places?town=Rockland"
+  curl -sS -o /dev/null -w "login %{http_code}\n" "https://api.localfinds.me/auth/log-in"
 fi
 
 echo "deploy-api: done"
