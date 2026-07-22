@@ -1,5 +1,8 @@
 import Config
 
+# Only in tests, remove the complexity from the password hashing algorithm
+config :argon2_elixir, t_cost: 1, m_cost: 8
+
 config :localfinds, Localfinds.Repo,
   url: "postgres://localfinds:localfinds@localhost:5434/localfinds_test",
   pool_size: 10

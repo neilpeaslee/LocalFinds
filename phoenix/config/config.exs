@@ -7,6 +7,17 @@
 # General application configuration
 import Config
 
+config :localfinds, :scopes,
+  user: [
+    default: true,
+    module: Localfinds.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:user, :id],
+    schema_key: :user_id,
+    schema_type: :id,
+    schema_table: :users
+  ]
+
 config :localfinds,
   ecto_repos: [Localfinds.Repo],
   generators: [timestamp_type: :utc_datetime]
