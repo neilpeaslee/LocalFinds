@@ -22,7 +22,10 @@ config :localfinds, LocalfindsWeb.Endpoint,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "localfinds-phoenix-dev-only-not-a-real-secret-do-not-use-in-prod!",
-  watchers: []
+  watchers: [
+    esbuild: {Esbuild, :install_and_run, [:localfinds, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:localfinds, ~w(--watch)]}
+  ]
 
 # ## SSL Support
 #
@@ -46,6 +49,19 @@ config :localfinds, LocalfindsWeb.Endpoint,
 # If desired, both `http:` and `https:` keys can be
 # configured to run both http and https servers on
 # different ports.
+
+# Reload browser tabs when matching files change.
+config :localfinds, LocalfindsWeb.Endpoint,
+  live_reload: [
+    web_console_logger: true,
+    patterns: [
+      # Static assets, except user uploads
+      ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
+      # Router, Controllers, LiveViews and LiveComponents
+      ~r"lib/localfinds_web/router\.ex$",
+      ~r"lib/localfinds_web/(controllers|live|components)/.*\.(ex|heex)$"
+    ]
+  ]
 
 # Enable dev routes for dashboard and mailbox
 config :localfinds, dev_routes: true

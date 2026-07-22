@@ -33,5 +33,6 @@ if config_env() == :prod do
   config :localfinds, LocalfindsWeb.Endpoint,
     url: [host: System.fetch_env!("PHX_HOST"), port: 443, scheme: "https"],
     http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
-    secret_key_base: System.fetch_env!("SECRET_KEY_BASE")
+    secret_key_base: System.fetch_env!("SECRET_KEY_BASE"),
+    check_origin: ["https://localfinds.me", "https://api.localfinds.me"]
 end

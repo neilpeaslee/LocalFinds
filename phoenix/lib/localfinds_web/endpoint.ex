@@ -4,16 +4,28 @@ defmodule LocalfindsWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  #
+  # secure: true always: browsers exempt http://localhost in dev; behind
+  # nginx in prod the scheme is https.
   @session_options [
     store: :cookie,
     key: "_localfinds_key",
-    signing_salt: "cEA1sTR7",
-    same_site: "Lax"
+    signing_salt: "tb6TKHK2",
+    same_site: "Lax",
+    secure: true
   ]
 
-  # socket "/live", Phoenix.LiveView.Socket,
-  #   websocket: [connect_info: [session: @session_options]],
-  #   longpoll: [connect_info: [session: @session_options]]
+  socket "/auth/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [session: @session_options]]
+
+  # Serve LiveView/HTML assets at /auth/assets so nginx routing to the
+  # Phoenix app stays a single /auth/ location block.
+  plug Plug.Static,
+    at: "/auth/assets",
+    from: {:localfinds, "priv/static/assets"},
+    gzip: false
+
+  plug Plug.Session, @session_options
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -44,6 +56,5 @@ defmodule LocalfindsWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug Plug.Session, @session_options
   plug LocalfindsWeb.Router
 end
