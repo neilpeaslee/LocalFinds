@@ -59,7 +59,7 @@ defmodule Localfinds.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup"],
+      setup: ["deps.get"],
       test: ["cmd bash scripts/prepare-test-db.sh", "test"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]

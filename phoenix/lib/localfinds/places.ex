@@ -25,7 +25,17 @@ defmodule Localfinds.Places do
 
     {:ok, places}
   rescue
-    DBConnection.ConnectionError -> {:error, :database_unavailable}
+    DBConnection.ConnectionError ->
+      {:error, :database_unavailable}
+
+    e in Postgrex.Error ->
+      case e.postgres do
+        %{code: code} when code in [:admin_shutdown, :crash_shutdown, :cannot_connect_now] ->
+          {:error, :database_unavailable}
+
+        _ ->
+          reraise e, __STACKTRACE__
+      end
   end
 
   @spec get_place(String.t()) ::
@@ -40,7 +50,17 @@ defmodule Localfinds.Places do
       {:error, :not_found}
     end
   rescue
-    DBConnection.ConnectionError -> {:error, :database_unavailable}
+    DBConnection.ConnectionError ->
+      {:error, :database_unavailable}
+
+    e in Postgrex.Error ->
+      case e.postgres do
+        %{code: code} when code in [:admin_shutdown, :crash_shutdown, :cannot_connect_now] ->
+          {:error, :database_unavailable}
+
+        _ ->
+          reraise e, __STACKTRACE__
+      end
   end
 
   defp base do
