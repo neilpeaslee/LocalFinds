@@ -28,8 +28,12 @@ defmodule Localfinds.Places.Params do
   defp area(%{"town" => _, "bbox" => _}),
     do: {:error, "provide exactly one of town or bbox"}
 
-  defp area(%{"town" => town}) when is_binary(town) and town != "",
-    do: {:ok, %__MODULE__{town: town}}
+  defp area(%{"town" => town}) when is_binary(town) do
+    case String.trim(town) do
+      "" -> {:error, "provide exactly one of town or bbox"}
+      trimmed -> {:ok, %__MODULE__{town: trimmed}}
+    end
+  end
 
   defp area(%{"bbox" => bbox}) when is_binary(bbox) do
     with [s, w, n, e] <- parse_floats(bbox),

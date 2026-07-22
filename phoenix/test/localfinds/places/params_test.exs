@@ -29,6 +29,14 @@ defmodule Localfinds.Places.ParamsTest do
     assert {:error, _} = Params.validate(%{"town" => ""})
   end
 
+  test "whitespace-only town is a 400" do
+    assert {:error, _} = Params.validate(%{"town" => "   "})
+  end
+
+  test "town is stored trimmed" do
+    assert {:ok, %Params{town: "Rockland"}} = Params.validate(%{"town" => "  Rockland  "})
+  end
+
   # -- bbox malformations --------------------------------------------------
   for bad <- [
         "44,-69,45",            # 3 numbers
