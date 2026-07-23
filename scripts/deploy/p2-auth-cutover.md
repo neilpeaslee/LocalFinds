@@ -130,11 +130,13 @@ Incognito window: log in as member-test → any UI write must FAIL (401).
   `/var/www/localfinds-auth` bootstrap step; add the create_user/set_password recipes.
 - README: replace any mention of the shared write password with the login flow.
 
-## 8. T+1 (not same-day): retire the basic-auth artifacts
+## 8. T+1 (not same-day): retire the basic-auth artifacts — DONE 2026-07-23
 
-After a day of normal use — agents ran, feed writes worked, no 401 surprises in
-`journalctl -u localfinds-api` / nginx error log:
+Executed **2026-07-23** after a clean day of use — agents ran, feed writes worked, no 401
+surprises in `journalctl -u localfinds-api` / nginx error log. The commands run:
 
     sudo rm /var/www/localfinds-auth/.htpasswd-localfinds
     sudo rmdir --ignore-fail-on-non-empty /var/www/localfinds-auth
     sudo rm /etc/nginx/sites-available/localfinds.me.bak-p2
+
+Basic auth is now fully retired (config path *and* on-disk artifacts). P2 is closed.
