@@ -22,7 +22,7 @@ develop it, and deploy it. Where the project is headed lives in
 
 - **apps/web** — Next.js UI: dashboard with the region map (`/`), the feed
   (`/feed`), places directory (`/places`), source registry (`/sources`), agent
-  profiles + run history (`/agents`).
+  profiles + run history (`/agents`, steward-only).
 - **packages/agents** — Claude Agent SDK agents. Four run sequentially on a
   schedule: **scout** (web-searches for new finds), **source-keeper** (maintains
   the source registry + per-site notes), **prospector** (discovery-only local
@@ -120,9 +120,10 @@ surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
 ## Deploy
 
-The app is served from a single host behind nginx (public reads; writes require
-a steward login at `/auth/log-in` — Phoenix sessions checked via nginx
-`auth_request`), reading the live Postgres database directly. Deploys run from this repo root on a clean tree — no sudo.
+The app is served from a single host behind nginx (public reads except the
+steward-only `/agents` admin view; writes require a steward login at
+`/auth/log-in` — Phoenix sessions checked via nginx `auth_request`), reading the
+live Postgres database directly. Deploys run from this repo root on a clean tree — no sudo.
 The real infra values (host, path, process name) live in the gitignored
 `data/config/deploy.env`; the `deploy-localfinds` skill documents them.
 
@@ -133,8 +134,8 @@ npm run deploy -- --dry-run    # preview every remote action, change nothing
 
 Composable stages: `deploy:gate` (blocks unless on `main`, tree clean, tests +
 `tsc` pass), `deploy:code` (ships `main` via git — push to the box's bare repo,
-then fetch + reset + clean in its checkout — rsyncs the gitignored config reals,
-installs if the lockfile changed, builds), `deploy:migrate` (dumps the prod
+then fetch + reset + clean in its checkout — rsyncs the gitignored config reals
+and agent interest profiles, installs if the lockfile changed, builds), `deploy:migrate` (dumps the prod
 Postgres DB, then applies pending `db/migrations/*.sql` via the tracked runner,
 then reloads pm2 and verifies GET=200 / POST=401).
 
