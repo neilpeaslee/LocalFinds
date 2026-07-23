@@ -7,6 +7,7 @@ import {
   formatCategoryPriorities,
   openRunLog,
   projectMessage,
+  readAgentsConfig,
   readCategoryConfig,
   recordFetch,
   readRegionConfig,
@@ -168,9 +169,9 @@ export function statusFromResult(
   return "error";
 }
 
-/** CLI flag wins, then the agent's own default, then the historical $1 cap. */
+/** CLI flag wins, then the agent's own default, then the configured budget. */
 export function effectiveMaxBudgetUsd(def: AgentDefinition, opts: RunOptions): number {
-  return opts.maxBudgetUsd ?? def.defaultMaxBudgetUsd ?? 1.0;
+  return opts.maxBudgetUsd ?? def.defaultMaxBudgetUsd ?? readAgentsConfig().maxBudgetUsd;
 }
 
 export async function runAgent(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { readAgentsConfig } from "@localfinds/db";
 import { ensureWorkspace, statusFromResult, workspaceSystemNote, effectiveMaxBudgetUsd, type AgentDefinition, type RunOptions } from "./run-agent";
 
 describe("ensureWorkspace(dir)", () => {
@@ -70,9 +71,9 @@ describe("effectiveMaxBudgetUsd", () => {
   const def = { defaultMaxBudgetUsd: 2.0 } as AgentDefinition;
   const bare = {} as AgentDefinition;
 
-  it("prefers the CLI option, then the agent default, then 1.0", () => {
+  it("prefers the CLI option, then the agent default, then the configured budget", () => {
     expect(effectiveMaxBudgetUsd(def, { maxBudgetUsd: 0.5 } as RunOptions)).toBe(0.5);
     expect(effectiveMaxBudgetUsd(def, {} as RunOptions)).toBe(2.0);
-    expect(effectiveMaxBudgetUsd(bare, {} as RunOptions)).toBe(1.0);
+    expect(effectiveMaxBudgetUsd(bare, {} as RunOptions)).toBe(readAgentsConfig().maxBudgetUsd);
   });
 });

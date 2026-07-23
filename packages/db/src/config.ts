@@ -480,3 +480,37 @@ export function formatCategoryPriorities(cfg: CategoryConfig): string {
     ...lines,
   ].join("\n");
 }
+
+// --- Agent runtime config (data/config/agents.json) ---
+// App-manageable knobs for agent runs — currently just the per-run budget cap. A
+// future app-settings UI edits data/config/agents.json (a real file overrides the
+// committed .example). Run-time only, NOT schema. A malformed source falls through
+// to the next one so an unattended cron run never dies on a bad settings edit.
+export interface AgentsConfig {
+  maxBudgetUsd: number;
+}
+
+export function agentsConfigPath(): string {
+  return path.join(dataDir(), "config", "agents.json");
+}
+
+// Parse one source; null on malformed/invalid so the caller can try the next
+// (real agents.json -> .example -> built-in default).
+export function tryParseAgentsConfig(text: string): AgentsConfig | null {
+  try {
+    const n = Number((JSON.parse(text) as { maxBudgetUsd?: unknown })?.maxBudgetUsd);
+    if (Number.isFinite(n) && n > 0) return { maxBudgetUsd: n };
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+export function readAgentsConfig(): AgentsConfig {
+  for (const file of [agentsConfigPath(), `${agentsConfigPath()}.example`]) {
+    if (!fs.existsSync(file)) continue;
+    const cfg = tryParseAgentsConfig(fs.readFileSync(file, "utf8"));
+    if (cfg) return cfg;
+  }
+  return { maxBudgetUsd: 1.0 };
+}
