@@ -508,9 +508,12 @@ export function tryParseAgentsConfig(text: string): AgentsConfig | null {
 
 export function readAgentsConfig(): AgentsConfig {
   for (const file of [agentsConfigPath(), `${agentsConfigPath()}.example`]) {
-    if (!fs.existsSync(file)) continue;
-    const cfg = tryParseAgentsConfig(fs.readFileSync(file, "utf8"));
-    if (cfg) return cfg;
+    try {
+      const cfg = tryParseAgentsConfig(fs.readFileSync(file, "utf8"));
+      if (cfg) return cfg;
+    } catch {
+      // missing / unreadable / not a file — try the next source
+    }
   }
   return { maxBudgetUsd: 1.0 };
 }

@@ -53,4 +53,11 @@ describe("readAgentsConfig source precedence", () => {
     process.env.LOCALFINDS_DATA_DIR = tmpDataDir({});
     expect(readAgentsConfig().maxBudgetUsd).toBe(1.0);
   });
+  it("falls through to the built-in default when both sources are invalid", () => {
+    process.env.LOCALFINDS_DATA_DIR = tmpDataDir({
+      "agents.json": "{oops",
+      "agents.json.example": "{also bad",
+    });
+    expect(readAgentsConfig().maxBudgetUsd).toBe(1.0);
+  });
 });

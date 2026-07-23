@@ -28,6 +28,7 @@ to `~/.pgpass`, `chmod 600 ~/.pgpass`, and drop `:<password>` from the DSN.)
     cd /var/www/localfinds
     npx tsx --version                                                    # a version, not "not found"
     node -e "require.resolve('@anthropic-ai/claude-agent-sdk'); console.log('sdk ok')"
+    test -f data/config/region.md && echo "region.md present" || echo "MISSING data/config/region.md — agents will throw"
 
 If `tsx` is missing, the deploy pruned devDependencies — run `npm ci` in `/var/www/localfinds`
 (or promote `tsx` to a dependency in package.json and redeploy).
