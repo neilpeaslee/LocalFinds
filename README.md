@@ -47,7 +47,9 @@ develop it, and deploy it. Where the project is headed lives in
 
 ## Local development
 
-Run the app and agents against a local Postgres/PostGIS seeded from live:
+Run the app and agents against a local Postgres/PostGIS seeded from live.
+
+### First-time setup
 
 1. `docker compose up -d` — starts PostGIS on `localhost:5434`.
 2. `cp .env.local.example .env` and copy the same `LOCALFINDS_DATABASE_URL`
@@ -57,6 +59,15 @@ Run the app and agents against a local Postgres/PostGIS seeded from live:
 5. `npm run db:load` — rebuilds the local DB from the latest snapshot.
 6. `npm run dev` (web) and/or `npm run agent <name> -- ...` (agents) — both
    now hit `localhost:5434`.
+
+### Subsequent startups
+
+Once `.env` and a local snapshot exist, each session just needs:
+
+1. `docker compose up -d` — start PostGIS (skips if it's already up).
+2. `bash scripts/db-tunnel.sh` — reopen the tunnel to live (needed to refresh
+   dev data with `db:pull`/`db:load`).
+3. `npm run dev` (web) and/or `npm run agent <name> -- ...` (agents).
 
 Re-run `db:pull` + `db:load` anytime to refresh dev data. The OSM directory is
 a frozen snapshot (no planet import locally); local `save_place` writes work and
