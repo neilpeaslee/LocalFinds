@@ -51,9 +51,9 @@ history if HISTCONTROL=ignorespace/ignoreboth is set, or `history -d` it after.
 
 ## 4. nginx: add the Phoenix locations (sudo)
 
-    sudo cp /etc/nginx/sites-available/localfinds /etc/nginx/sites-available/localfinds.bak-p2
+    sudo cp /etc/nginx/sites-available/localfinds.me /etc/nginx/sites-available/localfinds.me.bak-p2
 
-Edit `/etc/nginx/sites-available/localfinds`, in the `localfinds.me` server block.
+Edit `/etc/nginx/sites-available/localfinds.me`, in the `localfinds.me` server block.
 Add alongside the existing locations:
 
     # Phoenix auth surface: pages, assets, LiveView socket — all under /auth/
@@ -103,7 +103,7 @@ Also DELETE the `location = /login` block (the basic-auth priming page — obsol
 Before reloading, confirm no other gated location was missed — grep for any
 remaining `limit_except`/`auth_basic` blocks the edit above should have removed:
 
-    grep -n limit_except /etc/nginx/sites-available/localfinds
+    grep -n limit_except /etc/nginx/sites-available/localfinds.me
 
     sudo nginx -t && sudo systemctl reload nginx
 
@@ -137,4 +137,4 @@ After a day of normal use — agents ran, feed writes worked, no 401 surprises i
 
     sudo rm /var/www/localfinds-auth/.htpasswd-localfinds
     sudo rmdir --ignore-fail-on-non-empty /var/www/localfinds-auth
-    sudo rm /etc/nginx/sites-available/localfinds.bak-p2
+    sudo rm /etc/nginx/sites-available/localfinds.me.bak-p2

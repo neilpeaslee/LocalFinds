@@ -109,8 +109,9 @@ surfaced via Server-Sent Events and a per-run detail page (`/agents/runs/<id>`).
 
 ## Deploy
 
-The app is served from a single host behind nginx (public reads, auth-gated
-writes), reading the live Postgres database directly. Deploys run from this repo root on a clean tree — no sudo.
+The app is served from a single host behind nginx (public reads; writes require
+a steward login at `/auth/log-in` — Phoenix sessions checked via nginx
+`auth_request`), reading the live Postgres database directly. Deploys run from this repo root on a clean tree — no sudo.
 The real infra values (host, path, process name) live in the gitignored
 `data/config/deploy.env`; the `deploy-localfinds` skill documents them.
 
