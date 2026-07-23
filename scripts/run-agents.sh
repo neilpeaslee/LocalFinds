@@ -2,11 +2,14 @@
 # Cron entrypoint: runs the full agent roster sequentially and appends to
 # data/agents/cron.log. The CLI loads .env itself (ANTHROPIC_API_KEY etc.).
 #
-# Install (3 runs/day at 7:00, 12:00, 18:00) with `crontab -e`:
-#   0 7,12,18 * * * /home/neil/Projects/LocalFinds/scripts/run-agents.sh
+# Install on the box (1 run/day at 07:00) with `crontab -e`:
+#   0 7 * * * PATH=<node-bin-dir>:/usr/local/bin:/usr/bin:/bin /var/www/localfinds/scripts/run-agents.sh
+# cron's PATH is minimal; <node-bin-dir> is `dirname "$(command -v node)"` on the box.
+# Full box setup: scripts/deploy/agents-on-box-provision.md. Dev uses the same script.
 #
-# Don't enable the schedule until data/config/region.md holds your real
-# region and .env holds a real ANTHROPIC_API_KEY.
+# Per-run budget comes from data/config/agents.json (maxBudgetUsd) — no flag here.
+# Don't enable the schedule until data/config/region.md holds a real region and the
+# box .env holds a real ANTHROPIC_API_KEY + a write LOCALFINDS_DATABASE_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
