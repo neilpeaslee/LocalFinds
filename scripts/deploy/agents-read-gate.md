@@ -47,7 +47,9 @@ proxies identically to the rest of the Next app on `127.0.0.1:3001`):
 
 ## 3. Sanity-check, test, reload (sudo)
 
-Confirm no pre-existing `/agents` or `/api` location collides, then test + reload:
+The grep runs after §2's edit, so it should return **exactly the three lines you just added**
+(`location /agents`, `location /api/runs/`, `location @login`). Any additional match is a
+pre-existing `/agents` or `/api` block that would collide — resolve it before reloading.
 
     grep -n "location \(/agents\|/api\|@login\)" /etc/nginx/sites-available/localfinds.me
     sudo nginx -t && sudo systemctl reload nginx
@@ -62,6 +64,7 @@ Logged out (no cookie):
 
     curl -sS -o /dev/null -w "%{http_code}\n"    https://localfinds.me/agents                          # 302
     curl -sS -o /dev/null -w "%{redirect_url}\n" https://localfinds.me/agents                          # …/auth/log-in
+    curl -sS -o /dev/null -w "%{http_code}\n"    https://localfinds.me/agents/runs/x                    # 302 (nested route gated by prefix)
     curl -sS -o /dev/null -w "%{http_code}\n"    https://localfinds.me/api/runs/x/stream               # 401
     curl -sS -o /dev/null -w "%{http_code}\n"    https://localfinds.me/                                # 200
     curl -sS -o /dev/null -w "%{http_code}\n"    https://localfinds.me/feed                            # 200
@@ -84,4 +87,9 @@ Restore the backup and reload:
 
 Rolling back re-exposes `/agents` as a public GET, so the already-published profiles become
 world-readable again. Roll back only briefly; if it must persist, also remove the published
-profiles on the box: `rm "$DEPLOY_PATH"/data/agents/*/profile.md`.
+profiles from the app checkout on the box. `$DEPLOY_PATH` is a dev-side variable (unset in a box
+shell), so `cd` into the checkout dir first — it is the `DEPLOY_PATH` value in
+`scripts/deploy/deploy.env`:
+
+    cd <box app checkout>   # = DEPLOY_PATH from scripts/deploy/deploy.env
+    rm data/agents/*/profile.md
