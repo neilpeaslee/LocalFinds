@@ -48,6 +48,22 @@ else
   rsync -az "${CONFIG_REALS[@]}" "$DEPLOY_HOST:$DEPLOY_PATH/data/config/"
 fi
 
+echo "deploy-code: rsync agent interest profiles (gitignored PII -> box, behind the /agents steward gate)"
+# profile.md files live in per-agent subdirs, so -R (relative) reconstructs
+# data/agents/<name>/profile.md under $DEPLOY_PATH. nullglob so a no-profile state
+# expands to nothing (not a literal glob); git clean -e data (above) leaves them
+# in place on later deploys.
+shopt -s nullglob
+PROFILE_REALS=(data/agents/*/profile.md)
+shopt -u nullglob
+if [ ${#PROFILE_REALS[@]} -eq 0 ]; then
+  echo "deploy-code: no agent profiles to publish (skipping)"
+elif [ "$DRY_RUN" = 1 ]; then
+  echo "DRY rsync> ${PROFILE_REALS[*]} -> $DEPLOY_HOST:$DEPLOY_PATH/ (relative)"
+else
+  rsync -azR "${PROFILE_REALS[@]}" "$DEPLOY_HOST:$DEPLOY_PATH/"
+fi
+
 if [ "$LOCAL_LOCK" != "$REMOTE_LOCK" ]; then
   echo "deploy-code: package-lock changed — npm ci"
   remote "npm ci"
