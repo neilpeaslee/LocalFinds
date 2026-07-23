@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
+import { agentSpawnEnv } from "@/lib/agent-spawn-env";
 
 // How long to wait for the spawned CLI to register its `running` row before
 // returning. The loop breaks as soon as the row appears, so this only caps the
@@ -46,7 +47,7 @@ export async function triggerRun(target: string): Promise<void> {
     cwd: repoRoot,
     detached: true,
     stdio: ["ignore", logFd, logFd],
-    env: process.env,
+    env: agentSpawnEnv(process.env),
   });
   child.unref();
   fs.closeSync(logFd);
