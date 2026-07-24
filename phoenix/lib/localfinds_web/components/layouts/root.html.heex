@@ -38,21 +38,31 @@
       })();
     </script>
   </head>
-  <body>
-    <ul class="menu menu-horizontal w-full relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end">
-      <%= if @current_scope do %>
-        <li>
-          {@current_scope.user.email}
-        </li>
-        <li>
-          <.link href={~p"/auth/log-out"} method="delete">Log out</.link>
-        </li>
-      <% else %>
-        <li>
-          <.link href={~p"/auth/log-in"}>Log in</.link>
-        </li>
-      <% end %>
-    </ul>
-    {@inner_content}
+  <body class="min-h-screen bg-stone-50 text-stone-900 antialiased">
+    <header class="border-b border-stone-200 bg-white">
+      <div class="mx-auto flex max-w-3xl items-baseline justify-between px-4 py-4">
+        <h1 class="text-lg font-semibold tracking-tight">
+          <a href="/">LocalFinds</a>
+        </h1>
+        <nav class="flex items-center gap-4 text-sm text-stone-600">
+          <a href="/feed" class="hover:text-stone-900">Feed</a>
+          <a href="/sources" class="hover:text-stone-900">Sources</a>
+          <a href="/places" class="hover:text-stone-900">Places</a>
+          <a href="/agents" class="hover:text-stone-900">Agents</a>
+          <.link
+            :if={@current_scope}
+            href={~p"/auth/log-out"}
+            method="delete"
+            class="hover:text-stone-900"
+          >
+            Log out
+          </.link>
+          <.link :if={!@current_scope} href={~p"/auth/log-in"} class="hover:text-stone-900">
+            Log in
+          </.link>
+        </nav>
+      </div>
+    </header>
+    <main class="mx-auto max-w-3xl px-4 py-6">{@inner_content}</main>
   </body>
 </html>
