@@ -32,6 +32,15 @@ defmodule LocalfindsWeb.Router do
     get "/health", HealthController, :show
   end
 
+  scope "/", LocalfindsWeb do
+    pipe_through :browser
+
+    live_session :app,
+      on_mount: [{LocalfindsWeb.UserAuth, :mount_current_scope}] do
+      live "/sources", SourcesLive.Index, :index
+    end
+  end
+
   scope "/osm", LocalfindsWeb do
     pipe_through [:api, :bearer]
     get "/places", PlaceController, :index
