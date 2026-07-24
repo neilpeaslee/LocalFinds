@@ -148,23 +148,23 @@ defmodule LocalfindsWeb.SourcesLive.Index do
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-stone-200 text-xs text-stone-500">
-              <th scope="col" class="px-3 py-2 text-left font-medium">
+              <th scope="col" class="px-3 py-2 text-left font-medium" aria-sort={aria_sort(@sort, @dir, :name)}>
                 <.link patch={header_patch(@state, :name)} class="inline-flex items-center gap-1 hover:text-stone-900">
                   Name <span :if={@sort == :name} aria-hidden>{arrow(@dir)}</span>
                 </.link>
               </th>
               <th scope="col" class="px-3 py-2 text-left font-medium">Status</th>
-              <th scope="col" class="px-3 py-2 text-right font-medium">
+              <th scope="col" class="px-3 py-2 text-right font-medium" aria-sort={aria_sort(@sort, @dir, :finds)}>
                 <.link patch={header_patch(@state, :finds)} class="inline-flex items-center gap-1 hover:text-stone-900">
                   Finds <span :if={@sort == :finds} aria-hidden>{arrow(@dir)}</span>
                 </.link>
               </th>
-              <th scope="col" class="px-3 py-2 text-right font-medium">
+              <th scope="col" class="px-3 py-2 text-right font-medium" aria-sort={aria_sort(@sort, @dir, :quality)}>
                 <.link patch={header_patch(@state, :quality)} class="inline-flex items-center gap-1 hover:text-stone-900">
                   Quality <span :if={@sort == :quality} aria-hidden>{arrow(@dir)}</span>
                 </.link>
               </th>
-              <th scope="col" class="px-3 py-2 text-right font-medium">
+              <th scope="col" class="px-3 py-2 text-right font-medium" aria-sort={aria_sort(@sort, @dir, :checked)}>
                 <.link patch={header_patch(@state, :checked)} class="inline-flex items-center gap-1 hover:text-stone-900">
                   Last checked <span :if={@sort == :checked} aria-hidden>{arrow(@dir)}</span>
                 </.link>
@@ -183,6 +183,7 @@ defmodule LocalfindsWeb.SourcesLive.Index do
                   rel="noopener noreferrer"
                   class="ml-1.5 text-xs text-blue-700 hover:underline"
                   title={s.url}
+                  aria-label={"Visit #{s.name || s.url} (opens in a new tab)"}
                 >
                   ↗
                 </a>
@@ -216,6 +217,10 @@ defmodule LocalfindsWeb.SourcesLive.Index do
 
   defp arrow(:asc), do: "▲"
   defp arrow(:desc), do: "▼"
+
+  defp aria_sort(sort, _dir, key) when sort != key, do: "none"
+  defp aria_sort(_sort, :asc, _key), do: "ascending"
+  defp aria_sort(_sort, :desc, _key), do: "descending"
 
   defp summary_line(summary) do
     parts =
