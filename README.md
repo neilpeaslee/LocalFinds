@@ -103,16 +103,16 @@ import (`planet_osm_*`), refreshed daily — there is no crawl step. Agents read
 it as the local place catalog; the concierge and prospector write new or
 annotated places back through the database.
 
-Schedule with cron once region + API key are real (see the comment in
-`scripts/run-agents.sh`):
+In production the roster runs **on the box** on a daily cron (`0 7 * * *` →
+`scripts/run-agents.sh`), and the `/agents` trigger buttons run agents on the box
+on demand — both read the box's `.env` (`ANTHROPIC_API_KEY` + a write DB DSN). The
+one-time box setup is `scripts/deploy/agents-on-box-provision.md`. The commands
+above run the same agents locally on your dev machine.
 
-```
-0 7,12,18 * * * /home/neil/Projects/LocalFinds/scripts/run-agents.sh
-```
-
-Budget guardrails: per-agent `maxTurns`, `maxBudgetUsd` ($1/run default),
-prompt-level search caps. Per-run cost is logged to the `runs` table and
-totaled on `/agents`.
+Budget guardrails: per-agent `maxTurns`, prompt-level search caps, and a per-run
+`maxBudgetUsd` cap read from `data/config/agents.json` (the committed `.example`
+is $0.50), overridable with `--max-budget-usd` or a per-agent default. Per-run
+cost is logged to the `runs` table and totaled on `/agents`.
 
 Watch a run live — or read any past run's full transcript — on `/agents`: each
 run streams a structured event log into the `localfinds.run_events` table (Postgres),
@@ -163,7 +163,8 @@ cp data/config/towns.json.example data/config/towns.json  # name + bbox per town
 npm run boundaries:fetch                                  # → town-boundaries.json
 ```
 
-`categories.json` (search-priority tiers) and `map-categories.json` (map themes)
-are optional — copy those `.example`s only to customize ranking or map colors.
-Each agent's `profile.md` bootstraps from its `.example` on first run and is
-yours to edit anytime.
+`categories.json` (search-priority tiers), `map-categories.json` (map themes),
+and `agents.json` (the per-run `maxBudgetUsd` cap) are optional — copy those
+`.example`s only to customize ranking, map colors, or the run budget. Each
+agent's `profile.md` bootstraps from its `.example` on first run and is yours to
+edit anytime.
