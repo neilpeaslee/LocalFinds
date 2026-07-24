@@ -21,13 +21,12 @@ defmodule LocalfindsWeb.Endpoint do
   # conn.scheme itself correct generally).
   plug Plug.RewriteOn, [:x_forwarded_proto]
 
-  socket "/auth/live", Phoenix.LiveView.Socket,
+  socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]]
 
-  # Serve LiveView/HTML assets at /auth/assets so nginx routing to the
-  # Phoenix app stays a single /auth/ location block.
+  # Serve LiveView/HTML assets at /assets (nginx routes /assets to Phoenix).
   plug Plug.Static,
-    at: "/auth/assets",
+    at: "/assets",
     from: {:localfinds, "priv/static/assets"},
     gzip: false
 
