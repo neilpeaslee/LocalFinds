@@ -70,19 +70,13 @@ defmodule LocalfindsWeb.SourcesLive.Show do
   defp short_date(nil), do: "—"
   defp short_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%m/%d/%Y")
 
-  # Decimal round-half-even, not `:erlang.float_to_binary/2` (which rounds
-  # halves away from zero): 4.25 must render "4.2", and float_to_binary gives
-  # "4.3" for that input.
-  defp format_quality(score) do
-    score
-    |> Decimal.from_float()
-    |> Decimal.round(1, :half_even)
-    |> Decimal.to_string()
-  end
-
   defp meta_line(source) do
     [
-      source.quality_score && "quality #{format_quality(source.quality_score)}",
+      # Mirrors `toFixed(1)` on the reference page and the formatting already
+      # used on /sources (sources_live/index.ex): rounds halves away from
+      # zero, so a stored 4.25 renders "4.3".
+      source.quality_score &&
+        "quality #{:erlang.float_to_binary(source.quality_score, decimals: 1)}",
       "#{source.finds_count} #{if source.finds_count == 1, do: "find", else: "finds"}",
       source.last_checked_at && "checked #{short_date(source.last_checked_at)}",
       "added by #{source.added_by}",

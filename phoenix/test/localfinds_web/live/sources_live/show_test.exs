@@ -43,7 +43,10 @@ defmodule LocalfindsWeb.SourcesLive.ShowTest do
     assert html =~ "Alpha Gazette"
     assert html =~ "https://alpha.test"
     assert html =~ "active"
-    assert html =~ "quality 4.2"
+    # The fixture's quality_score of 4.25 is a deliberate tie case: both
+    # `toFixed(1)` (the reference page) and `:erlang.float_to_binary/2`
+    # (this page's formatter) round halves away from zero, so 4.25 -> 4.3.
+    assert html =~ "quality 4.3"
     assert html =~ "2 finds"
     assert html =~ "added by source-keeper"
   end
