@@ -9,4 +9,7 @@ defmodule Localfinds.Sources do
   def list_sources do
     Repo.all(from s in Source, order_by: s.url)
   end
+
+  @spec get_source(integer()) :: Source.t() | nil
+  def get_source(id) when is_integer(id), do: Repo.get(Source, id)
 end

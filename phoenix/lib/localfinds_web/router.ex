@@ -38,6 +38,7 @@ defmodule LocalfindsWeb.Router do
     live_session :app,
       on_mount: [{LocalfindsWeb.UserAuth, :mount_current_scope}] do
       live "/sources", SourcesLive.Index, :index
+      live "/sources/:id", SourcesLive.Show, :show
       live "/places", PlacesLive.Index, :index
       live "/places/*osm_id", PlacesLive.Show, :show
     end
