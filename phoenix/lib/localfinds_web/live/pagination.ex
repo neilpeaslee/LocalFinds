@@ -1,8 +1,9 @@
 defmodule LocalfindsWeb.Pagination do
   @moduledoc """
-  Page-size vocabulary, window arithmetic and the numbered-pager sequence for
-  the /places directory — port of `packages/db/src/pagination.ts` (`resolvePage`)
-  and `apps/web/src/lib/pagination.ts` (`PAGE_SIZES`, `pageWindow`).
+  Page-size vocabulary and the numbered-pager sequence for the ported pages —
+  port of `apps/web/src/lib/pagination.ts` (`PAGE_SIZES`, `pageWindow`). The
+  window arithmetic itself now lives in `Localfinds.Pagination`, which this
+  module delegates to, because query modules need it too.
 
   The ranked list is built and sorted in memory (tier comes from
   categories.json, not SQL), so paging is a slice of that sorted list. Payload
@@ -47,14 +48,7 @@ defmodule LocalfindsWeb.Pagination do
           start: integer(),
           end: integer()
         }
-  def resolve_page(matched, page, size) do
-    size = max(1, size)
-    page_count = max(1, ceil(matched / size))
-    clamped = page |> max(1) |> min(page_count)
-    start = (clamped - 1) * size
-
-    %{page: clamped, page_count: page_count, start: start, end: min(start + size, matched)}
-  end
+  defdelegate resolve_page(matched, page, size), to: Localfinds.Pagination
 
   @spec page_window(pos_integer(), pos_integer()) :: [pos_integer() | :ellipsis]
   def page_window(_page, page_count) when page_count <= 1, do: [1]

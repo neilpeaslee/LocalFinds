@@ -12,6 +12,10 @@ defmodule Localfinds.Finds.Find do
     field :title, :string
     field :url, :string
     field :summary, :string
+    field :event_start, :utc_datetime
+    field :event_end, :utc_datetime
+    field :expires_at, :utc_datetime
+    field :score, :float
     field :discovered_at, :utc_datetime
     field :status, :string
     field :agent, :string
