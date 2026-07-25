@@ -152,6 +152,31 @@ defmodule Localfinds.FindsTest do
     end
   end
 
+  describe "feed_page/1 to boundary" do
+    test "to includes a find in the final sub-second of the end day" do
+      day = Date.add(Date.utc_today(), 5) |> Date.to_iso8601()
+
+      # event_start lands in the last millisecond of `day`, in UTC — the same
+      # instant the TS reference binds as `${to}T23:59:59.999Z`. `event_start` is
+      # `:utc_datetime` (second precision), so a naive `<=` against that literal
+      # gets truncated by Ecto's cast before it reaches Postgres and silently
+      # excludes this row; the fix uses a strict `<` against the start of the
+      # next day instead, which doesn't depend on sub-second precision at all.
+      Repo.query!(
+        """
+        INSERT INTO localfinds.finds
+          (title, url, url_hash, status, agent, source_id, discovered_at, event_start, tags, type)
+        VALUES
+          ('Last instant', 'https://alpha.test/9', 'h9', 'new', 'scout', 1, now(),
+           ($1 || 'T23:59:59.999Z')::timestamptz, '{}', 'event')
+        """,
+        [day]
+      )
+
+      assert "Last instant" in titles(Finds.feed_page(%{view: "all", to: day}))
+    end
+  end
+
   describe "list_active_tags/1 and list_find_types/0" do
     test "tags are ranked by frequency among feed-visible finds" do
       assert Finds.list_active_tags() == ["food", "music"]

@@ -84,7 +84,16 @@ defmodule Localfinds.Finds do
   defp from_clause(query, date), do: where(query, [f], f.event_start >= ^start_of_day(date))
 
   defp to_clause(query, nil), do: query
-  defp to_clause(query, date), do: where(query, [f], f.event_start <= ^end_of_day(date))
+
+  # The reference binds `${to}T23:59:59.999Z` to make the end date inclusive, but
+  # `event_start` here is `:utc_datetime` (second precision): Ecto casts any bound
+  # value through the field's type before it reaches Postgres, so a `.999`
+  # literal is truncated to `:59` before the query ever runs, silently dropping
+  # the final sub-second of the day. A strict `<` against the start of the
+  # *next* day covers the same inclusive whole-day range without depending on
+  # sub-second precision at the boundary at all.
+  defp to_clause(query, date),
+    do: where(query, [f], f.event_start < ^start_of_day(day_after(date)))
 
   defp tag_clause(query, nil), do: query
   defp tag_clause(query, tag), do: where(query, [f], fragment("? = ANY(?)", ^tag, f.tags))
@@ -108,9 +117,7 @@ defmodule Localfinds.Finds do
   defp start_of_day(date),
     do: DateTime.new!(Date.from_iso8601!(date), ~T[00:00:00], "Etc/UTC")
 
-  # The reference binds `${to}T23:59:59.999Z` — the end date is inclusive.
-  defp end_of_day(date),
-    do: DateTime.new!(Date.from_iso8601!(date), ~T[23:59:59.999], "Etc/UTC")
+  defp day_after(date), do: date |> Date.from_iso8601!() |> Date.add(1) |> Date.to_iso8601()
 
   @doc """
   Distinct tags among currently feed-visible finds, most frequent first.
