@@ -26,6 +26,8 @@ defmodule Localfinds.DataDirTest do
   test "config_file/1 and agent_workspace/1 build paths under the data dir" do
     root = DataDir.path()
     assert DataDir.config_file("region.md") == Path.join([root, "config", "region.md"])
-    assert DataDir.agent_workspace("source-keeper") == Path.join([root, "agents", "source-keeper"])
+
+    assert DataDir.agent_workspace("source-keeper") ==
+             Path.join([root, "agents", "source-keeper"])
   end
 end
