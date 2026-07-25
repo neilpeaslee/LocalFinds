@@ -22,14 +22,17 @@ defmodule Localfinds.RegionTest do
     assert Region.name(dir) == "Midcoast Maine"
   end
 
-  test "returns nil without frontmatter, without a name key, or without the file", %{dir: dir} do
+  test "falls back to \"Unnamed region\" for a readable file without frontmatter or a name key",
+       %{dir: dir} do
     write!(dir, "# Just an H1\n")
-    assert Region.name(dir) == nil
+    assert Region.name(dir) == "Unnamed region"
 
     write!(dir, "---\nother: value\n---\n")
-    assert Region.name(dir) == nil
+    assert Region.name(dir) == "Unnamed region"
+  end
 
-    File.rm!(Path.join([dir, "config", "region.md"]))
+  test "returns nil when the file does not exist", %{dir: dir} do
+    refute File.exists?(Path.join([dir, "config", "region.md"]))
     assert Region.name(dir) == nil
   end
 
