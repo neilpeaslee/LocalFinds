@@ -16,9 +16,13 @@ defmodule LocalfindsWeb.FeedSettingsController do
   alias Localfinds.FeedSettings
   alias LocalfindsWeb.UserAuth
 
-  # A year, site-wide, unsigned, and NOT `secure` — matching what the Next app
-  # writes, so the cookie survives a rollback and still works over plain http in
-  # local development.
+  # A year, site-wide, unsigned. `secure` is deliberately omitted (not set to
+  # `false`) so it follows `conn.scheme`: `Plug.RewriteOn` in the endpoint
+  # resolves that to `:https` behind nginx in production, so `put_resp_cookie/4`
+  # adds `Secure` there; locally over plain http, `conn.scheme` is `:http` and
+  # no `Secure` flag is added. This differs from the Next app's cookie, which
+  # never sets `Secure` — harmlessly, because localfinds.me is HTTPS-only, so a
+  # rollback to the Next page is still served over https and can still read it.
   @cookie_opts [max_age: 60 * 60 * 24 * 365, path: "/", same_site: "Lax", http_only: true]
 
   def update(conn, params) do

@@ -83,6 +83,28 @@ defmodule LocalfindsWeb.FeedSettingsControllerTest do
       # to the Next page able to read it.
       assert FeedSettings.from_cookie(cookie.value).density == "compact"
     end
+
+    test "the Secure flag follows the request scheme, not a hardcoded setting", %{
+      conn: conn,
+      steward: steward
+    } do
+      # Phoenix.ConnTest conns default to scheme: :http, so this exercises the
+      # real controller action end to end without ever forcing `conn.scheme` —
+      # `Plug.Adapters.Test.Conn.conn/4` derives the scheme from the URI given
+      # to `post/3`, same as `Plug.RewriteOn` would derive it from
+      # x-forwarded-proto in production.
+      http_conn =
+        conn |> log_in_user(steward) |> post(~p"/feed/settings", %{"density" => "compact"})
+
+      refute http_conn.resp_cookies["lf_settings"][:secure]
+
+      https_conn =
+        conn
+        |> log_in_user(steward)
+        |> post("https://example.com/feed/settings", %{"density" => "compact"})
+
+      assert https_conn.resp_cookies["lf_settings"].secure
+    end
   end
 
   describe "POST /feed/settings without a steward" do
