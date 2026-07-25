@@ -177,9 +177,12 @@ defmodule LocalfindsWeb.SourcesLive.Index do
           <tbody>
             <tr :for={s <- @rows} class="border-b border-stone-100 last:border-0">
               <td class="px-3 py-2">
-                <a href={"/sources/#{s.id}"} class="font-medium text-stone-900 hover:underline">
+                <.link
+                  navigate={~p"/sources/#{s.id}"}
+                  class="font-medium text-stone-900 hover:underline"
+                >
                   {s.name || URI.parse(s.url).host}
-                </a>
+                </.link>
                 <a
                   href={s.url}
                   target="_blank"

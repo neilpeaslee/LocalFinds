@@ -191,11 +191,10 @@ defmodule LocalfindsWeb.PlacesLive.Index do
   defp size_param(:all), do: "all"
   defp size_param(size), do: Integer.to_string(size)
 
-  # A plain string, NOT ~p: the /places/*osm_id route lands in the next task,
-  # and a ~p for a route the router does not yet own is a compile warning —
-  # which `mix compile --warnings-as-errors` turns into a failure. osm ids
-  # already contain their slash ("node/1"), so the path needs no encoding.
-  defp place_path(osm_id), do: "/places/" <> osm_id
+  # osm ids carry their own slash ("node/1"), which is why the route is a glob
+  # and the id is interpolated as a LIST — ~p encodes a list as path segments,
+  # where a bare string would percent-encode the slash into %2F.
+  defp place_path(osm_id), do: ~p"/places/#{String.split(osm_id, "/")}"
 
   defp pill(active?) do
     base = "rounded px-2 py-0.5 text-xs "
