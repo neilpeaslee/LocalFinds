@@ -27,7 +27,7 @@ config :localfinds, LocalfindsWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [json: LocalfindsWeb.ErrorJSON],
+    formats: [html: LocalfindsWeb.ErrorHTML, json: LocalfindsWeb.ErrorJSON],
     layout: false
   ],
   pubsub_server: Localfinds.PubSub,
