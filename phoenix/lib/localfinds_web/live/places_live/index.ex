@@ -109,7 +109,13 @@ defmodule LocalfindsWeb.PlacesLive.Index do
        start: start,
        tier4_count: counts.tier4,
        chain_count: counts.chain,
-       has_filters: !is_nil(town) or !is_nil(status) or !is_nil(tag) or !is_nil(q)
+       has_filters: !is_nil(town) or !is_nil(status) or !is_nil(tag) or !is_nil(q),
+       # `annotated` is consumed only above (counts/visible/sort/total) and never
+       # read by the template — dropping it here keeps a 5000-row DirectoryPlace
+       # list (with decoded jsonb tags) from sitting in socket assigns for the
+       # life of the connection. LiveDB.load re-assigns it fresh on every
+       # handle_params, so nil-ing it here is not a cache, just cleanup.
+       annotated: nil
      )}
   end
 

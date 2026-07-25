@@ -1,11 +1,18 @@
 defmodule Localfinds.Places do
   @moduledoc """
-  Queries over public.osm_places. Every query starts from the custom/%
-  exclusion — custom rows carry agent provenance that must not be published.
-  Database failures are routed through Localfinds.DB.guard/1, which degrades
-  a dropped connection or a server shutdown to {:error, :database_unavailable}:
-  Postgres bounces ~weekly under apt upgrades and requests in flight should
-  degrade to an honest 503, not a 500.
+  Two read surfaces, each bound by different rules:
+
+    * The `/osm` JSON API (`list_places/1`, `get_place/1`) reads
+      `public.osm_places`. Every query starts from the `custom/%` exclusion —
+      custom rows carry agent provenance that must not be published. Failures
+      are routed through `Localfinds.DB.guard/1`, which degrades a dropped
+      connection or a server shutdown to `{:error, :database_unavailable}`.
+
+    * The web directory (`list_directory_places/1`, `get_directory_place/1`,
+      `list_towns/0`) reads the `localfinds.places` view and deliberately
+      includes custom rows — the provenance exclusion is an API-only rule.
+      These functions raise on failure; the caller guards (LiveViews via
+      `LocalfindsWeb.LiveDB`).
   """
   import Ecto.Query
 
