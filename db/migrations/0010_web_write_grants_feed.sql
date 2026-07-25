@@ -1,0 +1,28 @@
+-- Web (Phoenix) WRITE grants for UI port plan 3: the /feed page.
+--
+-- Same guard and reasoning as 0008/0009: the production role (localfinds_api)
+-- is granted per table, local and test databases run as the OWNER role and
+-- never have the role at all, so a missing grant cannot fail a test — it fails
+-- live, at cutover, with 42501 insufficient_privilege.
+--
+-- These are the first WRITE grants the web role receives on curation data.
+-- /feed lets a steward star, hide and thumb a find:
+--   * localfinds.finds  -- status only. Column-level on purpose: the page never
+--     sets another column, and Localfinds.Finds does its updates with
+--     `update_all(set: [status: ...])` to keep that true. Widening a write to a
+--     changeset-based update would emit other columns and fail here first.
+--   * localfinds.feedback -- inserts only. No sequence grant is needed: the id
+--     is GENERATED ALWAYS AS IDENTITY, like the P2 auth tables.
+--
+-- GRANT is idempotent, so re-running is harmless.
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'localfinds_api') THEN
+    -- /feed star/hide/unhide + bulk management (rung 3, plan 3)
+    GRANT UPDATE (status) ON localfinds.finds TO localfinds_api;
+    -- /feed thumbs + star/hide taste signal (rung 3, plan 3)
+    GRANT INSERT ON localfinds.feedback TO localfinds_api;
+  END IF;
+END
+$$;

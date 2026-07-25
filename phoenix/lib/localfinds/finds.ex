@@ -5,6 +5,7 @@ defmodule Localfinds.Finds do
   """
   import Ecto.Query
 
+  alias Localfinds.Finds.Feedback
   alias Localfinds.Finds.Find
   alias Localfinds.Pagination
   alias Localfinds.Repo
@@ -158,5 +159,89 @@ defmodule Localfinds.Finds do
       )
 
     List.flatten(rows)
+  end
+
+  @feedback_actions ~w(thumbs_up thumbs_down star unstar hide unhide)
+  @statuses ~w(new shown hidden starred)
+
+  # Star/hide change what the feed shows AND are recorded as taste signal;
+  # thumbs are pure signal for the agents.
+  @status_effect %{
+    "star" => "starred",
+    "unstar" => "shown",
+    "hide" => "hidden",
+    "unhide" => "shown"
+  }
+
+  @spec feedback_actions() :: [String.t()]
+  def feedback_actions, do: @feedback_actions
+
+  @doc """
+  Record one feedback action — port of `submitFeedback`.
+
+  The insert and the status change run in a transaction. The reference issues
+  them as two independent statements; a thumbs-up that records the signal but
+  loses the star is worth preventing, and the transaction costs nothing.
+  """
+  @spec record_feedback(integer(), String.t()) ::
+          {:ok, map()} | {:error, :invalid_action} | {:error, any(), any(), any()}
+  def record_feedback(find_id, action) when action in @feedback_actions do
+    # A plain struct passed to Multi.insert has no declared constraints, so a
+    # foreign-key violation (a find_id with no matching find) would raise
+    # Ecto.ConstraintError instead of failing the transaction cleanly. Building
+    # a changeset and declaring foreign_key_constraint/2 turns that violation
+    # into an {:error, changeset} the Multi can hand back normally.
+    changeset =
+      %Feedback{find_id: find_id, action: action}
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.foreign_key_constraint(:find_id)
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:feedback, changeset)
+    |> maybe_set_status(find_id, Map.get(@status_effect, action))
+    |> Repo.transaction()
+  end
+
+  def record_feedback(_find_id, _action), do: {:error, :invalid_action}
+
+  defp maybe_set_status(multi, _find_id, nil), do: multi
+
+  defp maybe_set_status(multi, find_id, status) do
+    Ecto.Multi.update_all(
+      multi,
+      :status,
+      from(f in Find, where: f.id == ^find_id),
+      set: [status: status]
+    )
+  end
+
+  @doc "Set one find's status. Returns the number of rows changed."
+  @spec update_status(integer(), String.t()) :: non_neg_integer()
+  def update_status(find_id, status) when status in @statuses do
+    {n, _} = Repo.update_all(from(f in Find, where: f.id == ^find_id), set: [status: status])
+    n
+  end
+
+  def update_status(_find_id, _status), do: 0
+
+  @doc """
+  Bulk status change for feed management — port of `updateFindStatuses`.
+  Status-only, no feedback rows, so a sweep of the visible page does not flood
+  the agents' taste signal.
+  """
+  @spec update_statuses([integer()], String.t()) :: non_neg_integer()
+  def update_statuses([], _status), do: 0
+
+  def update_statuses(ids, status) when status in @statuses do
+    {n, _} = Repo.update_all(from(f in Find, where: f.id in ^ids), set: [status: status])
+    n
+  end
+
+  def update_statuses(_ids, _status), do: 0
+
+  @spec unhide_all() :: non_neg_integer()
+  def unhide_all do
+    {n, _} = Repo.update_all(from(f in Find, where: f.status == "hidden"), set: [status: "shown"])
+    n
   end
 end
