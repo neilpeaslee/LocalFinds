@@ -106,3 +106,91 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* Minimal typography for rendered markdown (site notes on /sources/:id, place
+   notes on /places/*osm_id). Ported from the Next app's globals.css, which
+   writes these by hand rather than using @tailwindcss/typography (its @plugin
+   resolution breaks under turbopack in npm workspaces).
+
+   These rules are load-bearing, not decoration: the pages tag notes with
+   `prose prose-sm prose-stone`, and without a definition those are inert class
+   names — Tailwind's preflight has already reset heading sizes, list markers
+   and table borders, so a note collapses into an undifferentiated block. The
+   UI port copied the class names from the reference page and missed the CSS
+   behind them, because it lives in a global stylesheet rather than in the page.
+
+   --color-stone-700 carries a literal fallback on purpose: Tailwind v4 only
+   emits a theme variable when some scanned class uses it, and nothing in the
+   Phoenix templates uses text-stone-700, so the variable is absent from this
+   bundle (every other shade below is used elsewhere and does get emitted). */
+.prose {
+  font-size: 0.875rem;
+  color: var(--color-stone-700, #44403b);
+}
+.prose h1,
+.prose h2,
+.prose h3 {
+  font-weight: 600;
+  color: var(--color-stone-900);
+  margin: 0.9em 0 0.35em;
+}
+.prose h1 {
+  font-size: 1.05rem;
+}
+.prose h2 {
+  font-size: 0.95rem;
+}
+.prose p {
+  margin: 0.5em 0;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.25em;
+  margin: 0.5em 0;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.15em 0;
+}
+.prose table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.8rem;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--color-stone-200);
+  padding: 0.25em 0.6em;
+  text-align: left;
+}
+.prose code {
+  background: var(--color-stone-100);
+  padding: 0 0.3em;
+  border-radius: 0.25em;
+  font-size: 0.8em;
+}
+.prose a {
+  color: var(--color-blue-700);
+  text-decoration: underline;
+}
+.prose blockquote {
+  border-left: 3px solid var(--color-stone-200);
+  padding-left: 0.75em;
+  color: var(--color-stone-500);
+  margin: 0.5em 0;
+}
+.prose hr {
+  border-color: var(--color-stone-200);
+  margin: 0.9em 0;
+}
+.prose em {
+  font-style: italic;
+}
+.prose strong {
+  font-weight: 600;
+}
