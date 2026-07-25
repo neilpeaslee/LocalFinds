@@ -2,12 +2,14 @@ defmodule Localfinds.Places do
   @moduledoc """
   Queries over public.osm_places. Every query starts from the custom/%
   exclusion — custom rows carry agent provenance that must not be published.
-  DBConnection.ConnectionError is rescued to {:error, :database_unavailable}:
+  Database failures are routed through Localfinds.DB.guard/1, which degrades
+  a dropped connection or a server shutdown to {:error, :database_unavailable}:
   Postgres bounces ~weekly under apt upgrades and requests in flight should
   degrade to an honest 503, not a 500.
   """
   import Ecto.Query
 
+  alias Localfinds.DB
   alias Localfinds.Places.{Params, Place}
   alias Localfinds.Repo
 
@@ -15,32 +17,26 @@ defmodule Localfinds.Places do
 
   @spec list_places(Params.t()) :: {:ok, [Place.t()]} | {:error, :database_unavailable}
   def list_places(%Params{} = p) do
-    places =
+    DB.guard(fn ->
       base()
       |> area_filter(p)
       |> keys_filter(p.keys)
       |> order_by([pl], asc: pl.name, asc: pl.osm_id)
       |> limit(^p.limit)
       |> Repo.all()
-
-    {:ok, places}
-  rescue
-    DBConnection.ConnectionError ->
-      {:error, :database_unavailable}
-
-    e in Postgrex.Error ->
-      case e.postgres do
-        %{code: code} when code in [:admin_shutdown, :crash_shutdown, :cannot_connect_now] ->
-          {:error, :database_unavailable}
-
-        _ ->
-          reraise e, __STACKTRACE__
-      end
+    end)
   end
 
   @spec get_place(String.t()) ::
           {:ok, Place.t()} | {:error, :not_found} | {:error, :database_unavailable}
   def get_place(osm_id) do
+    case DB.guard(fn -> fetch_place(osm_id) end) do
+      {:ok, result} -> result
+      {:error, :database_unavailable} = degraded -> degraded
+    end
+  end
+
+  defp fetch_place(osm_id) do
     if Regex.match?(@osm_id_re, osm_id) do
       case Repo.one(where(base(), [pl], pl.osm_id == ^osm_id)) do
         nil -> {:error, :not_found}
@@ -49,18 +45,6 @@ defmodule Localfinds.Places do
     else
       {:error, :not_found}
     end
-  rescue
-    DBConnection.ConnectionError ->
-      {:error, :database_unavailable}
-
-    e in Postgrex.Error ->
-      case e.postgres do
-        %{code: code} when code in [:admin_shutdown, :crash_shutdown, :cannot_connect_now] ->
-          {:error, :database_unavailable}
-
-        _ ->
-          reraise e, __STACKTRACE__
-      end
   end
 
   defp base do

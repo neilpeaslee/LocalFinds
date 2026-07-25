@@ -49,4 +49,10 @@ defmodule LocalfindsWeb.SourcesLive.IndexTest do
     {:ok, _lv, html} = live(conn, ~p"/sources")
     assert html =~ "No sources registered yet"
   end
+
+  test "a healthy page is not flagged as degraded", %{conn: conn} do
+    {:ok, lv, html} = live(conn, ~p"/sources")
+    refute html =~ "Temporarily unavailable"
+    refute :sys.get_state(lv.pid).socket.assigns.db_unavailable
+  end
 end

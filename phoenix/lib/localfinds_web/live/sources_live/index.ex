@@ -2,6 +2,7 @@ defmodule LocalfindsWeb.SourcesLive.Index do
   use LocalfindsWeb, :live_view
 
   alias Localfinds.Sources
+  alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
   alias LocalfindsWeb.SourceFilters, as: Filters
 
@@ -14,7 +15,7 @@ defmodule LocalfindsWeb.SourcesLive.Index do
   @impl true
   def mount(_params, _session, socket) do
     socket = if connected?(socket), do: Realtime.subscribe(socket), else: socket
-    {:ok, assign(socket, :all, Sources.list_sources())}
+    {:ok, LiveDB.load(socket, :all, &Sources.list_sources/0, [])}
   end
 
   @impl true
@@ -101,12 +102,14 @@ defmodule LocalfindsWeb.SourcesLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@summary.total == 0} class="py-12 text-center text-sm text-stone-500">
+    <.db_unavailable :if={@db_unavailable} />
+
+    <div :if={!@db_unavailable and @summary.total == 0} class="py-12 text-center text-sm text-stone-500">
       No sources registered yet. The source-keeper agent populates this on its
       first run (seed it via data/config/region.md).
     </div>
 
-    <div :if={@summary.total > 0} class="flex flex-col gap-4">
+    <div :if={!@db_unavailable and @summary.total > 0} class="flex flex-col gap-4">
       <div class="flex flex-col gap-3 rounded-lg border border-stone-200 bg-white p-3">
         <p class="text-xs text-stone-500">{summary_line(@summary)}</p>
 

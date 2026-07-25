@@ -81,6 +81,8 @@ defmodule LocalfindsWeb do
       import Phoenix.HTML
       # Core UI components
       import LocalfindsWeb.CoreComponents
+      # Shared degraded-read state for ported LiveViews
+      import LocalfindsWeb.DBComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
