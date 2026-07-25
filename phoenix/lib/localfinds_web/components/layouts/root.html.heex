@@ -43,6 +43,9 @@
       <div class="mx-auto flex max-w-3xl items-baseline justify-between px-4 py-4">
         <h1 class="text-lg font-semibold tracking-tight">
           <a href="/">LocalFinds</a>
+          <span :if={Localfinds.Region.name()} class="ml-2 font-normal text-stone-500">
+            — {Localfinds.Region.name()}
+          </span>
         </h1>
         <nav class="flex items-center gap-4 text-sm text-stone-600">
           <a href="/feed" class="hover:text-stone-900">Feed</a>

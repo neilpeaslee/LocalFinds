@@ -25,3 +25,9 @@ config :phoenix, :plug_init_mode, :runtime
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Config-driven reads (region name, category tiers, agent notes) resolve to a
+# committed fixture tree, so tests never depend on the developer's gitignored
+# data/ directory. Dev and prod fall through to the upward walk in
+# Localfinds.DataDir.
+config :localfinds, :data_dir, Path.expand("../test/fixtures/data", __DIR__)

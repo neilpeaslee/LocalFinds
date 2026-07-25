@@ -1,0 +1,11 @@
+{
+  "_comment": "Fixture tiers for the Phoenix test suite — deliberately NOT a copy of the real data/config/categories.json, so tests never depend on gitignored config.",
+  "default_tier": 3,
+  "hide_in_directory": { "tier4": true, "chains": true },
+  "tiers": {
+    "1": ["tourism=museum", "leisure=park"],
+    "2": ["office=lawyer", "craft=*"],
+    "3": ["amenity=cafe"],
+    "4": ["shop=supermarket"]
+  }
+}
