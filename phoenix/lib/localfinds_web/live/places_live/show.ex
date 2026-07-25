@@ -9,21 +9,9 @@ defmodule LocalfindsWeb.PlacesLive.Show do
   alias Localfinds.Markdown
   alias Localfinds.Places
   alias Localfinds.Places.DirectoryPlace
+  alias LocalfindsWeb.Badges
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
-
-  @status_style %{
-    "active" => "bg-green-100 text-green-800",
-    "closed" => "bg-red-100 text-red-800",
-    "unknown" => "bg-stone-200 text-stone-600"
-  }
-
-  @tier_style %{
-    1 => "bg-emerald-100 text-emerald-800",
-    2 => "bg-sky-100 text-sky-800",
-    3 => "bg-stone-100 text-stone-600",
-    4 => "bg-stone-100 text-stone-400"
-  }
 
   @impl true
   def mount(%{"osm_id" => segments}, _session, socket) do
@@ -57,9 +45,6 @@ defmodule LocalfindsWeb.PlacesLive.Show do
 
   defp chain?(%DirectoryPlace{brand: brand}), do: is_binary(brand) and brand != ""
 
-  defp status_style(status), do: Map.get(@status_style, status, "")
-  defp tier_style(tier), do: Map.get(@tier_style, tier, "")
-
   defp custom?(osm_id), do: String.starts_with?(osm_id, "custom/")
 
   @impl true
@@ -75,7 +60,7 @@ defmodule LocalfindsWeb.PlacesLive.Show do
       <div class="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-4">
         <div class="flex flex-wrap items-center gap-2">
           <span
-            class={"rounded px-1.5 py-0.5 text-xs font-medium " <> tier_style(@tier)}
+            class={"rounded px-1.5 py-0.5 text-xs font-medium " <> Badges.tier(@tier)}
             title="Search-priority tier"
           >
             T{@tier}
@@ -94,7 +79,7 @@ defmodule LocalfindsWeb.PlacesLive.Show do
           >
             chain: {@place.brand}
           </span>
-          <span class={"rounded px-1.5 py-0.5 text-xs " <> status_style(@place.status)}>
+          <span class={"rounded px-1.5 py-0.5 text-xs " <> Badges.place_status(@place.status)}>
             {@place.status}
           </span>
           <span :if={@place.town} class="text-xs text-stone-500">{@place.town}</span>

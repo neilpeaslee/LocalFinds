@@ -10,19 +10,13 @@ defmodule LocalfindsWeb.PlacesLive.Index do
 
   alias Localfinds.Categories
   alias Localfinds.Places
+  alias LocalfindsWeb.Badges
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Pagination
   alias LocalfindsWeb.PlaceRanking, as: Ranking
   alias LocalfindsWeb.Realtime
 
   @statuses ["active", "closed", "unknown"]
-
-  @tier_style %{
-    1 => "bg-emerald-100 text-emerald-800",
-    2 => "bg-sky-100 text-sky-800",
-    3 => "bg-stone-100 text-stone-600",
-    4 => "bg-stone-100 text-stone-400"
-  }
 
   @columns [{:tier, "Tier"}, {:name, "Name"}, {:kind, "Kind"}, {:town, "Town"}]
 
@@ -205,8 +199,6 @@ defmodule LocalfindsWeb.PlacesLive.Index do
         else: "bg-stone-100 text-stone-600 hover:bg-stone-200"
   end
 
-  defp tier_style(tier), do: Map.get(@tier_style, tier, "")
-
   defp arrow(:asc), do: "▲"
   defp arrow(:desc), do: "▼"
 
@@ -368,7 +360,7 @@ defmodule LocalfindsWeb.PlacesLive.Index do
             <tr :for={r <- @rows} class="border-b border-stone-100 last:border-0">
               <td class="px-3 py-2">
                 <span
-                  class={"rounded px-1.5 py-0.5 text-xs font-medium " <> tier_style(r.tier)}
+                  class={"rounded px-1.5 py-0.5 text-xs font-medium " <> Badges.tier(r.tier)}
                   title="Search-priority tier"
                 >
                   T{r.tier}

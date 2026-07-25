@@ -9,21 +9,10 @@ defmodule LocalfindsWeb.SourcesLive.Show do
   alias Localfinds.Finds
   alias Localfinds.Markdown
   alias Localfinds.Sources
+  alias LocalfindsWeb.Badges
+  alias LocalfindsWeb.Format
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
-
-  @status_style %{
-    "active" => "bg-green-100 text-green-800",
-    "paused" => "bg-stone-200 text-stone-600",
-    "dead" => "bg-red-100 text-red-800"
-  }
-
-  @find_status_style %{
-    "new" => "bg-blue-100 text-blue-800",
-    "shown" => "bg-stone-100 text-stone-600",
-    "hidden" => "bg-stone-200 text-stone-500",
-    "starred" => "bg-amber-100 text-amber-800"
-  }
 
   @impl true
   def mount(%{"id" => raw_id}, _session, socket) do
@@ -64,12 +53,6 @@ defmodule LocalfindsWeb.SourcesLive.Show do
 
   defp host(url), do: URI.parse(url).host || url
 
-  defp status_style(status), do: Map.get(@status_style, status, "")
-  defp find_status_style(status), do: Map.get(@find_status_style, status, "")
-
-  defp short_date(nil), do: "—"
-  defp short_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%m/%d/%Y")
-
   defp meta_line(source) do
     [
       # Mirrors `toFixed(1)` on the reference page and the formatting already
@@ -78,9 +61,9 @@ defmodule LocalfindsWeb.SourcesLive.Show do
       source.quality_score &&
         "quality #{:erlang.float_to_binary(source.quality_score, decimals: 1)}",
       "#{source.finds_count} #{if source.finds_count == 1, do: "find", else: "finds"}",
-      source.last_checked_at && "checked #{short_date(source.last_checked_at)}",
+      source.last_checked_at && "checked #{Format.short_date(source.last_checked_at)}",
       "added by #{source.added_by}",
-      "created #{short_date(source.created_at)}"
+      "created #{Format.short_date(source.created_at)}"
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" · ")
@@ -107,7 +90,7 @@ defmodule LocalfindsWeb.SourcesLive.Show do
           >
             {@source.url} <span aria-hidden>↗</span>
           </a>
-          <span class={"rounded px-1.5 py-0.5 text-xs " <> status_style(@source.status)}>
+          <span class={"rounded px-1.5 py-0.5 text-xs " <> Badges.source_status(@source.status)}>
             {@source.status}
           </span>
         </div>
@@ -138,10 +121,10 @@ defmodule LocalfindsWeb.SourcesLive.Show do
               {f.title}
             </a>
             <span :if={!f.url} class="font-medium text-stone-900">{f.title}</span>
-            <span class={"rounded px-1.5 py-0.5 text-xs " <> find_status_style(f.status)}>
+            <span class={"rounded px-1.5 py-0.5 text-xs " <> Badges.find_status(f.status)}>
               {f.status}
             </span>
-            <span class="ml-auto text-xs text-stone-500">{short_date(f.discovered_at)}</span>
+            <span class="ml-auto text-xs text-stone-500">{Format.short_date(f.discovered_at)}</span>
           </li>
         </ul>
       </div>

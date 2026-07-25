@@ -2,15 +2,11 @@ defmodule LocalfindsWeb.SourcesLive.Index do
   use LocalfindsWeb, :live_view
 
   alias Localfinds.Sources
+  alias LocalfindsWeb.Badges
+  alias LocalfindsWeb.Format
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
   alias LocalfindsWeb.SourceFilters, as: Filters
-
-  @status_style %{
-    "active" => "bg-green-100 text-green-800",
-    "paused" => "bg-stone-200 text-stone-600",
-    "dead" => "bg-red-100 text-red-800"
-  }
 
   @impl true
   def mount(_params, _session, socket) do
@@ -91,13 +87,6 @@ defmodule LocalfindsWeb.SourcesLive.Index do
       dir: if(next_dir == :asc, do: nil, else: Atom.to_string(next_dir))
     })
   end
-
-  defp status_style(status), do: Map.get(@status_style, status, "")
-
-  defp short_date(nil), do: "—"
-  # Faithful-enough date (parity is a style guide); zero-padded m/d/Y is safe in
-  # Calendar.strftime, which lacks the GNU %-m no-pad flag.
-  defp short_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%m/%d/%Y")
 
   @impl true
   def render(assigns) do
@@ -195,7 +184,7 @@ defmodule LocalfindsWeb.SourcesLive.Index do
                 </a>
               </td>
               <td class="px-3 py-2">
-                <span class={"rounded px-1.5 py-0.5 text-xs " <> status_style(s.status)}>
+                <span class={"rounded px-1.5 py-0.5 text-xs " <> Badges.source_status(s.status)}>
                   {s.status}
                 </span>
               </td>
@@ -203,7 +192,7 @@ defmodule LocalfindsWeb.SourcesLive.Index do
               <td class="px-3 py-2 text-right tabular-nums">
                 {if s.quality_score, do: :erlang.float_to_binary(s.quality_score, decimals: 1), else: "—"}
               </td>
-              <td class="px-3 py-2 text-right text-stone-500">{short_date(s.last_checked_at)}</td>
+              <td class="px-3 py-2 text-right text-stone-500">{Format.short_date(s.last_checked_at)}</td>
             </tr>
           </tbody>
         </table>
