@@ -25,6 +25,7 @@ defmodule LocalfindsWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_scope_for_user
+    plug LocalfindsWeb.Plugs.FeedSettings
   end
 
   scope "/", LocalfindsWeb do
@@ -42,6 +43,8 @@ defmodule LocalfindsWeb.Router do
       live "/places", PlacesLive.Index, :index
       live "/places/*osm_id", PlacesLive.Show, :show
     end
+
+    post "/feed/settings", FeedSettingsController, :update
   end
 
   scope "/osm", LocalfindsWeb do

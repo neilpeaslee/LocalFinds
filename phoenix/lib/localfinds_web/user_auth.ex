@@ -269,6 +269,17 @@ defmodule LocalfindsWeb.UserAuth do
   def signed_in_path(_conn), do: ~p"/auth/log-in"
 
   @doc """
+  True when the scope holds a steward.
+
+  The single definition of "may write" for the ported pages. nginx gates writes
+  on the still-Next pages by HTTP method, which a LiveView write — a frame on an
+  already-open socket — never passes through, so ported pages authorize here.
+  """
+  @spec steward?(Localfinds.Accounts.Scope.t() | nil) :: boolean()
+  def steward?(%Localfinds.Accounts.Scope{user: %{role: "steward"}}), do: true
+  def steward?(_), do: false
+
+  @doc """
   Plug for routes that require the user to be authenticated.
   """
   def require_authenticated_user(conn, _opts) do
