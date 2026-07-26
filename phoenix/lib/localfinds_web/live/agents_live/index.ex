@@ -16,13 +16,17 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   """
   use LocalfindsWeb, :live_view
 
+  require Logger
+
   alias Localfinds.AgentProfiles
+  alias Localfinds.Agents.Spawner
   alias Localfinds.Markdown
   alias Localfinds.Runs
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
   alias LocalfindsWeb.RunComponents
   alias LocalfindsWeb.RunTail
+  alias LocalfindsWeb.UserAuth
 
   @runs_per_section 10
   @history_limit 200
@@ -131,9 +135,44 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   # exactly rather than only approximating it.
   defp started_at(%DateTime{} = dt), do: Calendar.strftime(dt, "%-m/%-d/%Y, %-I:%M:%S %p")
 
+  # The trigger. Order matters and is security-relevant: steward re-check (the
+  # mount gate is cosmetic against a hand-sent socket frame; a scope can also
+  # change mid-session) -> allowlist (Runs.resolve_target's fixed roster is the
+  # only thing Spawner.run/1's moduledoc trusts the caller to have already
+  # checked) -> in-progress guard (agents share the DB and profiles, so only
+  # one run at a time) -> spawn. No blocking wait: the reference
+  # (apps/web/src/app/agents/actions.ts) polls up to 20s for the `running` row
+  # so its re-render shows it; RunTail's live tail makes that unnecessary — the
+  # banner appears on its own once the row lands. The click just gets an
+  # optimistic "starting…" acknowledgement.
+  @impl true
+  def handle_event("trigger", %{"target" => target}, socket) do
+    with true <- UserAuth.steward?(socket.assigns[:current_scope]),
+         {:ok, resolved} <- Runs.resolve_target(target),
+         false <- Runs.in_progress?(socket.assigns.runs, socket.assigns.now),
+         :ok <- Spawner.run(resolved) do
+      {:noreply, assign(socket, :starting, resolved)}
+    else
+      {:error, reason} ->
+        # Ops signal, not UI copy: the steward gets a flash, the reason (a
+        # shell exit code/output, or :no_data_dir) goes to the log a real spawn
+        # already writes to, never onto the page.
+        Logger.error("agent spawn failed for #{inspect(target)}: #{inspect(reason)}")
+        {:noreply, put_flash(socket, :error, "Could not start the run — try again in a moment.")}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Catch-all: a malformed frame (e.g. no "target" key) must not crash the page.
+  def handle_event("trigger", _params, socket), do: {:noreply, socket}
+
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.flash_group flash={@flash} />
+
     <.db_unavailable :if={@db_unavailable} />
     <div :if={!@db_unavailable} class="flex flex-col gap-6">
       <section
@@ -165,7 +204,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
         </p>
         <div class="flex items-center gap-3">
           <span :if={@in_progress?} class="text-xs text-amber-700">run in progress…</span>
-          <.run_button target="all" label="Run all" disabled={@in_progress?} />
+          <.run_button target="all" label="Run all" disabled={@in_progress?} starting={@starting} />
         </div>
       </div>
 
@@ -180,6 +219,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
             target={section.agent}
             label="Run"
             disabled={@in_progress?}
+            starting={@starting}
           />
         </div>
 
@@ -255,6 +295,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   attr :target, :string, required: true
   attr :label, :string, required: true
   attr :disabled, :boolean, required: true
+  attr :starting, :string, default: nil
 
   defp run_button(assigns) do
     ~H"""
@@ -262,10 +303,10 @@ defmodule LocalfindsWeb.AgentsLive.Index do
       type="button"
       phx-click="trigger"
       phx-value-target={@target}
-      disabled={@disabled}
+      disabled={@disabled or @starting == @target}
       class="rounded border border-stone-300 px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
     >
-      {@label}
+      {if @starting == @target, do: "starting…", else: @label}
     </button>
     """
   end
