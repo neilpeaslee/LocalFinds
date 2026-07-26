@@ -31,6 +31,15 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   @runs_per_section 10
   @history_limit 200
 
+  # How long a triggered spawn is given to produce its `running` row before
+  # :starting gives up and releases the button — the reference's own
+  # START_TIMEOUT_MS/POLL_MS (apps/web/src/app/agents/actions.ts), measured
+  # there from `npx tsx` cold start + SDK init (~10s observed). The reference
+  # blocked the request for up to this long; here it bounds a self-message
+  # poll instead, so the click itself still returns immediately.
+  @await_budget_ms 20_000
+  @await_poll_ms 250
+
   @impl true
   def mount(_params, _session, socket) do
     socket = if connected?(socket), do: Realtime.subscribe(socket), else: socket
@@ -121,6 +130,38 @@ defmodule LocalfindsWeb.AgentsLive.Index do
     {:noreply, RunTail.on_tick(socket, run_id, &(&1 |> assign(:starting, nil) |> load()))}
   end
 
+  # Restores the reference's "wait until the running row appears" guarantee
+  # without putting the wait inside handle_event: the click already returned,
+  # and this self-message polls in the LiveView process instead. load/1
+  # refreshes :runs, :in_progress? and :active_run together, so as soon as the
+  # row lands this both arms the same live tail mount/3 would have armed for
+  # an already-active run, and clears :starting. A spawn that never produces a
+  # row within @await_budget_ms (crashed before its own startRun, or the box
+  # is unreachable) still releases the button - stuck-disabled-forever is
+  # exactly the failure mode this is guarding against - and logs it as an ops
+  # signal, never as page copy.
+  @impl true
+  def handle_info({:await_run, target, deadline}, socket) do
+    socket = load(socket)
+
+    cond do
+      socket.assigns.active_run ->
+        RunTail.watch(socket.assigns.active_run.id)
+        {:noreply, assign(socket, :starting, nil)}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        Logger.warning(
+          "agent spawn for #{inspect(target)} never produced a running row within #{@await_budget_ms}ms"
+        )
+
+        {:noreply, assign(socket, :starting, nil)}
+
+      true ->
+        Process.send_after(self(), {:await_run, target, deadline}, @await_poll_ms)
+        {:noreply, socket}
+    end
+  end
+
   # `new Date(run.startedAt).toLocaleString()` in the reference renders in the
   # locale/timezone of whatever machine executes the SSR — practically, this
   # codebase's server-rendered dates are formatted straight off the UTC value
@@ -142,15 +183,16 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   # checked) -> in-progress guard (agents share the DB and profiles, so only
   # one run at a time) -> spawn. No blocking wait: the reference
   # (apps/web/src/app/agents/actions.ts) polls up to 20s for the `running` row
-  # so its re-render shows it; RunTail's live tail makes that unnecessary — the
-  # banner appears on its own once the row lands. The click just gets an
-  # optimistic "starting…" acknowledgement.
+  # so its re-render shows it; handle_info({:await_run, ...}) above restores
+  # that guarantee off the click's critical path instead of inside it.
   @impl true
   def handle_event("trigger", %{"target" => target}, socket) do
     with true <- UserAuth.steward?(socket.assigns[:current_scope]),
          {:ok, resolved} <- Runs.resolve_target(target),
-         false <- Runs.in_progress?(socket.assigns.runs, socket.assigns.now),
+         false <- already_starting_or_running?(socket),
          :ok <- Spawner.run(resolved) do
+      deadline = System.monotonic_time(:millisecond) + @await_budget_ms
+      Process.send_after(self(), {:await_run, resolved, deadline}, @await_poll_ms)
       {:noreply, assign(socket, :starting, resolved)}
     else
       {:error, reason} ->
@@ -167,6 +209,21 @@ defmodule LocalfindsWeb.AgentsLive.Index do
 
   # Catch-all: a malformed frame (e.g. no "target" key) must not crash the page.
   def handle_event("trigger", _params, socket), do: {:noreply, socket}
+
+  # Refuses a second trigger while a spawn is still being confirmed, not just
+  # while a `running` row already exists on the board. Runs.in_progress?/2
+  # alone is blind to the run this very click just started: :runs is a cached
+  # list, reloaded only when :await_run's poll below finds the new row (or an
+  # existing tail's run_end fires). Without the :starting half of this guard,
+  # a second click landing inside that window - the CLI's own cold-start time,
+  # easily a couple of seconds - reaches Spawner.run/1 a second time: two
+  # agent CLIs writing concurrently to the shared production Postgres and the
+  # same profile files, plus doubled real-money spend, from perfectly
+  # ordinary sequential clicks by the same steward.
+  defp already_starting_or_running?(socket) do
+    not is_nil(socket.assigns.starting) or
+      Runs.in_progress?(socket.assigns.runs, socket.assigns.now)
+  end
 
   @impl true
   def render(assigns) do
@@ -303,7 +360,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
       type="button"
       phx-click="trigger"
       phx-value-target={@target}
-      disabled={@disabled or @starting == @target}
+      disabled={@disabled or not is_nil(@starting)}
       class="rounded border border-stone-300 px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
     >
       {if @starting == @target, do: "starting…", else: @label}

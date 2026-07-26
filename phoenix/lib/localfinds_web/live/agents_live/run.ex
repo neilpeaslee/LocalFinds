@@ -110,6 +110,8 @@ defmodule LocalfindsWeb.AgentsLive.Run do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.flash_group flash={@flash} />
+
     <.db_unavailable :if={@db_unavailable} />
     <div :if={!@db_unavailable} class="flex flex-col gap-4">
       <.link navigate={~p"/agents"} class="text-xs text-stone-500 hover:underline">
