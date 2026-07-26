@@ -10,10 +10,9 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   read-only — concierge needs a --query and cannot be started from here.
 
   The reference's inline `<RunTranscript runId={activeRun.id} live />` inside
-  the active-run banner is not ported here: it depends on the SSE event stream
-  Task 8 wires up, and the run-detail page (linked via "open run →") is where
-  that transcript lives once it exists. Until then the banner is a pointer,
-  not a duplicate render surface.
+  the active-run banner is ported here (Task 8), fed by `RunTail` rather than
+  the reference's SSE stream. The run-detail page (linked via "open run →")
+  renders the same events through the same `RunComponents.transcript/1`.
   """
   use LocalfindsWeb, :live_view
 
@@ -23,6 +22,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
   alias LocalfindsWeb.RunComponents
+  alias LocalfindsWeb.RunTail
 
   @runs_per_section 10
   @history_limit 200
@@ -34,7 +34,16 @@ defmodule LocalfindsWeb.AgentsLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Agents")
-     |> load()}
+     # Task 10 introduces the optimistic "starting…" state; seeded here so
+     # the tail's done_fun (which clears it) is valid before that lands.
+     |> assign(:starting, nil)
+     |> load()
+     |> then(fn socket ->
+       if connected?(socket) && socket.assigns.active_run,
+         do: RunTail.watch(socket.assigns.active_run.id)
+
+       socket
+     end)}
   end
 
   defp load(socket) do
@@ -49,14 +58,33 @@ defmodule LocalfindsWeb.AgentsLive.Index do
 
   defp derive(socket, now) do
     runs = socket.assigns.runs
+    active = Enum.find(runs, &(&1.status == "running" and not Runs.stale?(&1, now)))
 
     socket
     |> assign(:in_progress?, Runs.in_progress?(runs, now))
-    |> assign(
-      :active_run,
-      Enum.find(runs, &(&1.status == "running" and not Runs.stale?(&1, now)))
-    )
+    |> assign(:active_run, active)
     |> assign(:sections, sections(runs))
+    |> seed_banner(active)
+  end
+
+  # Seeds the banner's own transcript stream. Reset each time derive/2 runs
+  # (mount, and the tail's done_fun) so a run ending or a different run
+  # becoming active never leaves stale rows from a previous run in the DOM.
+  defp seed_banner(socket, nil) do
+    socket
+    |> stream(:events, [], dom_id: &"event-#{&1.seq}", reset: true)
+    |> assign(:empty?, true)
+    |> assign(:last_seq, -1)
+  end
+
+  defp seed_banner(socket, run) do
+    socket = LiveDB.load(socket, :event_list, fn -> Runs.events(run.id) end, [])
+    events = socket.assigns.event_list
+
+    socket
+    |> stream(:events, events, dom_id: &"event-#{&1.seq}", reset: true)
+    |> assign(:empty?, events == [])
+    |> assign(:last_seq, if(events == [], do: -1, else: List.last(events).seq))
   end
 
   defp sections(runs) do
@@ -79,6 +107,15 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   # Rung 4 replaces the tick behind Realtime; the page's contract does not move.
   @impl true
   def handle_info({:realtime, _}, socket), do: {:noreply, socket}
+
+  # Same RunTail.on_tick/3 as the detail page. On run end, clear :starting so
+  # Task 10's optimistic "starting…" banner never outlives the run it
+  # announced, then re-load so the run tables and 30-day spend settle
+  # together — the console's equivalent of the reference's router.refresh().
+  @impl true
+  def handle_info({:run_tail, run_id}, socket) do
+    {:noreply, RunTail.on_tick(socket, run_id, &(&1 |> assign(:starting, nil) |> load()))}
+  end
 
   # `new Date(run.startedAt).toLocaleString()` in the reference renders in the
   # locale/timezone of whatever machine executes the SSR — practically, this
@@ -112,6 +149,13 @@ defmodule LocalfindsWeb.AgentsLive.Index do
             open run →
           </.link>
         </div>
+
+        <RunComponents.transcript
+          id="banner-transcript"
+          events={@streams.events}
+          empty?={@empty?}
+          live?={true}
+        />
       </section>
 
       <div class="flex items-center justify-between gap-4">

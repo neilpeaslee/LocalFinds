@@ -10,6 +10,7 @@ defmodule LocalfindsWeb.AgentsLive.Run do
   alias LocalfindsWeb.NotFoundError
   alias LocalfindsWeb.Realtime
   alias LocalfindsWeb.RunComponents
+  alias LocalfindsWeb.RunTail
 
   @impl true
   def mount(%{"run_id" => raw_id}, _session, socket) do
@@ -28,7 +29,17 @@ defmodule LocalfindsWeb.AgentsLive.Run do
         raise NotFoundError, "no run with id #{run_id}"
 
       true ->
-        {:ok, socket |> assign(:now, DateTime.utc_now()) |> load()}
+        {:ok,
+         socket
+         |> assign(:now, DateTime.utc_now())
+         |> load()
+         |> then(fn socket ->
+           # run_id, not socket.assigns.run_id: mount/3 never assigns the raw id
+           # to the socket (only the loaded :run struct), so the closed-over
+           # local variable is the tail's run id here.
+           if connected?(socket) and socket.assigns.live?, do: RunTail.watch(run_id)
+           socket
+         end)}
     end
   end
 
@@ -65,9 +76,30 @@ defmodule LocalfindsWeb.AgentsLive.Run do
   # see its moduledoc-adjacent comment for the full derivation.
   defp started_at(%DateTime{} = dt), do: Calendar.strftime(dt, "%-m/%-d/%Y, %-I:%M:%S %p")
 
-  # Dormant realtime seam (rung 4 lights this up; Task 8 attaches the tail).
+  # Dormant realtime seam (rung 4 lights this up).
   @impl true
   def handle_info({:realtime, _}, socket), do: {:noreply, socket}
+
+  # RunTail.on_tick/3 owns the guard, the branching and the appending — see
+  # its moduledoc. On run end, re-read the row so turns, cost, added/updated
+  # and warnings settle in place, which is what the reference achieved with
+  # router.refresh().
+  @impl true
+  def handle_info({:run_tail, run_id}, socket) do
+    {:noreply, RunTail.on_tick(socket, run_id, &reload/1)}
+  end
+
+  # load/1 alone reuses socket.assigns.run as-is — correct at mount, since the
+  # caller just fetched it — but the done_fun runs after the row itself
+  # changed underneath the socket (status, finished_at, num_turns, cost_usd,
+  # items_added/updated all flip on run_end). Re-reading :run first is what
+  # actually makes the stat block settle to final values; load/1's own
+  # re-read only ever covered the events.
+  defp reload(socket) do
+    socket
+    |> LiveDB.load(:run, fn -> Runs.get(socket.assigns.run.id) end, socket.assigns.run)
+    |> load()
+  end
 
   @impl true
   def render(assigns) do
