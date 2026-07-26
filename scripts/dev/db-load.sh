@@ -26,8 +26,18 @@ DROP TABLE IF EXISTS public.localfinds_boundaries CASCADE;
 DROP SCHEMA IF EXISTS localfinds CASCADE;
 SQL
 
+# HAND-MAINTAINED LIST — mirror every migration that touches the localfinds
+# schema here, or local dev silently loses that object on the next db:load.
+# The tracked runner cannot heal the gap: `DROP SCHEMA localfinds CASCADE`
+# above wipes the objects, but the runner's bookkeeping lives in
+# public.schema_migrations, which the drop does not touch — so the migration
+# stays marked applied and is never re-run. That is exactly how 0007's auth
+# tables went missing locally (found 2026-07-26, while exercising /feed: the
+# users table was gone, every login raised undefined_table, and
+# `npm run deploy:migrate` would have skipped 0007 forever).
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0001_localfinds_schema.sql"
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0004_run_events.sql"
+psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0007_users_auth.sql"
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/local/osm-places-local.sql"
 
 echo "db:load: loading snapshot CSVs"
