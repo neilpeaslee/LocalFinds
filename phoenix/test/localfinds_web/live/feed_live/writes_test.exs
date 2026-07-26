@@ -33,6 +33,11 @@ defmodule LocalfindsWeb.FeedLive.WritesTest do
     n
   end
 
+  defp feedback_rows do
+    %{rows: rows} = Repo.query!("SELECT find_id, action FROM localfinds.feedback ORDER BY id")
+    rows
+  end
+
   describe "as a steward" do
     setup %{conn: conn, steward: steward}, do: %{conn: log_in_user(conn, steward)}
 
@@ -59,6 +64,30 @@ defmodule LocalfindsWeb.FeedLive.WritesTest do
 
       assert status(1) == "new"
       assert feedback_count() == 1
+    end
+
+    test "clicking an active thumb retracts it: appended, not deleted, and the card re-renders un-thumbed",
+         %{conn: conn} do
+      Repo.query!("INSERT INTO localfinds.feedback (find_id, action) VALUES (1, 'thumbs_up')")
+
+      {:ok, lv, _html} = live(conn, ~p"/feed")
+
+      # The active 👍 button is the one whose action is already "thumbs_clear"
+      # (find_card/1's toggle) — clicking it is the retraction.
+      html =
+        lv
+        |> element(~s{button[phx-value-id="1"][phx-value-action="thumbs_clear"]})
+        |> render_click()
+
+      # Appended, not deleted: the original thumbs_up row is still there.
+      assert feedback_rows() == [[1, "thumbs_up"], [1, "thumbs_clear"]]
+      assert status(1) == "new"
+
+      # Re-rendered un-thumbed: both buttons are back to their plain actions,
+      # so neither is a "thumbs_clear" button for find 1 any more.
+      refute html =~ ~r/phx-value-id="1"[^>]*phx-value-action="thumbs_clear"/
+      assert html =~ ~r/phx-value-id="1"[^>]*phx-value-action="thumbs_up"/
+      assert html =~ ~r/phx-value-id="1"[^>]*phx-value-action="thumbs_down"/
     end
 
     test "hiding a find removes it from the default view", %{conn: conn} do

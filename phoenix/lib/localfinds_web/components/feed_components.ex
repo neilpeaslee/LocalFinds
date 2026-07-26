@@ -249,16 +249,21 @@ defmodule LocalfindsWeb.FeedComponents do
       </div>
 
       <div :if={@steward?} class="mt-2 flex items-center gap-1 border-t border-stone-100 pt-2">
+        <%!-- Thumbs toggle: clicking an already-active thumb sends "thumbs_clear"
+        instead of repeating the same thumb, so the click un-thumbs the find.
+        record_feedback/2 appends the retraction rather than deleting the
+        earlier row (localfinds.feedback is append-only), and
+        Finds.feed_page/1's lateral join then reports no active thumb. --%>
         <.action_button
           find_id={@find.id}
-          action="thumbs_up"
+          action={if @find.thumb == "thumbs_up", do: "thumbs_clear", else: "thumbs_up"}
           label="👍"
           title="More like this"
           active={@find.thumb == "thumbs_up"}
         />
         <.action_button
           find_id={@find.id}
-          action="thumbs_down"
+          action={if @find.thumb == "thumbs_down", do: "thumbs_clear", else: "thumbs_down"}
           label="👎"
           title="Less like this"
           active={@find.thumb == "thumbs_down"}

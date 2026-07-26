@@ -40,6 +40,15 @@ defmodule Localfinds.FindsWriteTest do
       assert status(1) == "new"
     end
 
+    test "thumbs_clear is accepted, appended, and writes no status change" do
+      assert {:ok, _} = Finds.record_feedback(1, "thumbs_up")
+      assert {:ok, _} = Finds.record_feedback(1, "thumbs_clear")
+
+      # Appended, not deleted: both rows are still present, retraction last.
+      assert feedback_rows() == [[1, "thumbs_up"], [1, "thumbs_clear"]]
+      assert status(1) == "new"
+    end
+
     test "star and hide record the signal and move the status" do
       assert {:ok, _} = Finds.record_feedback(1, "star")
       assert status(1) == "starred"

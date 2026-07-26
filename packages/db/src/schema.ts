@@ -13,7 +13,13 @@ export type FeedbackAction =
   | "star"
   | "unstar"
   | "hide"
-  | "unhide";
+  | "unhide"
+  // A retraction of an earlier thumbs_up/thumbs_down (LocalFinds.Finds on the
+  // Phoenix side). Appended, never deleted — this table is an append-only
+  // taste-signal log — so "un-thumb" is its own action, not a delete/update
+  // of the prior row. apps/web (the Next rollback target) never writes this
+  // value; it only ever writes the original six.
+  | "thumbs_clear";
 export type FetchClass = "ok" | "blocked" | "truncated" | "error";
 
 export interface Source {

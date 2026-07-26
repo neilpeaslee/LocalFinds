@@ -70,15 +70,26 @@ defmodule Localfinds.Finds do
   # latest feedback row for this find" is frequently a star, not a thumb.
   # Ordering by id (not created_at) matches the reference's "the last row
   # inserted for this find" semantics exactly, including same-timestamp ties.
+  #
+  # `thumbs_clear` (a retraction of an earlier thumb — see `record_feedback/2`)
+  # is thumb-ish for this purpose: it must be able to win the "most recent"
+  # race against an actual thumbs_up/thumbs_down so an un-thumb sticks. But it
+  # is not itself a displayable thumb, so it is mapped to NULL right here in
+  # the SQL, not in the caller — every reader of `:thumb` (find_card, tests)
+  # only ever sees "thumbs_up" | "thumbs_down" | nil and never has to know
+  # thumbs_clear exists.
   defp with_thumb(query) do
     latest_thumb =
       from fb in Feedback,
         where:
           fb.find_id == parent_as(:f).id and
-            fb.action in ["thumbs_up", "thumbs_down"],
+            fb.action in ["thumbs_up", "thumbs_down", "thumbs_clear"],
         order_by: [desc: fb.id],
         limit: 1,
-        select: %{action: fb.action}
+        select: %{
+          action:
+            fragment("CASE WHEN ? = 'thumbs_clear' THEN NULL ELSE ? END", fb.action, fb.action)
+        }
 
     from f in query,
       left_lateral_join: fb in subquery(latest_thumb),
@@ -187,11 +198,12 @@ defmodule Localfinds.Finds do
     List.flatten(rows)
   end
 
-  @feedback_actions ~w(thumbs_up thumbs_down star unstar hide unhide)
+  @feedback_actions ~w(thumbs_up thumbs_down star unstar hide unhide thumbs_clear)
   @statuses ~w(new shown hidden starred)
 
   # Star/hide change what the feed shows AND are recorded as taste signal;
-  # thumbs are pure signal for the agents.
+  # thumbs (and their retraction, thumbs_clear) are pure signal for the
+  # agents, with no status effect.
   @status_effect %{
     "star" => "starred",
     "unstar" => "shown",
@@ -203,11 +215,16 @@ defmodule Localfinds.Finds do
   def feedback_actions, do: @feedback_actions
 
   @doc """
-  Record one feedback action — port of `submitFeedback`.
+  Record one feedback action — port of `submitFeedback`, extended with
+  `thumbs_clear` (no reference equivalent; the reference has no un-thumb).
 
   The insert and the status change run in a transaction. The reference issues
   them as two independent statements; a thumbs-up that records the signal but
   loses the star is worth preventing, and the transaction costs nothing.
+
+  `thumbs_clear` is a retraction, appended like every other row — the table
+  is append-only taste signal and the web role is INSERT-only on it — and,
+  like the thumbs themselves, has no status effect.
   """
   @spec record_feedback(integer(), String.t()) ::
           {:ok, map()} | {:error, :invalid_action} | {:error, any(), any(), any()}

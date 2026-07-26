@@ -37,7 +37,7 @@ ${profile}
 
 ## This run
 
-1. Call read_feedback. Fold anything new into profile.md ("Learned taste notes", dated bullets citing the feedback items). Do this BEFORE curating.
+1. Call read_feedback. Fold anything new into profile.md ("Learned taste notes", dated bullets citing the feedback items). A "thumbs_clear" action means the human retracted an earlier thumb on that item — treat it as canceling that signal, not as a new taste signal of its own. Do this BEFORE curating.
 2. Call list_recent_finds for the last 2 days (all statuses, generous limit). Review the items with status "new" or "shown". Finds carry a "type" — handle the two kinds differently:
    - Events / announcements (type "event", the default): hide fuzzy duplicates — same item under different URLs/titles, keeping the better one (primary source, richer summary). Hide clearly off-target items: outside the coverage area, already over, or matching the profile's anti-interests. Use update_find_status(id, "hidden", reason).
    - Leads (type "lead"): hide ONLY if it duplicates another lead for the same business (keep the one with the higher score) or it no longer matches the ICP (the business closed, is a chain, or is off-target). Otherwise leave it.

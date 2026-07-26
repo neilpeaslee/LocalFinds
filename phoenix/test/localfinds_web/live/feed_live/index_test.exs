@@ -171,29 +171,42 @@ defmodule LocalfindsWeb.FeedLive.IndexTest do
     assert html =~ "☆ Star"
   end
 
-  test "a thumbs-up find renders 👍 active and 👎 inactive", %{conn: conn, steward: steward} do
+  # An active thumb toggles: its own click must retract (thumbs_clear), not
+  # repeat the same thumb, so the active button's phx-value-action is
+  # "thumbs_clear" — it no longer matches its own action name. The inactive
+  # sibling is unaffected and still sends its plain action.
+  test "a thumbs-up find renders 👍 active (as thumbs_clear) and 👎 inactive (as thumbs_down)",
+       %{conn: conn, steward: steward} do
     Repo.query!("INSERT INTO localfinds.feedback (find_id, action) VALUES (1, 'thumbs_up')")
 
     {:ok, _lv, html} = conn |> log_in_user(steward) |> live(~p"/feed")
 
-    assert button_tag(html, 1, "thumbs_up") =~ "bg-amber-50"
+    assert button_tag(html, 1, "thumbs_clear") =~ "bg-amber-50"
+    # button_tag/3 flunks if no button matches, so this also proves the 👎
+    # button still sends the plain "thumbs_down" action while inactive.
     refute button_tag(html, 1, "thumbs_down") =~ "bg-amber-50"
   end
 
-  test "a thumbs-down find renders 👎 active and 👍 inactive", %{conn: conn, steward: steward} do
+  test "a thumbs-down find renders 👎 active (as thumbs_clear) and 👍 inactive (as thumbs_up)",
+       %{conn: conn, steward: steward} do
     Repo.query!("INSERT INTO localfinds.feedback (find_id, action) VALUES (2, 'thumbs_down')")
 
     {:ok, _lv, html} = conn |> log_in_user(steward) |> live(~p"/feed")
 
-    assert button_tag(html, 2, "thumbs_down") =~ "bg-amber-50"
+    assert button_tag(html, 2, "thumbs_clear") =~ "bg-amber-50"
+    # button_tag/3 flunks if no button matches, so this also proves the 👍
+    # button still sends the plain "thumbs_up" action while inactive.
     refute button_tag(html, 2, "thumbs_up") =~ "bg-amber-50"
   end
 
-  test "an un-thumbed find renders neither thumb as active", %{conn: conn, steward: steward} do
+  test "an un-thumbed find renders neither thumb as active, and both send their plain action",
+       %{conn: conn, steward: steward} do
     {:ok, _lv, html} = conn |> log_in_user(steward) |> live(~p"/feed")
 
     refute button_tag(html, 3, "thumbs_up") =~ "bg-amber-50"
     refute button_tag(html, 3, "thumbs_down") =~ "bg-amber-50"
+    # Neither button is a "thumbs_clear" button while un-thumbed.
+    assert Regex.run(~r/phx-value-id="3"[^>]*phx-value-action="thumbs_clear"/, html) == nil
   end
 
   test "a healthy page is not flagged as degraded", %{conn: conn} do

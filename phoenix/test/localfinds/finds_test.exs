@@ -209,6 +209,27 @@ defmodule Localfinds.FindsTest do
     test "a find with no feedback has thumb: nil" do
       assert thumb_for(Finds.feed_page(%{}), "Other source") == nil
     end
+
+    test "thumbs_up then thumbs_clear renders as no thumb" do
+      add_feedback("Old news", "thumbs_up")
+      add_feedback("Old news", "thumbs_clear")
+
+      assert thumb_for(Finds.feed_page(%{}), "Old news") == nil
+    end
+
+    test "thumbs_up, thumbs_clear, then thumbs_down renders as thumbs_down" do
+      add_feedback("Old news", "thumbs_up")
+      add_feedback("Old news", "thumbs_clear")
+      add_feedback("Old news", "thumbs_down")
+
+      assert thumb_for(Finds.feed_page(%{}), "Old news") == "thumbs_down"
+    end
+
+    test "a thumbs_clear with no prior thumb is harmless" do
+      add_feedback("Old news", "thumbs_clear")
+
+      assert thumb_for(Finds.feed_page(%{}), "Old news") == nil
+    end
   end
 
   describe "feed_page/1 to boundary" do
