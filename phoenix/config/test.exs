@@ -31,3 +31,7 @@ config :phoenix,
 # data/ directory. Dev and prod fall through to the upward walk in
 # Localfinds.DataDir.
 config :localfinds, :data_dir, Path.expand("../test/fixtures/data", __DIR__)
+
+# Never spawn a real agent CLI from the suite — a real run spends money
+# against a live API key and writes to the production database.
+config :localfinds, :agent_spawner, Localfinds.Agents.SpawnerStub
