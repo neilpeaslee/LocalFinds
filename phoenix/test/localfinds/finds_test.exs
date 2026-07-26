@@ -54,6 +54,21 @@ defmodule Localfinds.FindsTest do
     )
   end
 
+  # Inserts with an explicit created_at instead of the column's `now()`
+  # default, so two calls can be given the *same* timestamp to force a
+  # genuine tie between rows. Only `id` (insertion order) can break a tie
+  # like that — a plain `add_feedback/2` pair never actually collides, since
+  # separate statements land microseconds apart.
+  defp add_feedback_at(title, action, created_at) do
+    Repo.query!(
+      """
+      INSERT INTO localfinds.feedback (find_id, action, created_at)
+      SELECT id, $2, $3 FROM localfinds.finds WHERE title = $1
+      """,
+      [title, action, created_at]
+    )
+  end
+
   test "list_by_source/2 returns that source's finds, newest first" do
     titles = Enum.map(Finds.list_by_source(1), & &1.title)
 
@@ -166,8 +181,17 @@ defmodule Localfinds.FindsTest do
 
   describe "feed_page/1 thumb state" do
     test "the latest thumb wins when a find has both a thumbs_up and a later thumbs_down" do
-      add_feedback("Fresh news", "thumbs_up")
-      add_feedback("Fresh news", "thumbs_down")
+      # Same created_at on both rows, on purpose: forces a genuine tie so this
+      # only passes when "latest" means insertion order (id), not timestamp.
+      # Two ordinary add_feedback/2 calls never actually tie — separate
+      # statements land microseconds apart — so without this, the lateral
+      # join's `order_by: [desc: fb.id]` could quietly regress to
+      # `desc: fb.created_at` and the suite would never notice, only
+      # production would, where two feedback rows can land in one
+      # transaction with an identical timestamp.
+      tie = DateTime.utc_now() |> DateTime.truncate(:second)
+      add_feedback_at("Fresh news", "thumbs_up", tie)
+      add_feedback_at("Fresh news", "thumbs_down", tie)
 
       assert thumb_for(Finds.feed_page(%{}), "Fresh news") == "thumbs_down"
     end
