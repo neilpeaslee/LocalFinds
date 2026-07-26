@@ -69,6 +69,43 @@ defmodule LocalfindsWeb.FeedLive.Index do
     {:noreply, push_patch(socket, to: to_path)}
   end
 
+  def handle_event("feedback", %{"id" => raw_id, "action" => action}, socket) do
+    with_steward(socket, fn ->
+      case Integer.parse(to_string(raw_id)) do
+        {find_id, ""} -> Finds.record_feedback(find_id, action)
+        _ -> {:error, :invalid_id}
+      end
+    end)
+  end
+
+  def handle_event("bulk", %{"status" => status}, socket) do
+    ids = Enum.map(socket.assigns.feed.rows, & &1.id)
+    with_steward(socket, fn -> Finds.update_statuses(ids, status) end)
+  end
+
+  def handle_event("unhide_all", _params, socket) do
+    with_steward(socket, fn -> Finds.unhide_all() end)
+  end
+
+  # The gate. The templates hide write controls from non-stewards, but hiding is
+  # cosmetic: a socket frame can be sent by hand, so every write re-checks here.
+  # Wrapped in DB.guard/1 so a Postgres bounce degrades to a flash rather than
+  # killing the LiveView process.
+  defp with_steward(socket, fun) do
+    if socket.assigns.steward? do
+      case Localfinds.DB.guard(fun) do
+        {:ok, _result} ->
+          {:noreply, load_feed(socket)}
+
+        {:error, :database_unavailable} ->
+          {:noreply,
+           put_flash(socket, :error, "Temporarily unavailable — try again in a moment.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Log in as a steward to do that.")}
+    end
+  end
+
   # Dormant realtime seam (rung 4 lights this up).
   @impl true
   def handle_info({:realtime, _}, socket), do: {:noreply, socket}
@@ -94,6 +131,8 @@ defmodule LocalfindsWeb.FeedLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.flash_group flash={@flash} />
+
     <.db_unavailable :if={@db_unavailable} />
 
     <div :if={!@db_unavailable} class="flex flex-col gap-4">
@@ -110,6 +149,35 @@ defmodule LocalfindsWeb.FeedLive.Index do
 
       <div :if={@feed.rows != []} class="flex flex-wrap items-center justify-between gap-2">
         <p class="text-xs text-stone-500">{count_line(@resolved, @feed)}</p>
+
+        <div :if={@steward?} class="flex items-center gap-1.5">
+          <button
+            :if={@resolved.view == "hidden"}
+            type="button"
+            phx-click="unhide_all"
+            class={FeedComponents.bulk_button_class()}
+          >
+            Unhide all
+          </button>
+          <button
+            :if={@resolved.view != "hidden"}
+            type="button"
+            phx-click="bulk"
+            phx-value-status="starred"
+            class={FeedComponents.bulk_button_class()}
+          >
+            Star page
+          </button>
+          <button
+            :if={@resolved.view != "hidden"}
+            type="button"
+            phx-click="bulk"
+            phx-value-status="hidden"
+            class={FeedComponents.bulk_button_class()}
+          >
+            Hide page
+          </button>
+        </div>
       </div>
 
       <div :if={@feed.rows != []} class="flex flex-col gap-3">
