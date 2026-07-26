@@ -127,4 +127,45 @@ defmodule LocalfindsWeb.DegradedRenderTest do
     assert html =~ "Temporarily unavailable"
     refute html =~ "Any time"
   end
+
+  test "agents index renders the degraded state" do
+    assigns = %{
+      runs: [],
+      cost30: 0.0,
+      now: ~U[2026-07-26 12:00:00.000000Z],
+      in_progress?: false,
+      active_run: nil,
+      starting: nil,
+      sections: [],
+      current_scope: nil,
+      empty?: true,
+      last_seq: -1,
+      streams: %{events: []}
+    }
+
+    # Non-vacuous: with the guard removed the healthy render still produces the
+    # spend line, so the refute below is a real assertion.
+    assert healthy(LocalfindsWeb.AgentsLive.Index, assigns) =~ "Agent spend, last 30 days"
+
+    html = degraded(LocalfindsWeb.AgentsLive.Index, assigns)
+    assert html =~ "Temporarily unavailable"
+    refute html =~ "Agent spend, last 30 days"
+  end
+
+  test "agents run page renders the degraded state with no run" do
+    assigns = %{
+      run: nil,
+      run_id: 1,
+      now: ~U[2026-07-26 12:00:00.000000Z],
+      warnings: 0,
+      stale?: false,
+      live?: false,
+      empty?: true,
+      last_seq: -1,
+      streams: %{events: []}
+    }
+
+    html = degraded(LocalfindsWeb.AgentsLive.Run, assigns)
+    assert html =~ "Temporarily unavailable"
+  end
 end

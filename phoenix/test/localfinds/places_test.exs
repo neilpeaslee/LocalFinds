@@ -59,6 +59,7 @@ defmodule Localfinds.PlacesTest do
 
   test "custom/% rows never appear in a list — the provenance-leak guard" do
     refute Enum.any?(ok!(%{"town" => "Rockland"}), &String.starts_with?(&1.osm_id, "custom/"))
+
     refute Enum.any?(
              ok!(%{"bbox" => "44.05,-69.20,44.15,-69.05"}),
              &String.starts_with?(&1.osm_id, "custom/")

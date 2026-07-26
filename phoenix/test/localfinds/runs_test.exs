@@ -101,9 +101,26 @@ defmodule Localfinds.RunsTest do
   describe "events/1, events_since/2 and count_warnings/1" do
     setup do
       insert_run!(1, %{status: "running"})
-      insert_event!(1, 0, "run_start", %{"agent" => "scout", "runId" => 1, "model" => "opus", "maxTurns" => 30})
-      insert_event!(1, 1, "tool_result", %{"toolUseId" => "a", "content" => "ok", "isError" => false})
-      insert_event!(1, 2, "tool_result", %{"toolUseId" => "b", "content" => "boom", "isError" => true})
+
+      insert_event!(1, 0, "run_start", %{
+        "agent" => "scout",
+        "runId" => 1,
+        "model" => "opus",
+        "maxTurns" => 30
+      })
+
+      insert_event!(1, 1, "tool_result", %{
+        "toolUseId" => "a",
+        "content" => "ok",
+        "isError" => false
+      })
+
+      insert_event!(1, 2, "tool_result", %{
+        "toolUseId" => "b",
+        "content" => "boom",
+        "isError" => true
+      })
+
       :ok
     end
 
