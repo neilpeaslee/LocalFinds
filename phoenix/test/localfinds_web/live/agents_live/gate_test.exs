@@ -59,6 +59,18 @@ defmodule LocalfindsWeb.AgentsLive.GateTest do
       }
     end
 
+    # Phoenix.LiveView.connected?/1 is `transport_pid != nil` — nothing more
+    # (see phoenix_live_view.ex). A live_session mounts an on_mount hook twice
+    # per request: once for the disconnected render (no transport_pid) and
+    # once for the connected mount over the socket (transport_pid set). The
+    # router-path tests above only ever see the first, because `live/2`
+    # returns as soon as the disconnected render redirects. A hook with a
+    # `... or connected?(socket)` bypass would be invisible to every test
+    # above it in this file — this socket is what makes that phase visible.
+    defp connected_socket_with_flash do
+      %{socket_with_flash() | transport_pid: self()}
+    end
+
     test "halts with no scope" do
       assert {:halt, _socket} =
                UserAuth.on_mount(:require_steward, %{}, %{}, socket_with_flash())
@@ -73,6 +85,29 @@ defmodule LocalfindsWeb.AgentsLive.GateTest do
                  %{},
                  %{"user_token" => token},
                  socket_with_flash()
+               )
+    end
+
+    test "halts with no scope on the connected mount, not just the disconnected render" do
+      socket = connected_socket_with_flash()
+      assert Phoenix.LiveView.connected?(socket)
+
+      assert {:halt, _socket} =
+               UserAuth.on_mount(:require_steward, %{}, %{}, socket)
+    end
+
+    test "halts for a member token on the connected mount, not just the disconnected render",
+         %{member: member} do
+      token = Localfinds.Accounts.generate_user_session_token(member)
+      socket = connected_socket_with_flash()
+      assert Phoenix.LiveView.connected?(socket)
+
+      assert {:halt, _socket} =
+               UserAuth.on_mount(
+                 :require_steward,
+                 %{},
+                 %{"user_token" => token},
+                 socket
                )
     end
 
