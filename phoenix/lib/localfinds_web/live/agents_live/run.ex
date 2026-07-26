@@ -50,6 +50,12 @@ defmodule LocalfindsWeb.AgentsLive.Run do
     end
   end
 
+  # Does NOT re-fetch :run — it reuses whatever :run struct is already in the
+  # socket's assigns. Correct at mount, where the caller just fetched it. The
+  # tail's done-path needs a fresh row (status/finished_at/etc. flip on
+  # run_end) and goes through reload/1 below for that; calling this directly
+  # from a stale-:run context will re-derive :stale?/:live?/:warnings from
+  # the OLD row and look fresh without being fresh.
   defp load(socket) do
     run = socket.assigns.run
     socket = LiveDB.load(socket, :event_list, fn -> Runs.events(run.id) end, [])

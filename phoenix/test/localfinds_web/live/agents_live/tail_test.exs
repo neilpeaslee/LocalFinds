@@ -94,6 +94,35 @@ defmodule LocalfindsWeb.AgentsLive.TailTest do
     assert render(lv) =~ "banner transcript line"
   end
 
+  test "the console settles the table row and 30-day spend after run_end", %{conn: conn} do
+    {:ok, lv, html} = live(conn, ~p"/agents")
+
+    # Before run_end: no cost has landed anywhere yet.
+    assert html =~ "+0 / ~0"
+    assert html =~ "$0.00</span>"
+
+    event!(0, "run_end", %{"status" => "success"})
+
+    Repo.query!("""
+    UPDATE localfinds.runs
+       SET status = 'success', finished_at = started_at + interval '12 seconds',
+           num_turns = 7, cost_usd = 0.0311, items_added = 4, items_updated = 2
+     WHERE id = 1
+    """)
+
+    send(lv.pid, {:run_tail, 1})
+    html = render(lv)
+
+    # The per-agent table row settles to the final values...
+    assert html =~ "+4 / ~2"
+    assert html =~ "$0.031"
+    # ...and so does the independent 30-day spend total above it. "$0.03</span>"
+    # (not "$0.03" alone) so this can't accidentally match the "$0.031" cost
+    # cell — that string is "$0.03" followed by "1", not by the closing tag.
+    assert html =~ "$0.03</span>"
+    refute html =~ "$0.00</span>"
+  end
+
   test "a finished run's page does not tail", %{conn: conn} do
     Repo.query!("UPDATE localfinds.runs SET status = 'success', finished_at = now() WHERE id = 1")
 
