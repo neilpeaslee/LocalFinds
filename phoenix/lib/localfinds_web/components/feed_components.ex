@@ -306,6 +306,119 @@ defmodule LocalfindsWeb.FeedComponents do
     """
   end
 
+  attr :defaults, :map, required: true
+
+  @doc """
+  Collapsible defaults editor — port of `SettingsPanel`.
+
+  A plain `<details>` keeps it zero-JS, and the form posts to the controller
+  rather than the socket, because a LiveView cannot set a cookie. It edits the
+  *persisted defaults*, not the current URL state, which is why it is seeded
+  from `@defaults`.
+
+  The reference needs a `key={formKey}` remount hack so React 19's auto-reset
+  does not snap the selects back to stale values; the redirect after a save
+  re-renders this page from the new cookie, so there is nothing to work around.
+  """
+  def settings_panel(assigns) do
+    assigns =
+      assign(assigns, views: @views, sorts: @sorts, densities: @densities, windows: @windows)
+
+    ~H"""
+    <details class="rounded-lg border border-stone-200 bg-white">
+      <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700">Settings</summary>
+      <.form
+        for={%{}}
+        action={~p"/feed/settings"}
+        method="post"
+        class="flex flex-col gap-3 border-t border-stone-100 p-3"
+      >
+        <div class="flex flex-wrap gap-3">
+          <.field label="Default view">
+            <select name="view" class={select_class()}>
+              <option :for={{value, label} <- @views} value={value} selected={@defaults.view == value}>
+                {label}
+              </option>
+            </select>
+          </.field>
+          <.field label="Per page">
+            <select name="pageSize" class={select_class()}>
+              <option
+                :for={size <- Pagination.page_sizes()}
+                value={if(size == :all, do: "all", else: size)}
+                selected={@defaults.page_size == size}
+              >
+                {if(size == :all, do: "All", else: size)}
+              </option>
+            </select>
+          </.field>
+          <.field label="Sort">
+            <select name="sort" class={select_class()}>
+              <option :for={{value, label} <- @sorts} value={value} selected={@defaults.sort == value}>
+                {label}{if value == "soonest", do: " (by event date)", else: ""}
+              </option>
+            </select>
+          </.field>
+          <.field label="Cards">
+            <select name="density" class={select_class()}>
+              <option
+                :for={{value, label} <- @densities}
+                value={value}
+                selected={@defaults.density == value}
+              >
+                {label}
+              </option>
+            </select>
+          </.field>
+          <.field label="Default time window">
+            <select name="days" class={select_class()}>
+              <option value="" selected={is_nil(@defaults.days)}>Any time</option>
+              <option
+                :for={{days, label} <- @windows}
+                value={days}
+                selected={@defaults.days == days}
+              >
+                {label}
+              </option>
+            </select>
+          </.field>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-3">
+          <.field label="Default event range — from">
+            <input type="date" name="from" value={@defaults.from} class={select_class()} />
+          </.field>
+          <.field label="to">
+            <input type="date" name="to" value={@defaults.to} class={select_class()} />
+          </.field>
+          <button type="submit" class="rounded bg-stone-800 px-3 py-1.5 text-sm text-white">
+            Save as default
+          </button>
+        </div>
+
+        <p class="text-xs text-stone-500">
+          These seed every visit; per-page filters still override them. A saved event range takes
+          precedence over the time window.
+        </p>
+      </.form>
+    </details>
+    """
+  end
+
+  attr :label, :string, required: true
+  slot :inner_block, required: true
+
+  defp field(assigns) do
+    ~H"""
+    <label class="flex flex-col gap-1 text-xs">
+      <span class="font-medium text-stone-500">{@label}</span>
+      {render_slot(@inner_block)}
+    </label>
+    """
+  end
+
+  defp select_class, do: "rounded border border-stone-300 px-2 py-1 text-sm"
+
   # Every chip is the resolved state with one field changed; FeedURL then emits
   # only what differs from the cookie defaults.
   defp href(resolved, defaults, patch) do

@@ -136,6 +136,8 @@ defmodule LocalfindsWeb.FeedLive.Index do
     <.db_unavailable :if={@db_unavailable} />
 
     <div :if={!@db_unavailable} class="flex flex-col gap-4">
+      <FeedComponents.settings_panel :if={@steward?} defaults={@defaults} />
+
       <FeedComponents.filter_bar
         resolved={@resolved}
         defaults={@defaults}
