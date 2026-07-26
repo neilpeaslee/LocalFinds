@@ -4,7 +4,7 @@ defmodule Localfinds.Agents.Spawner.System do
   apps/web/src/app/agents/actions.ts (env stripping via
   apps/web/src/lib/agent-spawn-env.ts).
 
-  Two details are load-bearing:
+  Three details are load-bearing:
 
     * The child's `LOCALFINDS_DATABASE_URL` is unset via `{"...", nil}` in
       `env/0`, not blanked to `""`. Phoenix runs with the read-only DSN; the
@@ -19,7 +19,7 @@ defmodule Localfinds.Agents.Spawner.System do
       child_process would otherwise pass an empty-but-present var straight
       through.)
 
-    * `command/1` redirects both the eventual CLI's stdout and stderr into
+    * `script/0` redirects both the eventual CLI's stdout and stderr into
       `data/agents/web.log` before backgrounding it with `setsid nohup ...
       &`. `System.cmd/3` only returns once the port's stdout is closed; a
       backgrounded child that inherited the port's stdout would keep that
@@ -28,6 +28,16 @@ defmodule Localfinds.Agents.Spawner.System do
       first means the child never holds the pipe, so the wrapper shell - and
       the `System.cmd/3` call - returns as soon as it has fired off the
       background job, well before the agent finishes.
+
+    * `target` is never spliced into the script text. It rides as the shell's
+      `$1` instead: `args/1` passes the constant `script/0` string to
+      `/bin/sh -c` followed by `"spawner"` and `target` as trailing argv,
+      which `sh` binds to `$0` and `$1`. Positional parameters are not
+      re-scanned for `$()`/backtick command substitution, so a hostile target
+      like `"$(rm -rf /)"` comes out inert - it is data, not source, to the
+      shell. `Runs.resolve_target/1`'s fixed allowlist (the caller's job, not
+      this module's) is a second, independent line of defense; the escaping
+      here does not depend on it.
   """
   @behaviour Localfinds.Agents.Spawner
 
@@ -43,11 +53,7 @@ defmodule Localfinds.Agents.Spawner.System do
         {:error, :no_data_dir}
 
       root ->
-        case System.cmd("/bin/sh", ["-c", command(target)],
-               cd: root,
-               env: env(),
-               stderr_to_stdout: true
-             ) do
+        case System.cmd("/bin/sh", args(target), cd: root, env: env(), stderr_to_stdout: true) do
           {_out, 0} -> :ok
           {out, code} -> {:error, {code, out}}
         end
@@ -55,17 +61,26 @@ defmodule Localfinds.Agents.Spawner.System do
   end
 
   @doc """
-  The shell command that logs a banner and fires off the detached CLI.
-  Exposed so tests can assert the exact invocation without spawning it.
+  The full argv for `System.cmd("/bin/sh", args(target), ...)`: `-c`, the
+  constant script, then `$0` (`"spawner"`, a conventional placeholder name)
+  and `target` as `$1`. `target` is passed as a single argv element, never
+  concatenated into the script string - see the moduledoc for why that is
+  what keeps shell metacharacters in `target` inert.
   """
-  @spec command(String.t()) :: String.t()
-  def command(target) do
-    banner = "=== web-trigger #{target} $(date -Iseconds) ==="
+  @spec args(String.t()) :: [String.t()]
+  def args(target), do: ["-c", script(), "spawner", target]
 
+  @doc """
+  The shell script, constant for every call - it references the target as
+  `$1` rather than interpolating it. Exposed so tests can assert its shape
+  without spawning anything.
+  """
+  @spec script() :: String.t()
+  def script do
     """
     mkdir -p "$(dirname #{@log_path})"
-    printf '\\n%s\\n' "#{banner}" >> #{@log_path}
-    setsid nohup npx tsx packages/agents/src/cli.ts #{target} >> #{@log_path} 2>&1 &
+    printf '\\n%s\\n' "=== web-trigger $1 $(date -Iseconds) ===" >> #{@log_path}
+    setsid nohup npx tsx packages/agents/src/cli.ts "$1" >> #{@log_path} 2>&1 &
     """
   end
 
