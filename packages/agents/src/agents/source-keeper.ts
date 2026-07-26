@@ -1,4 +1,5 @@
 import type { AgentDefinition } from "../run-agent";
+import { THUMBS_CLEAR_NOTE } from "./feedback-vocab";
 
 export const sourceKeeper: AgentDefinition = {
   name: "source-keeper",
@@ -41,7 +42,7 @@ ${profile}
 
 ## This run
 
-1. Call read_feedback. If feedback exists, note which sources produced loved or hated items and fold that into profile.md ("Learned preferences", dated bullets citing the feedback). Do this BEFORE other work.
+1. Call read_feedback. If feedback exists, note which sources produced loved or hated items and fold that into profile.md ("Learned preferences", dated bullets citing the feedback). ${THUMBS_CLEAR_NOTE} Do this BEFORE other work.
 2. Call list_sources. If the registry is empty and the region briefing lists seed sources, register each seed with upsert_source first.
 3. Re-check the 3-5 stalest sources (oldest last_checked_at): fetch their news/events pages, then update notes/sites/<host>.md and call upsert_source (which bumps last_checked_at) with any status or quality changes. If a site is gone, set status "dead" and say why in its note.
    - For any source that does not already have an ical_url, call fetch_ical on its URL. If it returns a feedUrl, record it: upsert_source with ical_url set to that feedUrl AND status "active" — a calendar feed is reachable even when the site's HTML blocks fetches (403), so a feed-backed source should not stay paused. Note the feed URL in its site note.

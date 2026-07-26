@@ -196,6 +196,19 @@ defmodule Localfinds.FindsTest do
       assert thumb_for(Finds.feed_page(%{}), "Fresh news") == "thumbs_down"
     end
 
+    test "a thumbs_clear at the same timestamp as an earlier thumbs_up wins by id, not created_at" do
+      # Same tie-break rationale as above, for the retraction specifically: the
+      # `with_thumb/1` CASE maps thumbs_clear to nil, but only AFTER the lateral
+      # join has already picked "the latest thumb-ish row" by `id DESC`. If a
+      # regression made that ordering fall back to `created_at` instead, this
+      # tie would pass by luck on any other ordering and only fail here.
+      tie = DateTime.utc_now() |> DateTime.truncate(:second)
+      add_feedback_at("Fresh news", "thumbs_up", tie)
+      add_feedback_at("Fresh news", "thumbs_clear", tie)
+
+      assert thumb_for(Finds.feed_page(%{}), "Fresh news") == nil
+    end
+
     # Pins the `action IN ('thumbs_up', 'thumbs_down')` filter on the lateral
     # join: without it, "the latest feedback row" is this find's star, and
     # thumb comes back "star" instead of nil.

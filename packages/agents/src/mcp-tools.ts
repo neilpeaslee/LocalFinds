@@ -308,7 +308,7 @@ export function buildLocalfindsServer(
       ),
       tool(
         "read_feedback",
-        "Read the user's feed feedback (stars, hides, thumbs) that is new since your last successful run. Use it to update your profile.md.",
+        "Read the user's feed feedback (stars, hides, thumbs, or a thumb retraction) that is new since your last successful run. Use it to update your profile.md.",
         {
           limit: z.number().optional().describe("Default 200"),
         },

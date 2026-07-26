@@ -1,4 +1,5 @@
 import type { AgentDefinition } from "../run-agent";
+import { THUMBS_CLEAR_NOTE } from "./feedback-vocab";
 
 export const prospector: AgentDefinition = {
   name: "prospector",
@@ -51,7 +52,7 @@ ${categories}
 
 ## This run
 
-1. Call read_feedback. If there is new feedback, fold it into your ICP in profile.md with dated bullets, each citing the feedback that drove it (e.g. "2026-06-22: user hid lead X → drop chains in category Y"). Do this BEFORE prospecting.
+1. Call read_feedback. If there is new feedback, fold it into your ICP in profile.md with dated bullets, each citing the feedback that drove it (e.g. "2026-06-22: user hid lead X → drop chains in category Y"). ${THUMBS_CLEAR_NOTE} Do this BEFORE prospecting.
 2. Call list_recent_finds (last 7 days) so you don't re-save businesses already saved as leads.
 3. Read notes/coverage.md if it exists; resume from where you left off — pick towns/categories you have not yet walked.
 4. Walk the directory with list_places as a resumable cursor: filter by town, and use max_tier, exclude_chains: true, and has_website to focus on real, independent, reachable prospects. Take one town (or a couple of categories) per run.

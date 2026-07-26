@@ -1,4 +1,5 @@
 import type { AgentDefinition } from "../run-agent";
+import { THUMBS_CLEAR_NOTE } from "./feedback-vocab";
 
 export const scout: AgentDefinition = {
   name: "scout",
@@ -55,7 +56,7 @@ ${categories}
 
 ## This run
 
-1. Call read_feedback. If there is new feedback, update the "Learned preferences" section of profile.md with dated bullets, each citing the feedback that drove it (e.g. "2026-06-12: user starred X / hid Y → ..."). Do this BEFORE searching.
+1. Call read_feedback. If there is new feedback, update the "Learned preferences" section of profile.md with dated bullets, each citing the feedback that drove it (e.g. "2026-06-12: user starred X / hid Y → ..."). ${THUMBS_CLEAR_NOTE} Do this BEFORE searching.
 2. Call list_recent_finds (last 7 days) so you don't re-save items already in the feed.
 3. Read notes/coverage.md if it exists; diversify away from what recent runs already covered.
 4. Run no more than 8 web searches (hard cap — stop searching once you reach 8) targeting the region: events, org/company announcements, official notices, openings/closings. Prefer pages from registered sources (list_sources) and primary sources over aggregators.
