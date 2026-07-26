@@ -35,9 +35,15 @@ SQL
 # tables went missing locally (found 2026-07-26, while exercising /feed: the
 # users table was gone, every login raised undefined_table, and
 # `npm run deploy:migrate` would have skipped 0007 forever).
+#
+# 0012 went missing the same way (found 2026-07-26, while planning the /agents
+# port): db:load rebuilt the six-value feedback_action_check constraint and
+# local `thumbs_clear` writes raised check_violation, while the test database —
+# rebuilt from db/migrations/*.sql by a glob — stayed correct and green.
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0001_localfinds_schema.sql"
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0004_run_events.sql"
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0007_users_auth.sql"
+psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/0012_feedback_thumbs_clear.sql"
 psql "$LOCAL_DSN" -v ON_ERROR_STOP=1 -f "$ROOT/db/local/osm-places-local.sql"
 
 echo "db:load: loading snapshot CSVs"
