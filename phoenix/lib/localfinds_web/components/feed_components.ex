@@ -249,8 +249,20 @@ defmodule LocalfindsWeb.FeedComponents do
       </div>
 
       <div :if={@steward?} class="mt-2 flex items-center gap-1 border-t border-stone-100 pt-2">
-        <.action_button find_id={@find.id} action="thumbs_up" label="👍" title="More like this" />
-        <.action_button find_id={@find.id} action="thumbs_down" label="👎" title="Less like this" />
+        <.action_button
+          find_id={@find.id}
+          action="thumbs_up"
+          label="👍"
+          title="More like this"
+          active={@find.thumb == "thumbs_up"}
+        />
+        <.action_button
+          find_id={@find.id}
+          action="thumbs_down"
+          label="👎"
+          title="Less like this"
+          active={@find.thumb == "thumbs_down"}
+        />
         <.action_button
           :if={@find.status == "starred"}
           find_id={@find.id}

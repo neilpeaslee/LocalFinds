@@ -37,7 +37,7 @@ defmodule Localfinds.Finds do
   def feed_page(filters \\ %{}) do
     base = base_query(filters)
     total = Repo.aggregate(base, :count, :id)
-    ordered = order_by_sort(base, Map.get(filters, :sort))
+    ordered = base |> with_thumb() |> order_by_sort(Map.get(filters, :sort))
 
     case Map.get(filters, :page_size) do
       size when size in [nil, :all] ->
@@ -51,13 +51,39 @@ defmodule Localfinds.Finds do
   end
 
   defp base_query(filters) do
-    Find
+    from(f in Find, as: :f)
     |> view_clause(Map.get(filters, :view, "default"))
     |> days_clause(Map.get(filters, :days))
     |> from_clause(Map.get(filters, :from))
     |> to_clause(Map.get(filters, :to))
     |> tag_clause(Map.get(filters, :tag))
     |> type_clause(Map.get(filters, :type))
+  end
+
+  # Attaches each find's most recent *thumb* action, or nil, as the virtual
+  # `:thumb` field. Deliberately NOT part of `base_query/1`: the `total` count
+  # in `feed_page/1` runs against the un-joined query, since the count does
+  # not need it and a lateral join per row would be pure waste there.
+  #
+  # The `action IN (...)` filter is load-bearing, not decorative:
+  # localfinds.feedback also stores star/unstar/hide/unhide rows, so "the
+  # latest feedback row for this find" is frequently a star, not a thumb.
+  # Ordering by id (not created_at) matches the reference's "the last row
+  # inserted for this find" semantics exactly, including same-timestamp ties.
+  defp with_thumb(query) do
+    latest_thumb =
+      from fb in Feedback,
+        where:
+          fb.find_id == parent_as(:f).id and
+            fb.action in ["thumbs_up", "thumbs_down"],
+        order_by: [desc: fb.id],
+        limit: 1,
+        select: %{action: fb.action}
+
+    from f in query,
+      left_lateral_join: fb in subquery(latest_thumb),
+      on: true,
+      select_merge: %{thumb: fb.action}
   end
 
   # The four views, port of `feedWhere`. "all" deliberately applies no status or

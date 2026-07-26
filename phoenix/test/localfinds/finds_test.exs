@@ -42,6 +42,18 @@ defmodule Localfinds.FindsTest do
 
   defp titles(%{rows: rows}), do: Enum.map(rows, & &1.title)
 
+  defp thumb_for(%{rows: rows}, title), do: Enum.find(rows, &(&1.title == title)).thumb
+
+  defp add_feedback(title, action) do
+    Repo.query!(
+      """
+      INSERT INTO localfinds.feedback (find_id, action)
+      SELECT id, $2 FROM localfinds.finds WHERE title = $1
+      """,
+      [title, action]
+    )
+  end
+
   test "list_by_source/2 returns that source's finds, newest first" do
     titles = Enum.map(Finds.list_by_source(1), & &1.title)
 
@@ -149,6 +161,29 @@ defmodule Localfinds.FindsTest do
 
       assert length(page.rows) == 5
       assert page.page_count == 1
+    end
+  end
+
+  describe "feed_page/1 thumb state" do
+    test "the latest thumb wins when a find has both a thumbs_up and a later thumbs_down" do
+      add_feedback("Fresh news", "thumbs_up")
+      add_feedback("Fresh news", "thumbs_down")
+
+      assert thumb_for(Finds.feed_page(%{}), "Fresh news") == "thumbs_down"
+    end
+
+    # Pins the `action IN ('thumbs_up', 'thumbs_down')` filter on the lateral
+    # join: without it, "the latest feedback row" is this find's star, and
+    # thumb comes back "star" instead of nil.
+    test "a find with only star/hide feedback has thumb: nil" do
+      add_feedback("Old news", "hide")
+      add_feedback("Old news", "star")
+
+      assert thumb_for(Finds.feed_page(%{}), "Old news") == nil
+    end
+
+    test "a find with no feedback has thumb: nil" do
+      assert thumb_for(Finds.feed_page(%{}), "Other source") == nil
     end
   end
 

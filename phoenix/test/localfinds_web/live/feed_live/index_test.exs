@@ -38,6 +38,21 @@ defmodule LocalfindsWeb.FeedLive.IndexTest do
     )
   end
 
+  # Isolates one action_button's own opening tag by anchoring on both
+  # phx-value-id and phx-value-action (every button on a card shares the same
+  # find id, so matching on action alone would find the wrong button). `[^>]*`
+  # cannot cross into the next tag, so this never accidentally inspects a
+  # sibling button's class.
+  defp button_tag(html, find_id, action) do
+    case Regex.run(
+           ~r/<button[^>]*phx-value-id="#{find_id}"[^>]*phx-value-action="#{action}"[^>]*>/,
+           html
+         ) do
+      [tag] -> tag
+      nil -> flunk("no button found for find #{find_id}, action #{action}")
+    end
+  end
+
   test "renders the current finds, newest first", %{conn: conn} do
     {:ok, _lv, html} = live(conn, ~p"/feed")
 
@@ -154,6 +169,31 @@ defmodule LocalfindsWeb.FeedLive.IndexTest do
 
     assert html =~ "phx-click=\"feedback\""
     assert html =~ "☆ Star"
+  end
+
+  test "a thumbs-up find renders 👍 active and 👎 inactive", %{conn: conn, steward: steward} do
+    Repo.query!("INSERT INTO localfinds.feedback (find_id, action) VALUES (1, 'thumbs_up')")
+
+    {:ok, _lv, html} = conn |> log_in_user(steward) |> live(~p"/feed")
+
+    assert button_tag(html, 1, "thumbs_up") =~ "bg-amber-50"
+    refute button_tag(html, 1, "thumbs_down") =~ "bg-amber-50"
+  end
+
+  test "a thumbs-down find renders 👎 active and 👍 inactive", %{conn: conn, steward: steward} do
+    Repo.query!("INSERT INTO localfinds.feedback (find_id, action) VALUES (2, 'thumbs_down')")
+
+    {:ok, _lv, html} = conn |> log_in_user(steward) |> live(~p"/feed")
+
+    assert button_tag(html, 2, "thumbs_down") =~ "bg-amber-50"
+    refute button_tag(html, 2, "thumbs_up") =~ "bg-amber-50"
+  end
+
+  test "an un-thumbed find renders neither thumb as active", %{conn: conn, steward: steward} do
+    {:ok, _lv, html} = conn |> log_in_user(steward) |> live(~p"/feed")
+
+    refute button_tag(html, 3, "thumbs_up") =~ "bg-amber-50"
+    refute button_tag(html, 3, "thumbs_down") =~ "bg-amber-50"
   end
 
   test "a healthy page is not flagged as degraded", %{conn: conn} do

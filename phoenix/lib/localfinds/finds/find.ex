@@ -29,6 +29,10 @@ defmodule Localfinds.Finds.Find do
     field :type, :string
     field :tags, {:array, :string}
     field :place_osm_id, :string
+    # Populated by Localfinds.Finds.feed_page/1's lateral join onto
+    # localfinds.feedback — the find's most recent thumbs_up/thumbs_down, or
+    # nil. Not a column on localfinds.finds itself.
+    field :thumb, :string, virtual: true
   end
 
   @type t :: %__MODULE__{}
