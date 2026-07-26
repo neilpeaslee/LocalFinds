@@ -46,7 +46,12 @@ defmodule LocalfindsWeb.RunComponents do
 
   def brief(%RunEvent{kind: "result", payload: p}) do
     success? = p["subtype"] == "success"
-    cost = :erlang.float_to_binary(p["costUsd"] || 0.0, decimals: 4)
+    # jsonb round-trips a whole-number cost (most plausibly 0, for a run that
+    # errored or hit its cap before spending anything) as an Elixir integer,
+    # not a float — run-agent.ts writes costUsd on every finish/error branch,
+    # so this is a live path, not a hypothetical one. `/ 1` coerces either
+    # shape to a float; float_to_binary/2 raises on a bare integer.
+    cost = :erlang.float_to_binary((p["costUsd"] || 0) / 1, decimals: 4)
 
     %{
       icon: if(success?, do: "✓", else: "✕"),

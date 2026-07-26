@@ -81,6 +81,27 @@ defmodule LocalfindsWeb.RunComponentsTest do
       assert failed.text =~ "$0.0000"
     end
 
+    test "result tolerates a jsonb-decoded integer costUsd" do
+      # Postgres/Jason round-trip a whole-number jsonb cost as an Elixir
+      # integer, not a float — most plausibly 0 for a run that errored or
+      # capped before spending anything. `float_to_binary/2` raises on a bare
+      # integer, so this pins the coercion rather than a float literal like
+      # the test above.
+      zero =
+        RunComponents.brief(
+          event("result", %{"subtype" => "error_max_turns", "numTurns" => 30, "costUsd" => 0})
+        )
+
+      assert zero.text == "error_max_turns · 30 turns · $0.0000"
+
+      whole =
+        RunComponents.brief(
+          event("result", %{"subtype" => "success", "numTurns" => 5, "costUsd" => 3})
+        )
+
+      assert whole.text == "success · 5 turns · $3.0000"
+    end
+
     test "run_end reports the status and flags only errors" do
       assert %{icon: "■", text: "run success", error: false} =
                RunComponents.brief(event("run_end", %{"status" => "success"}))
