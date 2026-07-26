@@ -271,9 +271,16 @@ defmodule LocalfindsWeb.UserAuth do
   @doc """
   True when the scope holds a steward.
 
-  The single definition of "may write" for the ported pages. nginx gates writes
-  on the still-Next pages by HTTP method, which a LiveView write — a frame on an
-  already-open socket — never passes through, so ported pages authorize here.
+  The definition of "may write" used by the ported LiveViews and the feed
+  settings controller. nginx gates writes on the still-Next pages by HTTP
+  method, which a LiveView write — a frame on an already-open socket — never
+  passes through, so ported pages authorize here instead.
+
+  `LocalfindsWeb.Plugs.RequireSteward` (the nginx `auth_request` gate for
+  `/agents`) intentionally keeps its own inline match rather than calling this
+  function: it runs against a loose `%{user: %{role: "steward"}}` map, not the
+  `%Scope{}` struct this function requires, and the two would need to change
+  together if that ever changed.
   """
   @spec steward?(Localfinds.Accounts.Scope.t() | nil) :: boolean()
   def steward?(%Localfinds.Accounts.Scope{user: %{role: "steward"}}), do: true

@@ -1,8 +1,14 @@
 defmodule Localfinds.Finds.Find do
   @moduledoc """
-  Read-only projection of localfinds.finds. The agents write this table through
-  the TypeScript packages/db layer; the web only SELECTs, so there are no
-  changesets.
+  Read-shaped projection of localfinds.finds — still no changesets. The
+  agents write this table through the TypeScript packages/db layer; the web's
+  only writes are `status` transitions (feedback, bulk star/hide, unhide-all),
+  issued as `update_all` in `Localfinds.Finds`, not through a changeset on
+  this schema. That is deliberate: production grants the web role
+  column-level `UPDATE (status)` on this table, so a changeset-based write —
+  which sets every field in its change map — would touch other columns and
+  fail live with `insufficient_privilege`, even though it works locally
+  against the owning role.
   """
   use Ecto.Schema
 

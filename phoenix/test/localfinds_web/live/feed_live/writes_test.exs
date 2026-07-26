@@ -154,4 +154,26 @@ defmodule LocalfindsWeb.FeedLive.WritesTest do
       assert feedback_count() == 0
     end
   end
+
+  describe "malformed or unknown events (catch-all safety net)" do
+    test "a feedback event missing the action key does not crash the socket", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/feed")
+
+      # No "action" key: without the catch-all clause this raises
+      # FunctionClauseError and kills the LiveView process.
+      html = render_click(lv, "feedback", %{"id" => "1"})
+
+      assert Process.alive?(lv.pid)
+      assert html =~ "First"
+    end
+
+    test "an entirely unknown event name does not crash the socket", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/feed")
+
+      html = render_click(lv, "not_a_real_event", %{"whatever" => "value"})
+
+      assert Process.alive?(lv.pid)
+      assert html =~ "First"
+    end
+  end
 end

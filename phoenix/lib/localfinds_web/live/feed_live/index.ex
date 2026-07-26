@@ -87,6 +87,14 @@ defmodule LocalfindsWeb.FeedLive.Index do
     with_steward(socket, fn -> Finds.unhide_all() end)
   end
 
+  # Catch-all: a malformed or unknown frame (e.g. "feedback" without an
+  # "action" key, or an event name that matches nothing above) must be
+  # ignored, not crash the socket — any logged-out visitor can send an
+  # arbitrary event, and a FunctionClauseError here kills the LiveView
+  # process before the steward gate is ever reached. Must stay LAST: it is a
+  # catch-all and would otherwise shadow every real clause above it.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
   # The gate. The templates hide write controls from non-stewards, but hiding is
   # cosmetic: a socket frame can be sent by hand, so every write re-checks here.
   # Wrapped in DB.guard/1 so a Postgres bounce degrades to a flash rather than

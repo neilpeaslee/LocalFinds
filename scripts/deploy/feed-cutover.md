@@ -38,7 +38,9 @@ write fails with `42501 insufficient_privilege` the moment a steward clicks a bu
 
     curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:4000/feed        # 200
     curl -sS -X POST -o /dev/null -w "%{http_code}\n" http://127.0.0.1:4000/feed/settings
-    # 302 (redirect to /feed; the write itself is refused without a steward session)
+    # 403 (protect_from_forgery rejects the missing CSRF token before the
+    # controller's steward check ever runs — this only proves the route exists
+    # and the browser pipeline is wired up, not that the write gate works)
 
 ## 3. nginx: add BOTH locations
 
