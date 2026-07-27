@@ -6,7 +6,7 @@ defmodule LocalfindsWeb.HomeComponentsTest do
   alias LocalfindsWeb.Format
   alias LocalfindsWeb.HomeComponents
 
-  defp find(overrides \\ %{}) do
+  defp find(overrides) do
     Map.merge(
       %{
         id: 1,
@@ -49,7 +49,7 @@ defmodule LocalfindsWeb.HomeComponentsTest do
     test "renders a bare title when the find has no url" do
       html = card(%{url: nil})
       assert html =~ "Harbor Concert"
-      refute html =~ "href="
+      refute html =~ "<a "
     end
 
     test "shows the summary clamped to two lines" do
@@ -71,6 +71,7 @@ defmodule LocalfindsWeb.HomeComponentsTest do
     test "shows the event date badge when there is a start date" do
       assert card() =~ "Jul 27"
       assert card() =~ "amber"
+      refute card() =~ "2026"
     end
 
     test "omits the date badge when there is no start date" do
