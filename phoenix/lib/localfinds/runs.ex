@@ -48,6 +48,15 @@ defmodule Localfinds.Runs do
     Repo.all(from r in Run, order_by: [desc: r.started_at], limit: ^limit)
   end
 
+  # Narrow, cheap alternative to list/1 for callers that only need to answer
+  # "is anything running right now?" — the trigger guard and the await poll,
+  # both of which run far more often than a page load and must not pay for
+  # @history_limit rows plus every downstream render just to answer that.
+  @spec running() :: [Run.t()]
+  def running do
+    Repo.all(from r in Run, where: r.status == "running")
+  end
+
   @spec get(integer()) :: Run.t() | nil
   def get(id) when is_integer(id), do: Repo.get(Run, id)
 

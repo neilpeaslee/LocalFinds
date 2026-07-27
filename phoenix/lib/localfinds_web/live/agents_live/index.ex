@@ -132,21 +132,23 @@ defmodule LocalfindsWeb.AgentsLive.Index do
 
   # Restores the reference's "wait until the running row appears" guarantee
   # without putting the wait inside handle_event: the click already returned,
-  # and this self-message polls in the LiveView process instead. load/1
-  # refreshes :runs, :in_progress? and :active_run together, so as soon as the
-  # row lands this both arms the same live tail mount/3 would have armed for
-  # an already-active run, and clears :starting. A spawn that never produces a
-  # row within @await_budget_ms (crashed before its own startRun, or the box
-  # is unreachable) still releases the button - stuck-disabled-forever is
-  # exactly the failure mode this is guarding against - and logs it as an ops
-  # signal, never as page copy.
+  # and this self-message polls in the LiveView process instead. Each tick
+  # used to call the full load/1 — 2 queries plus sections/1 re-reading and
+  # re-rendering every agent's profile.md through Earmark and HtmlSanitizeEx —
+  # on every 250ms beat for up to 20s, whether or not anything had changed.
+  # fresh_in_progress?/0 is the same narrow, indexed read the trigger guard
+  # below uses, so most ticks now cost one cheap query; load/1 (and its
+  # markdown pipeline) runs exactly once, on the tick that actually finds the
+  # row. A spawn that never produces a row within @await_budget_ms (crashed
+  # before its own startRun, or the box is unreachable) still releases the
+  # button - stuck-disabled-forever is exactly the failure mode this is
+  # guarding against - and logs it as an ops signal, never as page copy.
   @impl true
   def handle_info({:await_run, target, deadline}, socket) do
-    socket = load(socket)
-
     cond do
-      socket.assigns.active_run ->
-        RunTail.watch(socket.assigns.active_run.id)
+      fresh_in_progress?() ->
+        socket = load(socket)
+        if run = socket.assigns.active_run, do: RunTail.watch(run.id)
         {:noreply, assign(socket, :starting, nil)}
 
       System.monotonic_time(:millisecond) >= deadline ->
@@ -177,11 +179,14 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   defp started_at(%DateTime{} = dt), do: Calendar.strftime(dt, "%-m/%-d/%Y, %-I:%M:%S %p")
 
   # The trigger. Order matters and is security-relevant: steward re-check (the
-  # mount gate is cosmetic against a hand-sent socket frame; a scope can also
-  # change mid-session) -> allowlist (Runs.resolve_target's fixed roster is the
-  # only thing Spawner.run/1's moduledoc trusts the caller to have already
-  # checked) -> in-progress guard (agents share the DB and profiles, so only
-  # one run at a time) -> spawn. No blocking wait: the reference
+  # mount gate makes this unreachable through the router; :current_scope is
+  # fixed by assign_new at mount and never refreshes, so this is not a defence
+  # against a scope changing mid-session — it IS sound defense-in-depth
+  # against a hand-crafted socket frame bypassing the router entirely) ->
+  # allowlist (Runs.resolve_target's fixed roster is the only thing
+  # Spawner.run/1's moduledoc trusts the caller to have already checked) ->
+  # in-progress guard (agents share the DB and profiles, so only one run at a
+  # time) -> spawn. No blocking wait: the reference
   # (apps/web/src/app/agents/actions.ts) polls up to 20s for the `running` row
   # so its re-render shows it; handle_info({:await_run, ...}) above restores
   # that guarantee off the click's critical path instead of inside it.
@@ -211,18 +216,38 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   def handle_event("trigger", _params, socket), do: {:noreply, socket}
 
   # Refuses a second trigger while a spawn is still being confirmed, not just
-  # while a `running` row already exists on the board. Runs.in_progress?/2
-  # alone is blind to the run this very click just started: :runs is a cached
-  # list, reloaded only when :await_run's poll below finds the new row (or an
-  # existing tail's run_end fires). Without the :starting half of this guard,
-  # a second click landing inside that window - the CLI's own cold-start time,
-  # easily a couple of seconds - reaches Spawner.run/1 a second time: two
-  # agent CLIs writing concurrently to the shared production Postgres and the
-  # same profile files, plus doubled real-money spend, from perfectly
-  # ordinary sequential clicks by the same steward.
+  # while a `running` row already exists on the board. Two independent halves,
+  # both load-bearing:
+  #
+  # - :starting closes the window between a successful spawn and the CLI's own
+  #   `running` row landing — nothing in the database yet shows this run, so
+  #   only the socket's own optimistic flag can catch it.
+  # - fresh_in_progress?/0 closes every window :starting cannot see: a run
+  #   that was already live before this socket's own last reload (another
+  #   steward's click, the roster cron, a second browser tab), or this same
+  #   socket's own spawn whose await already gave up and cleared :starting
+  #   before the row finally landed. socket.assigns.runs is a cache, refreshed
+  #   only by load/1 (mount, an armed tail's done_fun, or this socket's own
+  #   :await_run poll) — a console that mounted with nothing running and never
+  #   triggers anything itself never reloads it again, so reading that cache
+  #   here would leave the buttons enabled for the life of the connection.
+  #   Reading the database fresh on every check is what the reference does too
+  #   (apps/web/src/app/agents/actions.ts re-reads inside the server action on
+  #   every click) — this restores that guarantee lost when the cached list
+  #   was reused here instead.
+  #
+  # A database bounce degrades to "refuse": if we cannot confirm nothing is
+  # running, spawning a possibly-second CLI against the shared production
+  # Postgres is the wrong default.
   defp already_starting_or_running?(socket) do
-    not is_nil(socket.assigns.starting) or
-      Runs.in_progress?(socket.assigns.runs, socket.assigns.now)
+    not is_nil(socket.assigns.starting) or fresh_in_progress?()
+  end
+
+  defp fresh_in_progress? do
+    case Localfinds.DB.guard(fn -> Runs.running() end) do
+      {:ok, runs} -> Runs.in_progress?(runs, DateTime.utc_now())
+      {:error, :database_unavailable} -> true
+    end
   end
 
   @impl true

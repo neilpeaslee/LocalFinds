@@ -139,6 +139,15 @@ defmodule Localfinds.RunsTest do
     end
 
     test "count_warnings/1 counts only tool_result rows flagged isError" do
+      # A non-tool_result row that also carries `"isError" => true`. Every
+      # isError-bearing row from the shared setup above is a tool_result, so
+      # without this the `kind == "tool_result"` half of count_warnings/1's
+      # filter could be deleted and this test would stay green. run_end is the
+      # SDK's own non-tool_result kind that can plausibly carry a truthy
+      # isError-shaped field (a failed run), not a shape invented for this
+      # test alone.
+      insert_event!(1, 3, "run_end", %{"agent" => "scout", "runId" => 1, "isError" => true})
+
       assert Runs.count_warnings(Runs.events(1)) == 1
       assert Runs.count_warnings([]) == 0
     end

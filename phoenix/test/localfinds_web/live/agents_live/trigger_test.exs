@@ -110,19 +110,20 @@ defmodule LocalfindsWeb.AgentsLive.TriggerTest do
     lv |> element(~s{button[phx-value-target="scout"]}) |> render_click()
     assert_receive {:spawned, "scout"}
 
-    # What the real CLI would do moments later — inserted by hand here so the
-    # test proves the guard does NOT depend on this row existing (that
-    # dependency, via a cached :runs list nobody had reloaded yet, was the
-    # bug): the guard must already be closed from :starting alone, before
-    # this row ever lands.
+    # No row exists yet at this point — the real CLI hasn't started, so a
+    # fresh database read alone would see nothing running and let this
+    # through. The guard must already be closed by :starting alone, before
+    # any row lands.
+    render_click(lv, "trigger", %{"target" => "curator"})
+
+    refute_receive {:spawned, "curator"}, 200
+
+    # What the real CLI would do moments later, inserted only now to show it
+    # was never load-bearing for the refusal above.
     Repo.query!("""
     INSERT INTO localfinds.runs (agent, started_at, status)
     VALUES ('scout', now(), 'running')
     """)
-
-    render_click(lv, "trigger", %{"target" => "curator"})
-
-    refute_receive {:spawned, "curator"}, 200
   end
 
   test "once the running row lands, :starting clears and the banner takes over", %{conn: conn} do
@@ -170,5 +171,82 @@ defmodule LocalfindsWeb.AgentsLive.TriggerTest do
     # not just the label — a fresh click reaches Spawner.run/1 again.
     render_click(lv, "trigger", %{"target" => "scout"})
     assert_receive {:spawned, "scout"}
+  end
+
+  # --- Final-review fix: the guard's fresh-read half. already_starting_or_running?/1
+  # used to fall back on socket.assigns.runs — a cache refreshed only by load/1
+  # (mount, an armed tail's done_fun, or this socket's own :await_run poll). A
+  # socket that mounted with nothing running, and that never itself triggers a
+  # run whose poll would refresh that cache, never reloads :runs again for the
+  # life of the connection: every scenario below reached Spawner.run/1 a
+  # second time under the old guard even though a run was genuinely live,
+  # because nothing on this particular socket had ever re-read the database.
+
+  test "a run started outside this console (the roster cron, or another steward) blocks a fresh trigger",
+       %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/agents")
+
+    # Nothing was running at mount, so this socket's cached :runs is []. The
+    # cron (not this socket) starts scout a moment later.
+    Repo.query!("""
+    INSERT INTO localfinds.runs (agent, started_at, status)
+    VALUES ('scout', now(), 'running')
+    """)
+
+    render_click(lv, "trigger", %{"target" => "all"})
+
+    refute_receive {:spawned, _}, 200
+  end
+
+  test "once the await gives up, a click that lands after the CLI's row finally appears still refuses",
+       %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/agents")
+
+    lv |> element(~s{button[phx-value-target="scout"]}) |> render_click()
+    assert_receive {:spawned, "scout"}
+
+    # The spawn is slow enough that the await budget elapses first — driven
+    # directly with a past deadline rather than sleeping the real 20s.
+    past_deadline = System.monotonic_time(:millisecond) - 1
+    send(lv.pid, {:await_run, "scout", past_deadline})
+    html = render(lv)
+    refute html =~ "starting…"
+
+    # The real CLI's row lands a moment after the timeout gave up on it —
+    # unlike the "gives up cleanly" test above, this time the row does show
+    # up, just too late for :starting to have caught it. Nothing on this
+    # socket reloads :runs on its own, so without a fresh read the guard
+    # would still see the stale empty list from mount and let a second click
+    # through — permanently, since no further reload is ever coming.
+    Repo.query!("""
+    INSERT INTO localfinds.runs (agent, started_at, status)
+    VALUES ('scout', now(), 'running')
+    """)
+
+    render_click(lv, "trigger", %{"target" => "scout"})
+
+    refute_receive {:spawned, _}, 200
+  end
+
+  test "a second browser tab refuses a trigger once the first tab's spawn has landed", %{
+    conn: conn
+  } do
+    {:ok, lv_a, _html} = live(conn, ~p"/agents")
+    {:ok, lv_b, _html} = live(conn, ~p"/agents")
+
+    lv_a |> element(~s{button[phx-value-target="scout"]}) |> render_click()
+    assert_receive {:spawned, "scout"}
+
+    # Tab A's own row lands. Tab B is a separate LiveView process with its
+    # own :runs cache, still whatever it saw at its own mount — before this
+    # row existed — and its own :starting, which was never set.
+    Repo.query!("""
+    INSERT INTO localfinds.runs (agent, started_at, status)
+    VALUES ('scout', now(), 'running')
+    """)
+
+    render_click(lv_b, "trigger", %{"target" => "curator"})
+
+    refute_receive {:spawned, "curator"}, 200
   end
 end
