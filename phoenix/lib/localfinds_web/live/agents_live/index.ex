@@ -40,6 +40,11 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   @await_budget_ms 20_000
   @await_poll_ms 250
 
+  # Cadence for the idle-state poller below — deliberately slower than the
+  # 700ms armed transcript tail (RunTail.interval_ms/0), since its only job is
+  # noticing that *something* started, not streaming it.
+  @heartbeat_ms 5_000
+
   @impl true
   def mount(_params, _session, socket) do
     socket = if connected?(socket), do: Realtime.subscribe(socket), else: socket
@@ -51,12 +56,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
      # the tail's done_fun (which clears it) is valid before that lands.
      |> assign(:starting, nil)
      |> load()
-     |> then(fn socket ->
-       if connected?(socket) && socket.assigns.active_run,
-         do: RunTail.watch(socket.assigns.active_run.id)
-
-       socket
-     end)}
+     |> resume_polling()}
   end
 
   defp load(socket) do
@@ -124,10 +124,18 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   # Same RunTail.on_tick/3 as the detail page. On run end, clear :starting so
   # Task 10's optimistic "starting…" banner never outlives the run it
   # announced, then re-load so the run tables and 30-day spend settle
-  # together — the console's equivalent of the reference's router.refresh().
+  # together — the console's equivalent of the reference's router.refresh() —
+  # and hand off to resume_polling/1 so a subsequent run (this socket's own
+  # next click, or one started anywhere else) is still noticed once this run
+  # is no longer the thing occupying the timer slot.
   @impl true
   def handle_info({:run_tail, run_id}, socket) do
-    {:noreply, RunTail.on_tick(socket, run_id, &(&1 |> assign(:starting, nil) |> load()))}
+    {:noreply,
+     RunTail.on_tick(
+       socket,
+       run_id,
+       &(&1 |> assign(:starting, nil) |> load() |> resume_polling())
+     )}
   end
 
   # Restores the reference's "wait until the running row appears" guarantee
@@ -142,25 +150,72 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   # row. A spawn that never produces a row within @await_budget_ms (crashed
   # before its own startRun, or the box is unreachable) still releases the
   # button - stuck-disabled-forever is exactly the failure mode this is
-  # guarding against - and logs it as an ops signal, never as page copy.
+  # guarding against - and logs it as an ops signal, never as page copy. Either
+  # way, resume_polling/1 hands off to whichever poller is appropriate next:
+  # RunTail.watch/1 if a row landed, or the heartbeat if it never did — a row
+  # that lands moments after this gives up is no longer invisible to the UI,
+  # just to this particular click's own optimistic "starting…" state.
   @impl true
   def handle_info({:await_run, target, deadline}, socket) do
     cond do
       fresh_in_progress?() ->
-        socket = load(socket)
-        if run = socket.assigns.active_run, do: RunTail.watch(run.id)
-        {:noreply, assign(socket, :starting, nil)}
+        {:noreply, socket |> load() |> assign(:starting, nil) |> resume_polling()}
 
       System.monotonic_time(:millisecond) >= deadline ->
         Logger.warning(
           "agent spawn for #{inspect(target)} never produced a running row within #{@await_budget_ms}ms"
         )
 
-        {:noreply, assign(socket, :starting, nil)}
+        {:noreply, socket |> assign(:starting, nil) |> resume_polling()}
 
       true ->
         Process.send_after(self(), {:await_run, target, deadline}, @await_poll_ms)
         {:noreply, socket}
+    end
+  end
+
+  # The heartbeat: the console's only way of noticing a run that started
+  # without this socket's own involvement — the roster cron, another
+  # steward's click, another browser tab. mount/3, an ending tail, and
+  # :await_run giving up all hand off here via resume_polling/1; this is the
+  # other end of that hand-off, ticking every @heartbeat_ms while idle until
+  # something needs a faster poller instead.
+  #
+  # idle?/1 guards the whole tick, not just whether to act on the result,
+  # because timers here are never cancelled, only left to expire: a
+  # :heartbeat message already in flight when the console starts tailing (or
+  # starts awaiting a click's own spawn) still arrives, and must be a pure
+  # no-op — RunTail's own reschedule, or :await_run's own poll, already owns
+  # the job for as long as either is running, and each calls resume_polling/1
+  # itself on the way out. This branch neither re-arms nor reschedules, so it
+  # can never double-arm RunTail.watch/1 on top of an already-armed tail: two
+  # ticks can only both see `{:ok, true}` and both try to arm one if both are
+  # processed while genuinely idle, and LiveView's mailbox is sequential — the
+  # first to run flips :active_run and stops being idle before the second is
+  # ever handled. A stray timer can outlive its usefulness (harmless: one
+  # extra no-op tick) but never survives past a tail actually being armed,
+  # since real runs stay tailed for minutes, not the few seconds a leftover
+  # heartbeat could still have left on its own clock.
+  @impl true
+  def handle_info(:heartbeat, socket) do
+    if idle?(socket) do
+      case fresh_running?(DateTime.utc_now()) do
+        {:ok, true} ->
+          {:noreply, socket |> load() |> resume_polling()}
+
+        {:ok, false} ->
+          schedule_heartbeat()
+          {:noreply, socket}
+
+        {:error, :database_unavailable} ->
+          # Same degrade-and-stop contract as everywhere else on this page: a
+          # page that has already told the visitor it's degraded should not
+          # silently half-recover, and a reconnect mounts fresh — so this
+          # does not reschedule itself.
+          {:noreply, assign(socket, :db_unavailable, true)}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -243,12 +298,60 @@ defmodule LocalfindsWeb.AgentsLive.Index do
     not is_nil(socket.assigns.starting) or fresh_in_progress?()
   end
 
+  # A database bounce degrades to "yes, in progress" — refuse a spawn rather
+  # than risk a second one. fresh_running?/1 below is the shared, honest
+  # (non-defaulted) version of this same read, used where the caller needs to
+  # tell "nothing running" apart from "couldn't tell."
   defp fresh_in_progress? do
-    case Localfinds.DB.guard(fn -> Runs.running() end) do
-      {:ok, runs} -> Runs.in_progress?(runs, DateTime.utc_now())
+    case fresh_running?(DateTime.utc_now()) do
+      {:ok, in_progress?} -> in_progress?
       {:error, :database_unavailable} -> true
     end
   end
+
+  @spec fresh_running?(DateTime.t()) :: {:ok, boolean()} | {:error, :database_unavailable}
+  defp fresh_running?(now) do
+    case Localfinds.DB.guard(fn -> Runs.running() end) do
+      {:ok, runs} -> {:ok, Runs.in_progress?(runs, now)}
+      {:error, :database_unavailable} = error -> error
+    end
+  end
+
+  # "Idle" = no poller already owns the job the heartbeat exists to do: not
+  # mid-spawn-confirmation (:starting, whose own :await_run poll already
+  # re-checks fresh_in_progress?/0 on its own schedule) and not already
+  # tailing a live run (:active_run, whose RunTail.watch/1 reschedules
+  # itself). Both are updated together with every poller hand-off below, so
+  # this stays accurate without a separate "am I polling" flag to drift out
+  # of sync with them.
+  defp idle?(socket) do
+    is_nil(socket.assigns.starting) and is_nil(socket.assigns.active_run)
+  end
+
+  # The single hand-off point every poller returns control through: mount,
+  # an ending tail's done_fun, and both ends of :await_run. Exactly one of
+  # "arm the live tail" or "schedule the next heartbeat" happens — never
+  # both, never neither (short of a disconnected socket or an already-
+  # degraded page, where no poller should be running at all).
+  defp resume_polling(socket) do
+    cond do
+      not connected?(socket) ->
+        socket
+
+      socket.assigns.db_unavailable ->
+        socket
+
+      socket.assigns.active_run ->
+        RunTail.watch(socket.assigns.active_run.id)
+        socket
+
+      true ->
+        schedule_heartbeat()
+        socket
+    end
+  end
+
+  defp schedule_heartbeat, do: Process.send_after(self(), :heartbeat, @heartbeat_ms)
 
   @impl true
   def render(assigns) do
