@@ -67,4 +67,15 @@ defmodule Localfinds.TownBoundariesTest do
 
     assert Enum.map(TownBoundaries.load(dir), & &1.name) == ["Real"]
   end
+
+  test "a valid-but-empty town-boundaries.json does NOT fall through to .example", %{dir: dir} do
+    write!(dir, "town-boundaries.json", ~s({"features": []}))
+
+    write!(dir, "town-boundaries.json.example", ~s({"features": [
+      {"properties": {"name": "ShouldNotAppear"},
+       "geometry": {"type": "Polygon", "coordinates": [[[-1.0, 2.0], [-1.5, 2.5]]]}}
+    ]}))
+
+    assert TownBoundaries.load(dir) == []
+  end
 end

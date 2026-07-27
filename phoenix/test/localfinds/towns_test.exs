@@ -51,4 +51,16 @@ defmodule Localfinds.TownsTest do
     write!(dir, "towns.json", ~s({"_comment": "nothing here"}))
     assert Towns.load(dir) == []
   end
+
+  test "a valid-but-empty towns.json does NOT fall through to .example", %{dir: dir} do
+    write!(dir, "towns.json", ~s({"towns": []}))
+
+    write!(
+      dir,
+      "towns.json.example",
+      ~s({"towns": [{"name": "ShouldNotAppear", "bbox": [1, 2, 3, 4]}]})
+    )
+
+    assert Towns.load(dir) == []
+  end
 end
