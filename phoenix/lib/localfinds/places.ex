@@ -16,7 +16,9 @@ defmodule Localfinds.Places do
   """
   import Ecto.Query
 
+  alias Localfinds.Categories
   alias Localfinds.DB
+  alias Localfinds.MapCategories
   alias Localfinds.Places.{DirectoryPlace, Params, Place}
   alias Localfinds.Repo
 
@@ -126,6 +128,71 @@ defmodule Localfinds.Places do
         order_by: pl.town,
         select: %{town: pl.town, n: count(pl.osm_id)}
     )
+  end
+
+  @doc """
+  Every pinnable place, annotated for the region map — port of `listMapPins()`
+  **plus the dashboard's fixed filter**, which the Next reference applies in the
+  browser (`selectVisible` in `lib/map-selection.ts`).
+
+  Moving that filter here is deliberate. The dashboard map has no filter UI, so
+  the predicate is a constant: business tiers only (tier 4 is "not a business"),
+  nothing closed, no chains. Applying it in SQL keeps the testable logic in
+  ExUnit and leaves the JS hook as viewport tracking plus library calls. The
+  rendered result is identical — a conjunction reordered.
+
+  The returned map's keys are a wire contract: the LiveView JSON-encodes them
+  onto the hook element and `assets/js/hooks/region_map.js` reads them by name.
+
+  `status`, `brand` and `tags` are deliberately absent from the result. The
+  reference carried them so the client could filter; nothing downstream of this
+  function needs them now, and a smaller payload crosses the socket.
+  """
+  @spec map_pins() :: [map()]
+  def map_pins do
+    tiers = Categories.load()
+    themes = MapCategories.load()
+
+    DirectoryPlace
+    |> where([pl], is_nil(pl.duplicate_of))
+    # Defensive, and not directly testable: the osm_places matview derives
+    # coordinates from geometry and custom_places.lat/lng are NOT NULL, so no
+    # coordinate-less row is representable today. It stays because a pin with a
+    # null coordinate would throw inside Leaflet, not degrade.
+    |> where([pl], not is_nil(pl.lat) and not is_nil(pl.lng))
+    |> where([pl], pl.status != "closed")
+    |> where([pl], is_nil(pl.brand))
+    |> select([pl], %{
+      osm_id: pl.osm_id,
+      name: pl.name,
+      kind: pl.kind,
+      lat: pl.lat,
+      lng: pl.lng,
+      town: pl.town
+    })
+    |> Repo.all()
+    |> Enum.map(&annotate(&1, tiers, themes))
+    |> Enum.reject(&(&1.tier == 4))
+  end
+
+  @doc """
+  Total catalogued places — port of `countPlaces()`. Counts non-duplicate rows
+  **including coordinate-less ones**, so it legitimately exceeds
+  `length(map_pins())`. That gap is the difference between "places catalogued"
+  and "places the map can draw", and it is not a bug.
+  """
+  @spec count_places() :: integer()
+  def count_places do
+    Repo.aggregate(where(DirectoryPlace, [pl], is_nil(pl.duplicate_of)), :count, :osm_id)
+  end
+
+  defp annotate(pin, tiers, themes) do
+    match = MapCategories.theme_of(themes, pin.kind)
+
+    pin
+    |> Map.put(:tier, Categories.tier_of(tiers, pin.kind))
+    |> Map.put(:theme, match.key)
+    |> Map.put(:subtype, match.subtype)
   end
 
   defp town_filter(q, nil), do: q
