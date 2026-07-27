@@ -170,10 +170,13 @@ defmodule LocalfindsWeb.DegradedRenderTest do
   end
 
   test "home renders the degraded state" do
-    # The finds section is guarded by :if={!@db_unavailable}; the stats block is
-    # not, because towns/coverage come from config files that a DB bounce does
-    # not affect. So prove "Current finds" is genuinely guarded body content
-    # first — otherwise the refute below would pass for the wrong reason.
+    # Both the stats section and the finds section are guarded by
+    # :if={!@db_unavailable} — the stats section because @place_count and
+    # @feed.total are DB-backed with zero fallbacks, and "0 places catalogued"
+    # during a bounce would read as real data rather than unknown, same as
+    # every sibling ported page. Prove "Current finds" and "places catalogued"
+    # are genuinely guarded body content first — otherwise the refutes below
+    # would pass for the wrong reason.
     assigns = %{
       region_name: "Testland, Maine",
       coverage: nil,
@@ -186,12 +189,17 @@ defmodule LocalfindsWeb.DegradedRenderTest do
       map_ready?: false
     }
 
-    assert healthy(LocalfindsWeb.HomeLive.Index, assigns) =~ "Current finds"
+    healthy_html = healthy(LocalfindsWeb.HomeLive.Index, assigns)
+    assert healthy_html =~ "places catalogued"
+    assert healthy_html =~ "Current finds"
 
     html = degraded(LocalfindsWeb.HomeLive.Index, assigns)
     assert html =~ "Temporarily unavailable"
+    refute html =~ "places catalogued"
     refute html =~ "Current finds"
-    # The region heading survives a bounce — it comes from a file, not the DB.
-    assert html =~ "Testland, Maine"
+    # The region heading does NOT survive a bounce: the whole stats section
+    # (heading included) is guarded as one unit, matching /sources — a
+    # partial page (banner + orphaned heading) is not the intended fallback.
+    refute html =~ "Testland, Maine"
   end
 end

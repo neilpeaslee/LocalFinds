@@ -51,7 +51,7 @@ defmodule LocalfindsWeb.HomeLive.Index do
 
       <.db_unavailable :if={@db_unavailable} />
 
-      <section>
+      <section :if={!@db_unavailable}>
         <h1 class="text-xl font-semibold tracking-tight">{@region_name}</h1>
 
         <div :if={@coverage} class="prose prose-sm prose-stone mt-2 max-w-none">
