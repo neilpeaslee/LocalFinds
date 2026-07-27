@@ -39,15 +39,24 @@ defmodule Localfinds.Places.ParamsTest do
 
   # -- bbox malformations --------------------------------------------------
   for bad <- [
-        "44,-69,45",            # 3 numbers
-        "44,-69,45,-68,0",      # 5 numbers
-        "a,b,c,d",              # not numbers
-        "45,-69,44,-68",        # s >= n
-        "44,-68,45,-69",        # w >= e
-        "-91,-69,45,-68",       # s out of range
-        "44,-69,91,-68",        # n out of range
-        "44,-181,45,-68",       # w out of range
-        "44,-69,45,181"         # e out of range
+        # 3 numbers
+        "44,-69,45",
+        # 5 numbers
+        "44,-69,45,-68,0",
+        # not numbers
+        "a,b,c,d",
+        # s >= n
+        "45,-69,44,-68",
+        # w >= e
+        "44,-68,45,-69",
+        # s out of range
+        "-91,-69,45,-68",
+        # n out of range
+        "44,-69,91,-68",
+        # w out of range
+        "44,-181,45,-68",
+        # e out of range
+        "44,-69,45,181"
       ] do
     test "bbox #{inspect(bad)} is a 400" do
       assert {:error, msg} = Params.validate(%{"bbox" => unquote(bad)})

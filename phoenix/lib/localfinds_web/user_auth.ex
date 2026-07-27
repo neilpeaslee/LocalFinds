@@ -217,6 +217,12 @@ defmodule LocalfindsWeb.UserAuth do
       on user_token.
       Redirects to login page if there's no logged user.
 
+    * `:require_steward` - Like `:require_authenticated`, but also requires
+      `steward?/1` of the resulting scope. Redirects to the login page
+      otherwise, same as a logged-out visitor. Used for the `/agents` admin
+      surface, which nginx's `auth_request` cannot gate because a LiveView
+      socket connects at /live/websocket, outside any location block.
+
   ## Examples
 
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
@@ -243,6 +249,29 @@ defmodule LocalfindsWeb.UserAuth do
     socket = mount_current_scope(socket, session)
 
     if socket.assigns.current_scope && socket.assigns.current_scope.user do
+      {:cont, socket}
+    else
+      socket =
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+        |> Phoenix.LiveView.redirect(to: ~p"/auth/log-in")
+
+      {:halt, socket}
+    end
+  end
+
+  # :require_steward - Steward-only LiveView mount. Unlike an nginx
+  # `auth_request` location, this runs for the connected mount as well as the
+  # disconnected render — a LiveView socket connects at /live/websocket, where
+  # no location block can see it. Non-stewards get the same redirect a
+  # logged-out visitor gets, matching what nginx did for /agents before the
+  # port. (No separate @doc here: on_mount/4 clauses share one doc slot with
+  # :mount_current_scope/:require_authenticated above — a second @doc on the
+  # same name/arity triggers "redefining @doc attribute" at compile time.)
+  def on_mount(:require_steward, _params, session, socket) do
+    socket = mount_current_scope(socket, session)
+
+    if steward?(socket.assigns.current_scope) do
       {:cont, socket}
     else
       socket =

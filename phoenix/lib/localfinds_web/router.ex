@@ -46,6 +46,14 @@ defmodule LocalfindsWeb.Router do
     end
 
     post "/feed/settings", FeedSettingsController, :update
+
+    # Steward-only admin surface. Its own live_session because the on_mount
+    # differs; crossing from :app is a full page load, which the nav already does.
+    live_session :steward,
+      on_mount: [{LocalfindsWeb.UserAuth, :require_steward}] do
+      live "/agents", AgentsLive.Index, :index
+      live "/agents/runs/:run_id", AgentsLive.Run, :show
+    end
   end
 
   scope "/osm", LocalfindsWeb do
