@@ -20,9 +20,9 @@ develop it, and deploy it. Where the project is headed lives in
 
 ## Architecture
 
-- **apps/web** — Next.js UI: dashboard with the region map (`/`), the feed
-  (`/feed`), places directory (`/places`), source registry (`/sources`), agent
-  profiles + run history (`/agents`, steward-only).
+- **apps/web** — the retired Next.js UI. It serves no page; every route moved to
+  `phoenix/`. Still present because its SSE route is the rollback path for the
+  agent run transcripts.
 - **packages/agents** — Claude Agent SDK agents. Four run sequentially on a
   schedule: **scout** (web-searches for new finds), **source-keeper** (maintains
   the source registry + per-site notes), **prospector** (discovery-only local
@@ -39,9 +39,12 @@ develop it, and deploy it. Where the project is headed lives in
 - **packages/db** — Postgres/PostGIS (raw parameterized SQL) for exact facts
   (finds, sources, places, feedback, runs). Anything fuzzy lives in per-agent
   markdown under `data/agents/<name>/` (profile.md is yours to edit too).
-- **phoenix/** — Elixir/Phoenix service exposing the external read-only OSM
-  places API at `api.localfinds.me` (`GET /osm/places`, bearer-token auth,
-  reads the same materialized view; excludes locally-curated places).
+- **phoenix/** — Elixir/Phoenix app serving the whole web UI as LiveViews:
+  dashboard with the region map (`/`), the feed (`/feed`), places directory
+  (`/places`), source registry (`/sources`), agent profiles + run history
+  (`/agents`, steward-only). Also exposes the external read-only OSM places API
+  at `api.localfinds.me` (`GET /osm/places`, bearer-token auth, reads the same
+  materialized view; excludes locally-curated places).
 - **data/** — ALL runtime state and personal config. Gitignored except
   `*.example` templates: keep PII out of git.
 
