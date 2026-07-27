@@ -42,8 +42,14 @@ defmodule LocalfindsWeb.AgentsLive.Index do
 
   # Cadence for the idle-state poller below — deliberately slower than the
   # 700ms armed transcript tail (RunTail.interval_ms/0), since its only job is
-  # noticing that *something* started, not streaming it.
-  @heartbeat_ms 5_000
+  # noticing that *something* started, not streaming it. Read at call time
+  # rather than a bare module attribute so a test can shrink it far below 5s
+  # and prove a real Process.send_after fires — without that seam, the only
+  # way to test that mount/1 (or the tail ending, or :await_run finishing)
+  # actually *schedules* a heartbeat, rather than merely reacting correctly
+  # to a hand-sent one, is to wait out the real production interval in CI.
+  @heartbeat_ms_default 5_000
+  defp heartbeat_ms, do: Application.get_env(:localfinds, :heartbeat_ms, @heartbeat_ms_default)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -178,7 +184,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
   # without this socket's own involvement — the roster cron, another
   # steward's click, another browser tab. mount/3, an ending tail, and
   # :await_run giving up all hand off here via resume_polling/1; this is the
-  # other end of that hand-off, ticking every @heartbeat_ms while idle until
+  # other end of that hand-off, ticking every heartbeat_ms/0 while idle until
   # something needs a faster poller instead.
   #
   # idle?/1 guards the whole tick, not just whether to act on the result,
@@ -351,7 +357,7 @@ defmodule LocalfindsWeb.AgentsLive.Index do
     end
   end
 
-  defp schedule_heartbeat, do: Process.send_after(self(), :heartbeat, @heartbeat_ms)
+  defp schedule_heartbeat, do: Process.send_after(self(), :heartbeat, heartbeat_ms())
 
   @impl true
   def render(assigns) do
