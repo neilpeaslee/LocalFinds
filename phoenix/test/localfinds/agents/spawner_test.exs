@@ -82,6 +82,36 @@ defmodule Localfinds.Agents.SpawnerTest do
     test "writes the ops banner (with the target as $1) to the log, not to the page" do
       assert Spawner.System.script() =~ "=== web-trigger $1"
     end
+
+    test "sources the shared node-PATH helper before invoking npx" do
+      # systemd sets no PATH= for localfinds-api.service, so the release
+      # inherits systemd's minimal default - which lacks the nvm-installed
+      # node `npx` needs. scripts/lib/node-path.sh (also sourced by the cron
+      # entrypoint, scripts/run-agents.sh) fixes that; it must run before the
+      # npx line, not just be present somewhere in the script.
+      lines = Spawner.System.script() |> String.trim() |> String.split("\n")
+
+      assert Enum.at(lines, 0) == ". scripts/lib/node-path.sh"
+      assert Enum.any?(lines, &(&1 =~ "npx tsx packages/agents/src/cli.ts"))
+    end
+
+    test "the source line resolves relative to cd: repo_root, the same option run/1 passes" do
+      # run/1 calls System.cmd("/bin/sh", ..., cd: repo_root, ...), so the
+      # unqualified "scripts/lib/node-path.sh" in the script must resolve
+      # relative to the repo root, not wherever the Phoenix release's own
+      # cwd happens to be. Proves that directly by running just the source
+      # line - not the full script, which would shell out to the real agent
+      # CLI - under the identical cd option, from this test file's own
+      # location rather than DataDir (config/test.exs points DataDir at
+      # phoenix/test/fixtures/data, whose parent is not the repo root).
+      repo_root = Path.expand("../../../../", __DIR__)
+      assert File.exists?(Path.join(repo_root, "scripts/lib/node-path.sh"))
+
+      inert_script = ". scripts/lib/node-path.sh\nprintf sourced-ok\n"
+
+      assert {"sourced-ok", 0} ==
+               System.cmd("/bin/sh", ["-c", inert_script], cd: repo_root)
+    end
   end
 
   describe "shell metacharacters in a target are inert at runtime" do

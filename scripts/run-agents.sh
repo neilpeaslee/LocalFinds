@@ -14,11 +14,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # cron's PATH usually lacks node; extend with common install locations.
-export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-if [ -d "$HOME/.nvm/versions/node" ]; then
-  latest_nvm_node=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)
-  [ -n "$latest_nvm_node" ] && export PATH="$latest_nvm_node:$PATH"
-fi
+# Shared with the web-trigger path (Spawner.System, phoenix/lib/localfinds/
+# agents/spawner/system.ex), which hits the same gap under systemd - see
+# scripts/lib/node-path.sh. Sourced after the cd above, so the repo-root-
+# relative path resolves regardless of where run-agents.sh was invoked from.
+. scripts/lib/node-path.sh
 
 mkdir -p data/agents
 {
