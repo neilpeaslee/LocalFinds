@@ -1,0 +1,16 @@
+{
+  "_comment": "Fixture themes for the Phoenix test suite — not a copy of data/config/map-categories.json, so tests never depend on gitignored config.",
+  "themes": [
+    { "key": "outdoors", "label": "Outdoors & Rec", "color": "#10b981",
+      "subtypes": { "leisure=park": "Park" } },
+    { "key": "arts", "label": "Arts & Culture", "color": "#ec4899",
+      "subtypes": { "tourism=museum": "Museum" } },
+    { "key": "food", "label": "Food & Drink", "color": "#f59e0b",
+      "subtypes": { "amenity=cafe": "Café" } },
+    { "key": "retail", "label": "Shops & Retail", "color": "#8b5cf6",
+      "subtypes": { "shop=*": "Shop" } }
+  ],
+  "otherKey": "other",
+  "otherLabel": "Other",
+  "otherColor": "#a8a29e"
+}
