@@ -161,7 +161,12 @@ defmodule Localfinds.Places do
     # null coordinate would throw inside Leaflet, not degrade.
     |> where([pl], not is_nil(pl.lat) and not is_nil(pl.lng))
     |> where([pl], pl.status != "closed")
-    |> where([pl], is_nil(pl.brand))
+    # A chain means a non-empty brand tag. `LocalfindsWeb.PlaceRanking` and
+    # `PlacesLive.Show` both define chain?/1 as `is_binary(brand) and brand !=
+    # ""`, citing the TS reference's `Boolean(brand)` (where "" is falsy) — the
+    # map must not carry a second, different definition of "chain" than /places
+    # uses, even though no empty-brand row exists in this data today.
+    |> where([pl], is_nil(pl.brand) or pl.brand == "")
     |> select([pl], %{
       osm_id: pl.osm_id,
       name: pl.name,
