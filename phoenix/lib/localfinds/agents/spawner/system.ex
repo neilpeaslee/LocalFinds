@@ -74,10 +74,19 @@ defmodule Localfinds.Agents.Spawner.System do
   The shell script, constant for every call - it references the target as
   `$1` rather than interpolating it. Exposed so tests can assert its shape
   without spawning anything.
+
+  Sources `scripts/lib/node-path.sh` before invoking `npx`: `run/1` runs this
+  under `/bin/sh` (dash on Ubuntu) via `System.cmd/3` with `cd: repo_root`,
+  and the systemd unit that hosts the Phoenix release sets no `PATH=`, so it
+  inherits systemd's minimal default - which lacks the nvm-installed node.
+  `scripts/run-agents.sh` (the cron entrypoint) hits the identical gap and
+  sources the same file, so the PATH-extension logic lives in one place. The
+  helper is POSIX-sh clean and safe to source from either caller.
   """
   @spec script() :: String.t()
   def script do
     """
+    . scripts/lib/node-path.sh
     mkdir -p "$(dirname #{@log_path})"
     printf '\\n%s\\n' "=== web-trigger $1 $(date -Iseconds) ===" >> #{@log_path}
     setsid nohup npx tsx packages/agents/src/cli.ts "$1" >> #{@log_path} 2>&1 &
