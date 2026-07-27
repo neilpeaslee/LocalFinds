@@ -78,4 +78,51 @@ defmodule LocalfindsWeb.HomeLive.IndexTest do
     refute html =~ "Temporarily unavailable"
     refute :sys.get_state(lv.pid).socket.assigns.db_unavailable
   end
+
+  describe "the map container" do
+    test "the disconnected render shows the placeholder and ships no pin data", %{conn: conn} do
+      html = conn |> get(~p"/") |> html_response(200)
+
+      assert html =~ "Loading map…"
+      refute html =~ "phx-hook=\"RegionMap\""
+      refute html =~ "data-pins"
+    end
+
+    test "the connected render mounts the hook with pins", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/")
+
+      assert html =~ ~s(phx-hook="RegionMap")
+      assert html =~ ~s(id="region-map")
+      assert html =~ "Farnsworth Art Museum"
+      refute html =~ "Loading map…"
+    end
+
+    test "the hook element is marked phx-update=ignore", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/")
+      # Without this a re-render patches the DOM Leaflet owns and wipes the tiles.
+      assert html =~ ~s(phx-update="ignore")
+    end
+
+    test "excluded places are absent from the pin payload", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/")
+      refute html =~ "Hannaford"
+      refute html =~ "Rock City Coffee"
+    end
+
+    test "the legend lists every theme plus Other and the coverage swatch", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/")
+
+      assert html =~ "Coverage area"
+      assert html =~ "Arts &amp; Culture"
+      assert html =~ "Other"
+      assert html =~ "more (zoom in)"
+    end
+
+    test "boundaries and towns reach the hook as data attributes", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/")
+      assert html =~ "data-boundaries"
+      assert html =~ "data-towns"
+      assert html =~ "Rockland"
+    end
+  end
 end

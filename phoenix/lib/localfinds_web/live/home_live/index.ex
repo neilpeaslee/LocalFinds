@@ -8,9 +8,11 @@ defmodule LocalfindsWeb.HomeLive.Index do
   use LocalfindsWeb, :live_view
 
   alias Localfinds.Finds
+  alias Localfinds.MapCategories
   alias Localfinds.Markdown
   alias Localfinds.Places
   alias Localfinds.Region
+  alias Localfinds.TownBoundaries
   alias Localfinds.Towns
   alias LocalfindsWeb.HomeComponents
   alias LocalfindsWeb.LiveDB
@@ -33,7 +35,28 @@ defmodule LocalfindsWeb.HomeLive.Index do
       |> LiveDB.load(:place_count, &Places.count_places/0, 0)
       |> LiveDB.load(:feed, fn -> Finds.feed_page(%{view: "default"}) end, @empty_feed)
 
-    {:ok, socket}
+    {:ok, load_map(socket, connected?(socket))}
+  end
+
+  # Map data is fetched only on the connected mount: the dead render shows the
+  # placeholder (Leaflet cannot server-render either way), so fetching pins
+  # there would cost a query and put the whole payload in the initial HTML as
+  # well as the mount diff.
+  #
+  # `map_ready?` is assigned rather than derived in render/1 for two reasons:
+  # connected?/1 needs the socket, which render/1 does not get, and deriving it
+  # from "are there pins" would show the placeholder forever on a region whose
+  # config and database are both legitimately empty.
+  defp load_map(socket, false) do
+    assign(socket, map_ready?: false, pins: [], boundaries: [], themes: [])
+  end
+
+  defp load_map(socket, true) do
+    socket
+    |> assign(:map_ready?, true)
+    |> LiveDB.load(:pins, &Places.map_pins/0, [])
+    |> assign(:boundaries, TownBoundaries.load())
+    |> assign(:themes, MapCategories.legend_themes(MapCategories.load()))
   end
 
   # Dormant realtime seam (rung 4 lights this up).
@@ -44,10 +67,13 @@ defmodule LocalfindsWeb.HomeLive.Index do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col gap-6">
-      <%!-- Task 8 replaces this block with the real map container. --%>
-      <div class="flex h-72 w-full items-center justify-center rounded-lg border border-stone-200 bg-stone-100 text-sm text-stone-400 sm:h-96">
-        Loading map…
-      </div>
+      <HomeComponents.region_map
+        connected?={@map_ready?}
+        pins={@pins}
+        towns={@towns}
+        boundaries={@boundaries}
+        themes={@themes}
+      />
 
       <.db_unavailable :if={@db_unavailable} />
 

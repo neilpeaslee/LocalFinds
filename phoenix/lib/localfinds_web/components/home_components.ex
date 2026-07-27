@@ -70,4 +70,66 @@ defmodule LocalfindsWeb.HomeComponents do
     </article>
     """
   end
+
+  attr :connected?, :boolean, required: true
+  attr :pins, :list, default: []
+  attr :towns, :list, default: []
+  attr :boundaries, :list, default: []
+  attr :themes, :list, default: []
+
+  @doc """
+  The map container.
+
+  Renders the placeholder until the socket connects, which mirrors the
+  reference's `next/dynamic(..., {ssr: false, loading: …})`: Leaflet touches the
+  DOM at import time and cannot server-render either way. The payload therefore
+  crosses the wire once, in the mount diff, instead of appearing in the initial
+  HTML *and* the diff.
+
+  `phx-update="ignore"` is load-bearing: everything inside this div belongs to
+  Leaflet, and a LiveView patch would destroy it.
+  """
+  def region_map(assigns) do
+    ~H"""
+    <div
+      :if={!@connected?}
+      class="flex h-72 w-full items-center justify-center rounded-lg border border-stone-200 bg-stone-100 text-sm text-stone-400 sm:h-96"
+    >
+      Loading map…
+    </div>
+
+    <div :if={@connected?} class="relative h-72 w-full sm:h-96">
+      <div
+        id="region-map"
+        phx-hook="RegionMap"
+        phx-update="ignore"
+        class="h-full w-full overflow-hidden rounded-lg border border-stone-200"
+        data-pins={Jason.encode!(@pins)}
+        data-towns={Jason.encode!(@towns)}
+        data-boundaries={Jason.encode!(@boundaries)}
+        data-themes={Jason.encode!(@themes)}
+      >
+      </div>
+
+      <div class="absolute top-3 right-3 z-[1000] max-w-[10rem] rounded-md border border-stone-200 bg-white/95 p-2 text-xs text-stone-700 shadow-sm">
+        <div class="mb-1 flex items-center gap-1.5">
+          <span class="inline-block h-3 w-3 rounded-sm border-2" style="border-color: #b45309"></span>
+          <span>Coverage area</span>
+        </div>
+        <div :for={theme <- @themes} class="flex items-center gap-1.5">
+          <span
+            class="inline-block h-2.5 w-2.5 rounded-full"
+            style={"background-color: #{theme.color}"}
+          >
+          </span>
+          <span>{theme.label}</span>
+        </div>
+        <div class="mt-1 flex items-center gap-1.5">
+          <span class="inline-block h-2.5 w-2.5 rounded-full" style="background-color: #64748b"></span>
+          <span>more (zoom in)</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
 end
