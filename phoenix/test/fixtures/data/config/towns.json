@@ -1,0 +1,8 @@
+{
+  "_comment": "Fixture towns for the Phoenix test suite. Rockland has a boundary polygon; Camden deliberately does not, so the bbox-rectangle fallback is exercised. Thomaston is malformed and must be dropped.",
+  "towns": [
+    { "name": "Rockland", "county": "Knox", "bbox": [44.05, -69.20, 44.15, -69.05], "primary": true },
+    { "name": "Camden", "county": "Knox", "bbox": [44.18, -69.10, 44.24, -69.02] },
+    { "name": "Thomaston", "county": "Knox", "bbox": [44.07, -69.18] }
+  ]
+}

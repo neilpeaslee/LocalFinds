@@ -1,0 +1,32 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Rockland", "primary": true, "osm": "relation/-100" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[-69.20, 44.05], [-69.05, 44.05], [-69.05, 44.15], [-69.20, 44.15], [-69.20, 44.05]],
+          [[-69.12, 44.09], [-69.10, 44.09], [-69.10, 44.11], [-69.12, 44.09]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Owls Head" },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [[[-69.10, 44.00], [-69.08, 44.00], [-69.08, 44.02], [-69.10, 44.00]]],
+          [[[-69.07, 44.00], [-69.06, 44.00], [-69.06, 44.01], [-69.07, 44.00]]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "primary": false },
+      "geometry": { "type": "Polygon", "coordinates": [[[-69.0, 44.0]]] }
+    }
+  ]
+}
