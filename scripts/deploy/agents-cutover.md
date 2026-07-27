@@ -124,16 +124,49 @@ removing one without the other leaves either the console or the run-detail page 
 
 ## 5. Test and reload (sudo)
 
-Before reloading, grep to confirm the file now has exactly what §2–§4 intended: the two new
-Phoenix locations present, and the three kept blocks (`/api/runs/`, `@login`, `= /auth/check`)
-still there, with no leftover `location /agents { … 3001 … }`:
+Three checks, in order. They prove different things — none of them substitutes for another.
+
+**Check A — the old block is actually gone. This is the one that matters.** Forgetting to delete
+§2's block is the single most likely hand-edit mistake, and it fails *silently*: nginx's
+exact-match/longest-prefix rules mean the new `= /agents` and `^~ /agents/` blocks still win
+routing over a leftover `location /agents { … }` prefix block, so the site looks and behaves
+correctly with the stale block still sitting there, gated but pointless, until someone trips over
+it later. Confirm it's gone before trusting anything else:
+
+    grep -c "location /agents {" /etc/nginx/sites-available/localfinds.me
+
+Expect exactly `0`. Any other number means §2's block is still present — go back to §2 and delete
+it, then repeat this check, before proceeding. (This exact string cannot match the two blocks §4
+just added: `location = /agents {` and `location ^~ /agents/ {` both have another token between
+`location` and `/agents`, so neither contains `location /agents {` as a substring — verified
+against a synthetic file containing both new blocks and no old one, where this check reads `0`.)
+
+**Check B — nothing else in the file moved.** Diff against the backup made in §1:
+
+    diff /etc/nginx/sites-available/localfinds.me.bak-agents-cutover \
+         /etc/nginx/sites-available/localfinds.me
+
+Expect to see exactly one thing removed — the old `location /agents { … proxy_pass
+http://127.0.0.1:3001; … }` block from §2 — and exactly one thing added — the two new `location =
+/agents` / `location ^~ /agents/` blocks from §4, both proxying to `127.0.0.1:4000`. If the diff
+shows anything else touched (a kept block from §3, an unrelated location, whitespace-only
+reflow), stop and figure out why before reloading.
+
+**Check C — confirm the new and kept blocks are present.** This does NOT prove the old block is
+gone — a leftover copy of §2's block passes it too, since none of the five alternatives below
+match the literal text `location /agents {` (this is the exact way the original version of this
+runbook's own check failed to catch a leftover block in review — kept here only for what it
+actually proves):
 
     grep -n "location \(= /agents\|\^~ /agents/\|/api/runs/\|@login\|= /auth/check\)" \
         /etc/nginx/sites-available/localfinds.me
 
-Expect exactly five matches: `location = /agents`, `location ^~ /agents/`, `location
-/api/runs/`, `location @login`, `location = /auth/check`. Anything proxying `/agents` to
-`127.0.0.1:3001` still present at this point is the old block — go back to §2.
+Expect five matches: `location = /agents`, `location ^~ /agents/`, `location /api/runs/`,
+`location @login`, `location = /auth/check`. **This count is derived from `agents-read-gate.md`'s
+documented history of what's in the file today, not verified against the box's actual current
+file.** Read the real output, don't just trust the number — if the file has picked up any other
+`/agents`-shaped or `@login`/`/auth/check`-shaped line since 2026-07-23 that isn't accounted for
+here, the count will be off, and that's worth investigating before reloading, not explaining away.
 
     sudo nginx -t && sudo systemctl reload nginx
 
@@ -147,8 +180,13 @@ Logged out (no cookie):
     curl -sS -o /dev/null -w "%{http_code}\n" https://localfinds.me/                     # 200
     curl -sS -o /dev/null -w "%{http_code}\n" https://localfinds.me/feed                 # 200
 
-Browser, authenticated **member** (non-steward): visit `/agents` → redirected to `/auth/log-in`
-(same outcome as logged out — the gate is steward-only, not just authenticated-only).
+Browser, authenticated **member** (non-steward): visit both routes → both redirect to
+`/auth/log-in`, same outcome as logged out (the gate is steward-only, not just
+authenticated-only). Both routes share the one `live_session :steward`, so this is low risk, but
+check both rather than assuming the second follows from the first:
+
+- `/agents` → redirected to `/auth/log-in`
+- `/agents/runs/1` → redirected to `/auth/log-in`
 
 Browser, **steward**: log in at `/auth/log-in`, then visit `/agents`.
 
