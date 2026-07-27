@@ -9,10 +9,10 @@ defmodule Localfinds.Places do
       connection or a server shutdown to `{:error, :database_unavailable}`.
 
     * The web directory (`list_directory_places/1`, `get_directory_place/1`,
-      `list_towns/0`) reads the `localfinds.places` view and deliberately
-      includes custom rows — the provenance exclusion is an API-only rule.
-      These functions raise on failure; the caller guards (LiveViews via
-      `LocalfindsWeb.LiveDB`).
+      `list_towns/0`, `map_pins/0`, `count_places/0`) reads the
+      `localfinds.places` view and deliberately includes custom rows — the
+      provenance exclusion is an API-only rule. These functions raise on
+      failure; the caller guards (LiveViews via `LocalfindsWeb.LiveDB`).
   """
   import Ecto.Query
 
@@ -94,9 +94,9 @@ defmodule Localfinds.Places do
 
   # =========================================================================
   # Directory reads (localfinds.places view) — what the web UI renders. Port of
-  # listPlaces / getPlaceByOsmId / listPlaceTowns in packages/db/src/queries.ts.
-  # These raise on failure; LiveViews call them through LocalfindsWeb.LiveDB,
-  # which applies Localfinds.DB.guard/1.
+  # listPlaces / getPlaceByOsmId / listPlaceTowns / listMapPins / countPlaces in
+  # packages/db/src/queries.ts. These raise on failure; LiveViews call them
+  # through LocalfindsWeb.LiveDB, which applies Localfinds.DB.guard/1.
   # =========================================================================
 
   @directory_limit 5000
@@ -155,10 +155,15 @@ defmodule Localfinds.Places do
 
     DirectoryPlace
     |> where([pl], is_nil(pl.duplicate_of))
-    # Defensive, and not directly testable: the osm_places matview derives
-    # coordinates from geometry and custom_places.lat/lng are NOT NULL, so no
-    # coordinate-less row is representable today. It stays because a pin with a
-    # null coordinate would throw inside Leaflet, not degrade.
+    # Deliberately untested: no row in the current fixture data is
+    # coordinate-less, so this guard isn't exercised, by choice, not because
+    # such a row can't exist. custom_places.lat/lng are NOT NULL, but that only
+    # covers the custom-place branch — planet_osm_point.way has no NOT NULL
+    # constraint, so an OSM node with a null geometry is schema-legal and would
+    # surface here with null lat/lng. The guard stays because a null
+    # coordinate would throw inside Leaflet, not degrade; exercising it would
+    # need a REFRESH MATERIALIZED VIEW inside the suite, which mutates shared
+    # state the async tests depend on — not worth it for a defensive guard.
     |> where([pl], not is_nil(pl.lat) and not is_nil(pl.lng))
     |> where([pl], pl.status != "closed")
     # A chain means a non-empty brand tag. `LocalfindsWeb.PlaceRanking` and

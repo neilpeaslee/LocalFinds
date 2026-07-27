@@ -102,10 +102,10 @@ defmodule Localfinds.Places.MapPinsTest do
   test "count_places/0 and map_pins/0 legitimately disagree" do
     # NOT a bug: count_places is "places catalogued" (the whole directory),
     # map_pins is "what the map may draw". The gap here is Hannaford (tier 4)
-    # and Rock City Coffee (chain). A future gap can also come from rows with
-    # no coordinates, which map_pins guards against but the fixture DB cannot
-    # represent (custom_places.lat/lng are NOT NULL and osm_places derives
-    # coordinates from geometry).
+    # and Rock City Coffee (chain). A future gap can also come from
+    # coordinate-less rows, which map_pins guards against — no row in this
+    # fixture data happens to be coordinate-less, but such a row is
+    # schema-legal (an OSM node with a null geometry), not impossible.
     assert Places.count_places() - length(Places.map_pins()) == 2
   end
 
@@ -116,5 +116,15 @@ defmodule Localfinds.Places.MapPinsTest do
     )
 
     assert Places.count_places() == 7
+  end
+
+  test "count_places/0 stays closed-inclusive while map_pins/0 excludes the closed place" do
+    Repo.query!(
+      "INSERT INTO localfinds.place_annotations (osm_id, status_override) VALUES ($1, 'closed')",
+      ["way/12"]
+    )
+
+    assert Places.count_places() == 8
+    refute "Harbor Park" in names()
   end
 end
