@@ -168,4 +168,30 @@ defmodule LocalfindsWeb.DegradedRenderTest do
     html = degraded(LocalfindsWeb.AgentsLive.Run, assigns)
     assert html =~ "Temporarily unavailable"
   end
+
+  test "home renders the degraded state" do
+    # The finds section is guarded by :if={!@db_unavailable}; the stats block is
+    # not, because towns/coverage come from config files that a DB bounce does
+    # not affect. So prove "Current finds" is genuinely guarded body content
+    # first — otherwise the refute below would pass for the wrong reason.
+    assigns = %{
+      region_name: "Testland, Maine",
+      coverage: nil,
+      towns: [],
+      place_count: 0,
+      feed: %{rows: [], total: 0, page: 1, page_count: 1},
+      pins: [],
+      boundaries: [],
+      themes: [],
+      map_ready?: false
+    }
+
+    assert healthy(LocalfindsWeb.HomeLive.Index, assigns) =~ "Current finds"
+
+    html = degraded(LocalfindsWeb.HomeLive.Index, assigns)
+    assert html =~ "Temporarily unavailable"
+    refute html =~ "Current finds"
+    # The region heading survives a bounce — it comes from a file, not the DB.
+    assert html =~ "Testland, Maine"
+  end
 end
