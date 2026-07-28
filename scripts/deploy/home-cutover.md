@@ -14,13 +14,11 @@ reaches, and Plan 6 can retire it. Two things make this cutover different:
   live there until Plan 6. The danger is editing the existing catch-all in place to
   forward to Phoenix — syntactically valid, wrong semantically. This new block must be
   separate; nginx's exact-match rule routes `/` to it, leaving the catch-all for
-  everything else. Do not add a `^~ /` prefix block — that is a longest-prefix match
-  that would intercept both `/` and its children, taking `/_next/*` with it and breaking
-  the rollback path for Plan 6.
+  everything else.
 - **No new grants are expected** — `localfinds.places` was granted in Plan 2 and
   `localfinds.finds` in Plan 3 — **but this has NOT been verified.** Reading the
   migrations does not count; run §0's grants query first. If it errors with `42501
-  insufficient_privilege`, this task gains a migration (`db/migrations/0013_...sql`)
+  insufficient_privilege`, this task gains a migration (`db/migrations/0014_...sql`)
   that the runbook must sequence before the nginx flip. Three grant defects in Plan 3
   passed every local test and would have thrown `42501` in production.
 
@@ -35,8 +33,8 @@ On the box (via SSH or as Neil logged in):
 
 **Run this grants query first.** This is the only verification that matters:
 
-    psql -d localfinds -c "
-      SET ROLE localfinds_web;
+    sudo -u postgres psql -d localfinds -c "
+      SET ROLE localfinds_api;
       SELECT count(*) FROM localfinds.places WHERE duplicate_of IS NULL;
       SELECT count(*) FROM localfinds.places
         WHERE duplicate_of IS NULL AND lat IS NOT NULL AND lng IS NOT NULL
@@ -96,10 +94,10 @@ Three checks, in order. Each proves different things — none substitutes for an
 catch-all block that points to Next; add only the new `location = /` block alongside
 it. Confirm the old catch-all is still there:
 
-    grep -n "location / {" /etc/nginx/sites-available/localfinds.me | head -1
+    grep -c "location / {" /etc/nginx/sites-available/localfinds.me
 
-Expect exactly one match (the catch-all). If you see zero, the catch-all was deleted —
-restore from the backup and start over. If you see two or more, a duplicate exists — fix
+Expect exactly `1` (the catch-all). If you see `0`, the catch-all was deleted —
+restore from the backup and start over. If you see `2` or more, a duplicate exists — fix
 it before reloading.
 
 **Check B — nothing unintended moved.** Diff against the backup:
@@ -114,10 +112,10 @@ touched, the existing Phoenix blocks moved), stop and figure out why before relo
 **Check C — existing Phoenix locations survived.** Confirm the pre-existing blocks are
 still present and untouched:
 
-    grep -n "location \(= /feed\|^~ /feed/\|= /places\|^~ /places/\|= /sources\|^~ /sources/\)" \
+    grep -n "location \(= /feed\|\^~ /feed/\|= /places\|\^~ /places/\|= /sources\|\^~ /sources/\)" \
         /etc/nginx/sites-available/localfinds.me
 
-Expect six matches (exact-match and prefix blocks for `/feed`, `/places`, `/sources`).
+Expect exactly 6 matches (exact-match and prefix blocks for `/feed`, `/places`, `/sources`).
 This does NOT prove Check A — a leftover catch-all passes it — but it proves the existing
 Phoenix surface survived your edits.
 
