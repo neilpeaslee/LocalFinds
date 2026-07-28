@@ -42,15 +42,36 @@ abort() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 # the <start-line> itself, e.g. `location @login { return 302 ...; }`)
 # naturally returns <start-line> unchanged, since depth reaches zero before
 # the line is done.
+#
+# Braces inside quoted strings or `#` comments are not structural and must
+# not be counted — a `}` in a comment ("# closing brace looks like this: }")
+# or a quoted header value ("a}b") would otherwise end the block early, and
+# a `{` in either would push depth further from zero, running the search
+# past the block's real end (or off the end of the file). Each line is
+# reduced to its structural content before counting: quoted strings (both
+# "..." and '...') are blanked out FIRST — so a `#` inside a string is never
+# mistaken for the start of a comment — then everything from an unquoted `#`
+# to end of line is dropped, then what remains is what gets counted.
+#
+# If depth never returns to zero, the file is malformed (or this isn't
+# really the start of a block) — print nothing and fail. Callers must check
+# for this and abort with a clear diagnostic; falling through to a sed
+# range built from an empty end line is not acceptable on a script that
+# runs as root against production.
 block_end_line() {
   local file="$1" start="$2"
-  awk -v s="$start" '
+  awk -v s="$start" -v q="'" '
     NR < s { next }
     {
-      depth += gsub(/{/, "{")
-      depth -= gsub(/}/, "}")
-      if (depth <= 0) { print NR; exit }
+      line = $0
+      gsub(/"[^"]*"/, "\"\"", line)
+      gsub(q "[^" q "]*" q, "\"\"", line)
+      sub(/#.*/, "", line)
+      depth += gsub(/{/, "{", line)
+      depth -= gsub(/}/, "}", line)
+      if (depth <= 0) { print NR; found = 1; exit }
     }
+    END { exit (found ? 0 : 1) }
   ' "$file"
 }
 
@@ -76,7 +97,8 @@ del_block() {
             | grep -F -- "location $token{" | head -1 | cut -d: -f1 || true)"
   [ -n "$line" ] || return 1
 
-  end="$(block_end_line "$file" "$line")"
+  end="$(block_end_line "$file" "$line")" \
+    || abort "location $token in $file never closes its braces — the config appears to have an unbalanced block; stop and re-read it by hand"
   sed -i "${line},${end}d" "$file"
 }
 
@@ -130,7 +152,8 @@ check_catch_all_backend() {
   [ "$catch_all_count" = 1 ] || return 0
   local start end body found
   start="$catch_all_lines"
-  end="$(block_end_line "$NGX" "$start")"
+  end="$(block_end_line "$NGX" "$start")" \
+    || abort "the catch-all (location / {) in $NGX never closes its braces — the config appears to have an unbalanced block; stop and re-read it by hand"
   body="$(sed -n "${start},${end}p" "$NGX")"
   printf '%s\n' "$body" | grep -qF -- "proxy_pass http://127.0.0.1:3001;" && return 0
   found="$(printf '%s\n' "$body" | grep -m1 -oE 'proxy_pass http://[^;]+;' || true)"

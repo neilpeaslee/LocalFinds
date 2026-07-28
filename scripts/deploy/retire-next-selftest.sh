@@ -212,5 +212,148 @@ check "/api/runs/ with nested if: @login survived" "$(grep -c '@login' "$f")" "1
 check "/api/runs/ with nested if: braces stay balanced" \
   "$((before_open - after_open))" "$((before_close - after_close))"
 
+echo "== brace-depth-aware block extraction: strings and comments are not structural =="
+
+# `}` inside a quoted header value must not be mistaken for the block's own
+# close. Without string-stripping this would truncate 3 lines early.
+f="$(work nginx-with-next.conf)"
+start="$(grep -n '^    location /api/runs/ {$' "$f" | cut -d: -f1)"
+awk -v n="$start" '
+  { print }
+  NR==n+1 { print "        proxy_set_header X-Thing \"a}b\";" }
+' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+before="$(wc -l < "$f")"
+( . "$SCRIPT" --source-only; del_block "$f" "/api/runs/" )
+after="$(wc -l < "$f")"
+check "unmatched } in a quoted string: removes 9 lines" "$((before - after))" "9"
+check "unmatched } in a quoted string: block gone" "$(grep -c 'location /api/runs/' "$f")" "0"
+check "unmatched } in a quoted string: @login survived" "$(grep -c '@login' "$f")" "1"
+
+# `{` inside a quoted header value must not push depth away from zero.
+# Without string-stripping this would run the search past the block's real
+# end looking for one extra `}` that doesn't structurally exist.
+f="$(work nginx-with-next.conf)"
+start="$(grep -n '^    location /api/runs/ {$' "$f" | cut -d: -f1)"
+awk -v n="$start" '
+  { print }
+  NR==n+1 { print "        proxy_set_header X-Thing \"a{b\";" }
+' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+before="$(wc -l < "$f")"
+( . "$SCRIPT" --source-only; del_block "$f" "/api/runs/" )
+after="$(wc -l < "$f")"
+check "unmatched { in a quoted string: removes 9 lines" "$((before - after))" "9"
+check "unmatched { in a quoted string: block gone" "$(grep -c 'location /api/runs/' "$f")" "0"
+check "unmatched { in a quoted string: @login survived" "$(grep -c '@login' "$f")" "1"
+
+# `}` inside a `#` comment must not be mistaken for the block's own close.
+f="$(work nginx-with-next.conf)"
+start="$(grep -n '^    location /api/runs/ {$' "$f" | cut -d: -f1)"
+awk -v n="$start" '
+  { print }
+  NR==n+1 { print "        # note: closing brace looks like this: }" }
+' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+before="$(wc -l < "$f")"
+( . "$SCRIPT" --source-only; del_block "$f" "/api/runs/" )
+after="$(wc -l < "$f")"
+check "unmatched } in a # comment: removes 9 lines" "$((before - after))" "9"
+check "unmatched } in a # comment: block gone" "$(grep -c 'location /api/runs/' "$f")" "0"
+check "unmatched } in a # comment: @login survived" "$(grep -c '@login' "$f")" "1"
+
+# A `#` INSIDE a quoted string must not start a comment — proves strings are
+# stripped before comments, not the other way round. The string closes
+# properly and is followed by a real, unquoted `}` on the same line; if
+# comments were stripped first, the naive `#.*` match (not knowing it's
+# inside quotes yet) would eat from the `#` to end of line, taking that real
+# `}` down with it, and the search would run past line 2 to the block's
+# outer close at line 4 instead of stopping where the true brace count says
+# it should.
+f="$(mktemp)"
+cat > "$f" <<'EOF'
+location /x {
+    proxy_set_header X-Thing "a#b"; }
+    proxy_pass http://127.0.0.1:3001;
+}
+EOF
+end="$( . "$SCRIPT" --source-only; block_end_line "$f" 1 )"
+check "# inside a quoted string is inert (strings stripped before comments)" "$end" "2"
+rm -f "$f"
+
+# The reviewer's worst case: four sibling blocks, an unmatched `{` in a
+# comment inside /a, and a coincidental unmatched `}` in a comment inside
+# /c. Naive brace counting (no string/comment stripping) sees /a's comment
+# `{` as needing one more `}` than /a's own close provides, runs past /a and
+# /b, and finds its "extra" close inside /c's comment — deleting /a, /b, and
+# all of /c (11 lines) instead of just /a (4 lines).
+f="$(mktemp)"
+cat > "$f" <<'EOF'
+server {
+    location /a {
+        # unmatched brace below for testing: {
+        proxy_pass http://127.0.0.1:3001;
+    }
+
+    location /b {
+        proxy_pass http://127.0.0.1:3001;
+    }
+
+    location /c {
+        # unmatched brace below for testing: }
+        proxy_pass http://127.0.0.1:3001;
+    }
+
+    location /d {
+        proxy_pass http://127.0.0.1:3001;
+    }
+}
+EOF
+before="$(wc -l < "$f")"
+( . "$SCRIPT" --source-only; del_block "$f" "/a" )
+after="$(wc -l < "$f")"
+check "four-block worst case: /a removes exactly 4 lines" "$((before - after))" "4"
+check "four-block worst case: /a gone" "$(grep -c 'location /a {' "$f")" "0"
+check "four-block worst case: /b survives" "$(grep -c 'location /b {' "$f")" "1"
+check "four-block worst case: /c survives" "$(grep -c 'location /c {' "$f")" "1"
+check "four-block worst case: /d survives" "$(grep -c 'location /d {' "$f")" "1"
+rm -f "$f"
+
+# An unterminated block: del_block (run as root against production) must
+# fail loudly with its own clear diagnostic, never fall through to sed with
+# an empty line number and let a raw sed error be the only signal.
+f="$(mktemp)"
+cat > "$f" <<'EOF'
+location /x {
+    proxy_pass http://127.0.0.1:3001;
+EOF
+before="$(md5sum < "$f")"
+err="$( ( . "$SCRIPT" --source-only; del_block "$f" "/x" ) 2>&1 1>/dev/null )" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "del_block fails loudly on an unterminated block" \
+                || fail "del_block silently succeeded on an unterminated block"
+[ "$(printf '%s' "$err" | grep -ci 'sed:')" = "0" ] \
+  && pass "del_block's failure is not a raw sed error" \
+  || fail "del_block's failure leaked a raw sed error instead of a clear message"
+printf '%s' "$err" | grep -qi 'unbalanced' \
+  && pass "del_block's failure names the unbalanced-block problem" \
+  || fail "del_block's failure did not explain the problem"
+check "del_block: unterminated block changed nothing" "$(md5sum < "$f")" "$before"
+rm -f "$f"
+
+# Same guarantee for check_catch_all_backend, --check's own caller of
+# block_end_line: an unterminated catch-all must abort with a clear message,
+# not a raw sed error out of `sed -n ",p"` on an empty end line.
+f="$(mktemp)"
+cat > "$f" <<'EOF'
+server {
+    # @write_gate referenced here only to satisfy an earlier, unrelated check
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+EOF
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check fails on an unterminated catch-all, not a sed error" \
+                || fail "--check silently succeeded on an unterminated catch-all"
+[ "$(printf '%s' "$out" | grep -ci 'sed:')" = "0" ] \
+  && pass "--check's failure on an unterminated catch-all is not a raw sed error" \
+  || fail "--check's failure leaked a raw sed error"
+rm -f "$f"
+
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"
