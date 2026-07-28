@@ -29,14 +29,21 @@ usage() {
   exit 1
 }
 
-# Mode flags are mutually exclusive; anything else (including no argument)
-# is a usage error. --source-only lets the selftest source this file for its
-# functions without running any phase. --stop-next is a future addition
-# (pm2 stop + re-probe) — not implemented yet.
+# Mode flags are mutually exclusive; anything else (including no argument,
+# two mode flags, or a valid mode followed by a stray argument) is a usage
+# error. --source-only lets the selftest source this file for its functions
+# without running any phase. --stop-next is a future addition (pm2 stop +
+# re-probe) — not implemented yet.
+#
+# The argument-count check must come first: a case on "${1:-}" alone only
+# ever inspects the first word, so `--check --verify` would match --check
+# and silently ignore --verify (and `--check junk` would match --check and
+# silently ignore junk) — exactly one argument, no more, or usage.
 SOURCE_ONLY=0
 CHECK=0
 VERIFY=0
-case "${1:-}" in
+[ "$#" -eq 1 ] || usage
+case "$1" in
   --check)       CHECK=1 ;;
   --verify)      VERIFY=1 ;;
   --source-only) SOURCE_ONLY=1 ;;
@@ -75,7 +82,13 @@ expect_present_count() {  # expect_present_count <file> <label> <fixed-string>
 # pm2 keeps per-user daemons. Under sudo we would address root's daemon, not
 # ubuntu's — reporting "no such process" while Next keeps serving. Nothing
 # here needs root any more, so refuse it outright.
-[ "$TEST_MODE" = 1 ] || [ "$(id -u)" -ne 0 ] || \
+#
+# Deliberately NOT gated behind TEST_MODE: this is the one guard where a
+# silent no-op under test is unacceptable (a re-inversion of this exact
+# check — the mistake it exists to prevent — would still show a green
+# selftest if `id` were never actually consulted). The selftest controls it
+# through PATH instead, with a stubbed `id`.
+[ "$(id -u)" -ne 0 ] || \
   abort "do not run this as root — pm2 is per-user, and sudo would target root's daemon"
 [ -r "$NGX" ] || abort "cannot read $NGX (try: sudo chmod o+r $NGX, or read it with sudo and re-run)"
 

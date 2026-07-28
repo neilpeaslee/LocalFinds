@@ -18,6 +18,16 @@ for cmd in nginx systemctl pm2; do
   printf '#!/usr/bin/env bash\nexit 0\n' > "$STUBS/$cmd"
   chmod +x "$STUBS/$cmd"
 done
+
+# `id -u` must report a normal (non-root) uid for every case in this suite
+# except the one that deliberately tests the root refusal, which lays its
+# own root-returning `id` ahead of this one on PATH for that single
+# invocation only. Stubbed rather than left to the real uid so this suite
+# behaves the same whether or not it happens to run as root itself (some CI
+# sandboxes do).
+printf '#!/usr/bin/env bash\necho 1000\n' > "$STUBS/id"
+chmod +x "$STUBS/id"
+
 export PATH="$STUBS:$PATH"
 
 work() {  # work <fixture-basename> -> prints a temp copy's path
@@ -36,6 +46,64 @@ out="$(RETIRE_NEXT_TEST=1 bash "$SCRIPT" 2>&1)" && rc=0 || rc=$?
 [ "$rc" != 0 ] && pass "no arguments exits non-zero" || fail "no arguments exited 0"
 out="$(RETIRE_NEXT_TEST=1 bash "$SCRIPT" --bogus 2>&1)" && rc=0 || rc=$?
 [ "$rc" != 0 ] && pass "an unrecognised flag exits non-zero" || fail "an unrecognised flag exited 0"
+
+# A case statement on "${1:-}" alone only ever inspects the first word, so
+# two mode flags (in either order) or a valid mode plus a stray argument
+# would silently run the first mode and ignore the rest. All three must be
+# usage errors, not a quiet pick-the-first-one.
+#
+# Each points RETIRE_NEXT_NGX at a valid, readable fixture — unlike the two
+# cases above, $1 here IS a recognised mode flag, so if the arg-count guard
+# were ever missing the script would run straight through to a normal exit
+# 0 against a healthy config. Without a real fixture these would still exit
+# non-zero if the guard were broken, but only because the default NGX path
+# (/etc/nginx/...) doesn't exist on a dev box — masking the very thing being
+# tested. Confirmed by deliberately breaking the guard below.
+f="$(work nginx-with-next.conf)"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check --verify 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check --verify (two modes) exits non-zero" \
+               || fail "--check --verify exited 0"
+# This one points at the AFTER fixture, not the WITH-next fixture used
+# above: if the guard were missing, "$1" ("--verify") is what would run,
+# and --verify only exits 0 against a post-edit config. Using the wrong
+# fixture here would make this case exit non-zero for an unrelated reason
+# (content mismatch) even with the guard gone, masking the thing under
+# test the same way a missing RETIRE_NEXT_NGX did above.
+f="$(work nginx-after-teardown.conf)"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --verify --check 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--verify --check (two modes, reversed) exits non-zero" \
+               || fail "--verify --check exited 0"
+f="$(work nginx-with-next.conf)"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check junk 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "a valid mode followed by a junk argument exits non-zero" \
+               || fail "--check junk exited 0"
+
+echo "== root refusal =="
+
+# pm2 keeps per-user daemons, so this script must never run as root — see
+# the comment above the check in retire-next.sh. That guard is deliberately
+# NOT bypassed by RETIRE_NEXT_TEST (a re-inversion of it, exactly the
+# mistake it exists to prevent, must not still show SELFTEST PASS), so it
+# has to be exercised through PATH instead: a root-uid `id` stub laid down
+# in its own directory, prepended ahead of $STUBS (whose `id` reports 1000)
+# for this one invocation only.
+ROOT_STUBS="$(mktemp -d)"
+printf '#!/usr/bin/env bash\necho 0\n' > "$ROOT_STUBS/id"
+chmod +x "$ROOT_STUBS/id"
+
+f="$(work nginx-with-next.conf)"
+out="$(PATH="$ROOT_STUBS:$PATH" RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "refuses to run as root" || fail "ran as root without aborting"
+# Matches the abort message's own wording, not a bare 'pm2' substring: the
+# P0 preflight phase always prints "pm2 process : ..." on ANY --check run,
+# root or not, so a loose `grep -qi pm2` would still say "ok" even if the
+# guard were silently gone — exactly the false confidence this case exists
+# to rule out.
+printf '%s' "$out" | grep -qF 'do not run this as root — pm2 is per-user' \
+  && pass "the root refusal names pm2 as the reason" \
+  || fail "the root refusal did not mention pm2 as the reason"
+
+rm -rf "$ROOT_STUBS"
 
 echo "== preflight / --check =="
 
