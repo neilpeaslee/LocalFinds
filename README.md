@@ -44,7 +44,9 @@ develop it, and deploy it. Where the project is headed lives in
   (`/places`), source registry (`/sources`), agent profiles + run history
   (`/agents`, steward-only). Also exposes the external read-only OSM places API
   at `api.localfinds.me` (`GET /osm/places`, bearer-token auth, reads the same
-  materialized view; excludes locally-curated places).
+  materialized view; excludes locally-curated places). `priv/static/robots.txt` disallows every query-string URL (the filter
+  facets are an unbounded space) and blocks AI-training crawlers;
+  `Google-Extended` is blocked but `Googlebot` deliberately is not.
 - **data/** — ALL runtime state and personal config. Gitignored except
   `*.example` templates: keep PII out of git.
 
