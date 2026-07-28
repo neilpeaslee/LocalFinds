@@ -39,9 +39,11 @@ On the box (via SSH or as Neil logged in):
       SELECT count(*) FROM localfinds.places
         WHERE duplicate_of IS NULL AND lat IS NOT NULL AND lng IS NOT NULL
           AND status <> 'closed' AND (brand IS NULL OR brand = '');
+      SELECT count(*) FROM localfinds.finds
+        WHERE status NOT IN ('hidden', 'provisional');
       RESET ROLE;"
 
-Expected: two counts, no error. Any `42501 insufficient_privilege` means a grant is
+Expected: three counts, no error. Any `42501 insufficient_privilege` means a grant is
 missing — pause, diagnose, add the migration, then proceed from §1 (re-run `npm run deploy`).
 
 Then, confirm the dry-run sees the right target:
