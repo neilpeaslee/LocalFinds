@@ -91,8 +91,6 @@ check "--check exits 0 on a healthy config" "$rc" "0"
 check "--check changed nothing" "$(md5sum < "$f")" "$before"
 check "--check reports the catch-all" \
   "$(printf '%s' "$out" | grep -c 'location / {')" "1"
-[ "$(printf '%s' "$out" | grep -c '@write_gate')" -ge 1 ] \
-  && pass "--check saw @write_gate" || fail "--check missed @write_gate"
 
 # A config already missing the catch-all must abort, not proceed.
 f="$(work nginx-with-next.conf)"
@@ -100,6 +98,26 @@ f="$(work nginx-with-next.conf)"
 RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 && rc=0 || rc=$?
 [ "$rc" != 0 ] && pass "--check aborts when the catch-all is missing" \
                 || fail "--check accepted a config with no catch-all"
+
+# A config already missing @write_gate must abort, not proceed. del_block
+# only removes the `location @write_gate { ... }` block itself; the fixture
+# also references @write_gate from the catch-all's `error_page 418 =
+# @write_gate;`, so that reference must be stripped too or the fixed-string
+# check still finds "@write_gate" in the file and never aborts.
+f="$(work nginx-with-next.conf)"
+( . "$SCRIPT" --source-only; del_block "$f" "@write_gate" ) || true
+sed -i '/@write_gate/d' "$f"
+RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check aborts when @write_gate is missing" \
+                || fail "--check accepted a config with no @write_gate"
+
+# A config where the Next backend is already gone (simulating a box where the
+# flip already happened) must abort, not proceed.
+f="$(work nginx-with-next.conf)"
+sed -i 's/127\.0\.0\.1:3001/127.0.0.1:4000/g' "$f"
+RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check aborts when the Next backend (127.0.0.1:3001) is missing" \
+                || fail "--check accepted a config with no Next backend"
 
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"
