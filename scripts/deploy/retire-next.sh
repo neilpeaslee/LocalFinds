@@ -1,185 +1,167 @@
 #!/usr/bin/env bash
-# retire-next.sh — wave 1 of the Next teardown. Flips nginx's catch-all from
-# Next to Phoenix, tears out the write-gate machinery, stops the pm2 process.
-# Deletes NO code: Next's tree stays on disk so rollback is nginx + pm2 only.
+# retire-next.sh — verifies the Next -> Phoenix cutover; it does not perform it.
 #
-# Run ON THE BOX as root:  sudo bash scripts/deploy/retire-next.sh [--check]
-#   --check : read-only. Reports current state and the exact diff it would apply.
+# Four fix rounds on a bash nginx block-extractor each made block extraction
+# correct on one more construct and wrong on a new one, the last silently
+# deleting three blocks while reporting success. Neil edits nginx by hand, as
+# in all five prior cutovers (runbook: scripts/deploy/next-teardown.md); this
+# script only asserts whole-file invariants and (once the live probe suite
+# lands) probes the running site — neither needs to understand nginx grammar.
+# It mutates nothing and deletes no code: Next's tree stays on disk, so
+# rollback is nginx + pm2 only.
+#
+# Run ON THE BOX as the normal deploy user — NEVER root. pm2 keeps per-user
+# daemons; under sudo this script would address root's daemon, not ubuntu's,
+# and report Next missing while Next kept serving.
+#
+#   bash scripts/deploy/retire-next.sh --check    # before the hand edit
+#   bash scripts/deploy/retire-next.sh --verify   # after nginx -t && reload
 #
 # Spec: docs/superpowers/specs/2026-07-28-next-teardown-design.md
-# Rollback: cp the printed backup over the config, nginx -t && systemctl reload
-#           nginx, pm2 start localfinds.
 set -euo pipefail
-
-# --source-only lets the selftest source this file for its functions without
-# running any phase. Must be handled before anything else executes.
-SOURCE_ONLY=0
-[ "${1:-}" = "--source-only" ] && SOURCE_ONLY=1
-
-CHECK=0
-[ "${1:-}" = "--check" ] && CHECK=1
-
-NGX="${RETIRE_NEXT_NGX:-/etc/nginx/sites-available/localfinds.me}"
-PM2_PROC="${RETIRE_NEXT_PM2_PROC:-localfinds}"
-SITE="${RETIRE_NEXT_SITE:-https://localfinds.me}"
-TEST_MODE="${RETIRE_NEXT_TEST:-0}"
-TS="$(date +%Y%m%d-%H%M%S)"
-BACKUP="$NGX.bak-next-teardown-$TS"
 
 say()   { printf '%s\n' "$*"; }
 phase() { printf '\n=== %s ===\n' "$*"; }
 abort() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 
-# block_end_line <file> <start-line>
-# Prints the line number where the `{ ... }` opened by <start-line> closes,
-# tracking brace depth per line rather than looking for the first line that
-# merely LOOKS like a closing brace. A block that contains its own nested
-# brace — e.g. a multi-line `if ($request_method !~ ^(GET|HEAD)$) { ... }`
-# guard inside a location block, written with the `}` alone on its own
-# line — would fool a "first ^[[:space:]]*} after the start" search into
-# stopping at the INNER brace, truncating the block. Depth tracking handles
-# any nesting and any formatting. A one-liner block (its own `{` and `}` on
-# the <start-line> itself, e.g. `location @login { return 302 ...; }`)
-# naturally returns <start-line> unchanged, since depth reaches zero before
-# the line is done.
-#
-# Braces inside quoted strings or `#` comments are not structural and must
-# not be counted — a `}` in a comment ("# closing brace looks like this: }")
-# or a quoted header value ("a}b") would otherwise end the block early, and
-# a `{` in either would push depth further from zero, running the search
-# past the block's real end (or off the end of the file). Each line is
-# reduced to its structural content before counting: quoted strings (both
-# "..." and '...') are blanked out FIRST — so a `#` inside a string is never
-# mistaken for the start of a comment — then everything from an unquoted `#`
-# to end of line is dropped, then what remains is what gets counted.
-#
-# If depth never returns to zero, the file is malformed (or this isn't
-# really the start of a block) — print nothing and fail. Callers must check
-# for this and abort with a clear diagnostic; falling through to a sed
-# range built from an empty end line is not acceptable on a script that
-# runs as root against production.
-block_end_line() {
-  local file="$1" start="$2"
-  awk -v s="$start" -v q="'" '
-    NR < s { next }
-    {
-      line = $0
-      gsub(/"[^"]*"/, "\"\"", line)
-      gsub(q "[^" q "]*" q, "\"\"", line)
-      sub(/#.*/, "", line)
-      depth += gsub(/{/, "{", line)
-      depth -= gsub(/}/, "}", line)
-      if (depth <= 0) { print NR; found = 1; exit }
-    }
-    END { exit (found ? 0 : 1) }
-  ' "$file"
+usage() {
+  printf 'usage: %s --check | --verify | --source-only\n' "${0##*/}" >&2
+  exit 1
 }
 
-# del_block <file> <location-token>
-# Deletes one `location <token> { ... }` block, from its start line through
-# its depth-matched closing brace (see block_end_line above — this is what
-# makes a one-liner block and a block with nested multi-line braces both
-# come out right without separate cases). Returns 1 (and changes nothing)
-# when the block is absent.
-#
-# The match is anchored to an actual `location` directive: the line must
-# begin (after optional leading whitespace) with the `location` keyword.
-# Without this, an unanchored substring search matches the token's text
-# inside a comment too (e.g. "# see location /api/runs/ for details" above
-# an unrelated block) and del_block deletes the wrong block while reporting
-# success. The nginx config this runs against in production is hand-
-# maintained and known to carry comments like that above location blocks.
-del_block() {
-  local file="$1" token="$2" line end
-  line="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$file" \
-            | grep -F -- "location $token " | head -1 | cut -d: -f1 || true)"
-  [ -n "$line" ] || line="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$file" \
-            | grep -F -- "location $token{" | head -1 | cut -d: -f1 || true)"
-  [ -n "$line" ] || return 1
+# Mode flags are mutually exclusive; anything else (including no argument)
+# is a usage error. --source-only lets the selftest source this file for its
+# functions without running any phase. --stop-next is a future addition
+# (pm2 stop + re-probe) — not implemented yet.
+SOURCE_ONLY=0
+CHECK=0
+VERIFY=0
+case "${1:-}" in
+  --check)       CHECK=1 ;;
+  --verify)      VERIFY=1 ;;
+  --source-only) SOURCE_ONLY=1 ;;
+  *)             usage ;;
+esac
 
-  end="$(block_end_line "$file" "$line")" \
-    || abort "location $token in $file never closes its braces — the config appears to have an unbalanced block; stop and re-read it by hand"
-  sed -i "${line},${end}d" "$file"
+NGX="${RETIRE_NEXT_NGX:-/etc/nginx/sites-available/localfinds.me}"
+PM2_PROC="${RETIRE_NEXT_PM2_PROC:-localfinds}"
+SITE="${RETIRE_NEXT_SITE:-https://localfinds.me}"
+TEST_MODE="${RETIRE_NEXT_TEST:-0}"
+
+# count_of <file> <fixed-string> -> prints an integer, never fails. Plain
+# `grep -c` exits 1 on zero matches, which would kill the script under
+# set -e the first time an invariant is legitimately satisfied by absence.
+count_of() { grep -cF -- "$2" "$1" 2>/dev/null || true; }
+
+expect_count() {  # expect_count <label> <actual> <expected>
+  [ "$2" = "$3" ] || abort "$1: found $2, expected $3"
+  say "  ok  $1 = $2"
+}
+
+expect_absent() {  # expect_absent <file> <label> <fixed-string>
+  n="$(count_of "$1" "$3")"
+  [ "$n" = 0 ] || abort "$2: still present ($n occurrence(s) of '$3')"
+  say "  ok  $2 absent"
+}
+
+expect_present_count() {  # expect_present_count <file> <label> <fixed-string>
+  n="$(count_of "$1" "$3")"
+  [ "$n" -ge 1 ] || abort "$2: missing ('$3' not found)"
+  say "  ok  $2 present"
 }
 
 [ "$SOURCE_ONLY" = 1 ] && return 0 2>/dev/null || true
 
-[ "$TEST_MODE" = 1 ] || [ "$(id -u)" -eq 0 ] || abort "must run as root"
-[ -f "$NGX" ] || abort "no nginx config at $NGX"
-
-expect_present() {  # expect_present <file> <label> <fixed-string>
-  grep -qF -- "$3" "$1" || abort "$2 not found in $1 — this box does not match the spec; stop and re-read the config"
-}
+# pm2 keeps per-user daemons. Under sudo we would address root's daemon, not
+# ubuntu's — reporting "no such process" while Next keeps serving. Nothing
+# here needs root any more, so refuse it outright.
+[ "$TEST_MODE" = 1 ] || [ "$(id -u)" -ne 0 ] || \
+  abort "do not run this as root — pm2 is per-user, and sudo would target root's daemon"
+[ -r "$NGX" ] || abort "cannot read $NGX (try: sudo chmod o+r $NGX, or read it with sudo and re-run)"
 
 inventory() {
   grep -nE '^[[:space:]]*(location|proxy_pass|auth_request|error_page)' "$1" \
     || say "(nothing matched — wrong file?)"
 }
 
-phase "P0 preflight"
-say "nginx config : $NGX"
-say "pm2 process  : $PM2_PROC"
-say "site         : $SITE"
-say ""
-say "--- current routing ---"
-inventory "$NGX"
-say "--- end ---"
-
-expect_present "$NGX" "the Next catch-all (location / {)" "location / {"
-expect_present "$NGX" "the write gate (@write_gate)" "@write_gate"
-expect_present "$NGX" "a Next backend (127.0.0.1:3001)" "127.0.0.1:3001"
-
-# expect_present only proves a string exists SOMEWHERE in the file. That is
-# satisfied for 127.0.0.1:3001 by @write_gate and /api/runs/ even when the
-# catch-all itself proxy_passes elsewhere, and satisfied for "location / {"
-# by the first of several catch-alls even when there's more than one (a
-# second server{} for the HTTP->HTTPS redirect can legitimately carry its
-# own bare `location /`, and del_block's head -1 would silently act on
-# whichever one comes first). Check the relationship, not just presence:
-# locate the catch-all's own block and look inside it, after confirming
-# there is exactly one to look at.
-catch_all_lines="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$NGX" \
-                      | grep -F -- 'location / {' | cut -d: -f1 || true)"
-catch_all_count=0
-[ -z "$catch_all_lines" ] || catch_all_count="$(printf '%s\n' "$catch_all_lines" | grep -c .)"
-
-check_single_catch_all() {
-  [ "$catch_all_count" -le 1 ] \
-    || abort "found $catch_all_count catch-all blocks (location / {) in $NGX — this script assumes a single catch-all; stop and disambiguate by hand"
-}
-
-check_catch_all_backend() {
-  [ "$catch_all_count" = 1 ] || return 0
-  local start end body found
-  start="$catch_all_lines"
-  end="$(block_end_line "$NGX" "$start")" \
-    || abort "the catch-all (location / {) in $NGX never closes its braces — the config appears to have an unbalanced block; stop and re-read it by hand"
-  body="$(sed -n "${start},${end}p" "$NGX")"
-  printf '%s\n' "$body" | grep -qF -- "proxy_pass http://127.0.0.1:3001;" && return 0
-  found="$(printf '%s\n' "$body" | grep -m1 -oE 'proxy_pass http://[^;]+;' || true)"
-  abort "the catch-all (location / {) does not proxy_pass to 127.0.0.1:3001 — found: ${found:-no proxy_pass in the block} — this box does not match the spec; stop and re-read the config"
-}
-
-check_single_catch_all
-check_catch_all_backend
-
-if grep -qF "location /_next/" "$NGX"; then
-  say "note: /_next/ HAS its own block — it will be deleted"
-else
-  say "note: /_next/ has no block — it falls through the catch-all; nothing to delete"
-fi
-
-if [ "$TEST_MODE" != 1 ]; then
-  curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:4000/ \
-    || abort "Phoenix is not answering on :4000 — do not flip anything"
-  say "phoenix on :4000: OK"
-  pm2 describe "$PM2_PROC" >/dev/null 2>&1 \
-    && say "pm2 $PM2_PROC: present" \
-    || say "WARNING: pm2 $PM2_PROC not found — P3 will skip"
-fi
+# Neither mode below asks where a brace closes: every assertion is a
+# whole-file count. The one property counts cannot establish — that the
+# catch-all's OWN proxy_pass moved, rather than some other block's, since
+# 127.0.0.1:3001/4000 also appear (or appeared) in blocks being torn down —
+# is left to the live probe instead. That is strictly better evidence: it
+# tests what nginx actually does with the config, not what a parser believes
+# the file says.
 
 if [ "$CHECK" = 1 ]; then
+  phase "P0 preflight"
+  say "nginx config : $NGX"
+  say "pm2 process  : $PM2_PROC"
+  say "site         : $SITE"
   say ""
-  say "--check: read-only, nothing changed. Re-run without --check to apply."
+  say "--- current routing ---"
+  inventory "$NGX"
+  say "--- end ---"
+
+  phase "check: nginx config"
+  expect_present_count "$NGX" "the Next backend"        "127.0.0.1:3001"
+  expect_present_count "$NGX" "auth_request"             "auth_request"
+  expect_present_count "$NGX" "the write gate"           "@write_gate"
+  expect_present_count "$NGX" "the login redirect"       "@login"
+  expect_present_count "$NGX" "the 418 method split"     "418"
+  expect_present_count "$NGX" "the auth_request target"  "location = /auth/check"
+  expect_present_count "$NGX" "the SSE route"            "location /api/runs/"
+
+  expect_count "the catch-all still exists" "$(count_of "$NGX" "location / {")" 1
+
+  for loc in "location /live" "location /assets" "location /auth/" "location = / {" \
+             "location = /feed" "location ^~ /feed/" "location = /places" \
+             "location ^~ /places/" "location = /sources" "location ^~ /sources/" \
+             "location = /agents" "location ^~ /agents/"; do
+    expect_present_count "$NGX" "$loc" "$loc"
+  done
+
+  if grep -qF "location /_next/" "$NGX"; then
+    say "note: /_next/ HAS its own block — it will be deleted"
+  else
+    say "note: /_next/ has no block — it falls through the catch-all; nothing to delete"
+  fi
+
+  if [ "$TEST_MODE" != 1 ]; then
+    curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:4000/ \
+      || abort "Phoenix is not answering on :4000 — do not flip anything"
+    say "phoenix on :4000: OK"
+    pm2 describe "$PM2_PROC" >/dev/null 2>&1 \
+      && say "pm2 $PM2_PROC: present" \
+      || say "WARNING: pm2 $PM2_PROC not found — Next may already be stopped"
+  fi
+
+  say ""
+  say "--check: read-only, nothing changed. Hand-edit nginx per"
+  say "scripts/deploy/next-teardown.md, then re-run with --verify."
+  exit 0
+fi
+
+if [ "$VERIFY" = 1 ]; then
+  phase "verify: nginx config"
+  expect_absent "$NGX" "the Next backend"        "127.0.0.1:3001"
+  expect_absent "$NGX" "auth_request"            "auth_request"
+  expect_absent "$NGX" "the write gate"          "@write_gate"
+  expect_absent "$NGX" "the login redirect"      "@login"
+  expect_absent "$NGX" "the 418 method split"    "418"
+  expect_absent "$NGX" "the auth_request target" "location = /auth/check"
+  expect_absent "$NGX" "the SSE route"           "location /api/runs/"
+  expect_absent "$NGX" "the Next asset route"    "location /_next/"
+
+  expect_count "the catch-all still exists" "$(count_of "$NGX" "location / {")" 1
+
+  for loc in "location /live" "location /assets" "location /auth/" "location = / {" \
+             "location = /feed" "location ^~ /feed/" "location = /places" \
+             "location ^~ /places/" "location = /sources" "location ^~ /sources/" \
+             "location = /agents" "location ^~ /agents/"; do
+    expect_present_count "$NGX" "$loc" "$loc"
+  done
+
+  phase "verify: live"
+  # ...probe suite from Task 4 lands here...
   exit 0
 fi
