@@ -78,6 +78,31 @@ out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check junk 2>&1)
 [ "$rc" != 0 ] && pass "a valid mode followed by a junk argument exits non-zero" \
                || fail "--check junk exited 0"
 
+# --stop-next joins the same dispatch and must be exercised the same way: two
+# mode flags (both orders) and a valid mode plus a stray argument are all
+# usage errors, never a quiet pick-the-first-one. As above, each points
+# RETIRE_NEXT_NGX at a real, readable fixture (nginx-with-next.conf, the
+# pre-edit config): if the arg-count guard were missing, "$1" is what would
+# run. For "--stop-next --check" that is --stop-next, which under
+# RETIRE_NEXT_TEST=1 skips pm2 and exits 0 cleanly, needing no fixture
+# content at all beyond a readable file. For "--check --stop-next" that is
+# --check, which exits 0 on this exact fixture (proven in the preflight
+# section above). Either way, a healthy fixture is what lets a missing guard
+# slip through undetected — the same masking the comment above the two-mode
+# --check/--verify cases describes.
+f="$(work nginx-with-next.conf)"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --stop-next --check 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--stop-next --check (two modes) exits non-zero" \
+               || fail "--stop-next --check exited 0"
+f="$(work nginx-with-next.conf)"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check --stop-next 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check --stop-next (two modes, reversed) exits non-zero" \
+               || fail "--check --stop-next exited 0"
+f="$(work nginx-with-next.conf)"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --stop-next junk 2>&1)" && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--stop-next followed by a junk argument exits non-zero" \
+               || fail "--stop-next junk exited 0"
+
 echo "== root refusal =="
 
 # pm2 keeps per-user daemons, so this script must never run as root — see
@@ -243,6 +268,40 @@ for loc in "location /live {" "location /assets {" "location /auth/ {" \
   [ "$rc" != 0 ] && pass "--verify catches a missing '$loc'" \
                  || fail "--verify MISSED a missing '$loc'"
 done
+
+echo "== --stop-next =="
+
+# --stop-next must never touch pm2 or the network under RETIRE_NEXT_TEST=1
+# (the same rule --check/--verify's live probes already follow). A stub pm2
+# that silently no-ops — like the generic `exit 0` stubs in $STUBS — cannot
+# prove that: "pm2 describe" failing quietly and falling through to the
+# "already done" branch prints different words but still exits 0, so an
+# output-only check could pass even with the TEST_MODE guard gone. A pm2
+# stub that leaves a marker file if invoked AT ALL, checked for absence,
+# proves pm2 was never called rather than inferring it from silence.
+PM2_MARKER="$(mktemp -u)"
+MARKER_STUBS="$(mktemp -d)"
+cat > "$MARKER_STUBS/pm2" <<EOF
+#!/usr/bin/env bash
+touch "$PM2_MARKER"
+exit 0
+EOF
+chmod +x "$MARKER_STUBS/pm2"
+
+f="$(work nginx-with-next.conf)"
+before="$(md5sum < "$f")"
+out="$(PATH="$MARKER_STUBS:$PATH" RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --stop-next 2>&1)" && rc=0 || rc=$?
+check "--stop-next alone exits 0" "$rc" "0"
+check "--stop-next changed nothing" "$(md5sum < "$f")" "$before"
+[ -e "$PM2_MARKER" ] \
+  && fail "--stop-next invoked pm2 under RETIRE_NEXT_TEST=1" \
+  || pass "--stop-next never invoked pm2 under RETIRE_NEXT_TEST=1"
+printf '%s' "$out" | grep -qF 'test mode: skipping pm2' \
+  && pass "--stop-next reports test mode: skipping pm2" \
+  || fail "--stop-next did not report skipping pm2"
+
+rm -f "$PM2_MARKER"
+rm -rf "$MARKER_STUBS"
 
 echo "== probe judges =="
 

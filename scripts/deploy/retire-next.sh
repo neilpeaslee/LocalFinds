@@ -14,8 +14,9 @@
 # daemons; under sudo this script would address root's daemon, not ubuntu's,
 # and report Next missing while Next kept serving.
 #
-#   bash scripts/deploy/retire-next.sh --check    # before the hand edit
-#   bash scripts/deploy/retire-next.sh --verify   # after nginx -t && reload
+#   bash scripts/deploy/retire-next.sh --check      # before the hand edit
+#   bash scripts/deploy/retire-next.sh --verify     # after nginx -t && reload
+#   bash scripts/deploy/retire-next.sh --stop-next  # after --verify passes
 #
 # Spec: docs/superpowers/specs/2026-07-28-next-teardown-design.md
 set -euo pipefail
@@ -25,15 +26,15 @@ phase() { printf '\n=== %s ===\n' "$*"; }
 abort() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  printf 'usage: %s --check | --verify | --source-only\n' "${0##*/}" >&2
+  printf 'usage: %s --check | --verify | --stop-next | --source-only\n' "${0##*/}" >&2
   exit 1
 }
 
 # Mode flags are mutually exclusive; anything else (including no argument,
 # two mode flags, or a valid mode followed by a stray argument) is a usage
 # error. --source-only lets the selftest source this file for its functions
-# without running any phase. --stop-next is a future addition (pm2 stop +
-# re-probe) — not implemented yet.
+# without running any phase. --stop-next runs pm2 stop (never delete — the
+# process definition is the rollback path for the whole soak) and re-probes.
 #
 # The argument-count check must come first: a case on "${1:-}" alone only
 # ever inspects the first word, so `--check --verify` would match --check
@@ -42,10 +43,12 @@ usage() {
 SOURCE_ONLY=0
 CHECK=0
 VERIFY=0
+STOP_NEXT=0
 [ "$#" -eq 1 ] || usage
 case "$1" in
   --check)       CHECK=1 ;;
   --verify)      VERIFY=1 ;;
+  --stop-next)   STOP_NEXT=1 ;;
   --source-only) SOURCE_ONLY=1 ;;
   *)             usage ;;
 esac
@@ -248,6 +251,21 @@ if [ "$VERIFY" = 1 ]; then
       404|502) abort "/live/websocket returned $ws — the socket is not routed" ;;
       *) say "  ok  /live/websocket -> $ws (not 404/502)" ;;
     esac
+  fi
+  exit 0
+fi
+
+if [ "$STOP_NEXT" = 1 ]; then
+  phase "stop next"
+  if [ "$TEST_MODE" = 1 ]; then
+    say "test mode: skipping pm2"
+  elif pm2 describe "$PM2_PROC" >/dev/null 2>&1; then
+    pm2 stop "$PM2_PROC"
+    say "stopped pm2 $PM2_PROC (NOT deleted — the definition is the rollback path)"
+    expect_status "/ after pm2 stop" "$(http_status /)" 200
+    expect_no_next "catch-all after pm2 stop" "$(body_of /__teardown_probe__)"
+  else
+    say "already done (no pm2 $PM2_PROC)"
   fi
   exit 0
 fi
