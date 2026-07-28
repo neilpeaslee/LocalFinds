@@ -35,10 +35,20 @@ abort() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 # (`location @login { return 302 /auth/log-in; }`) separately: a range delete
 # from a self-closing line runs on to the NEXT block's closing brace and eats
 # a neighbour. Returns 1 (and changes nothing) when the block is absent.
+#
+# The match is anchored to an actual `location` directive: the line must
+# begin (after optional leading whitespace) with the `location` keyword.
+# Without this, an unanchored substring search matches the token's text
+# inside a comment too (e.g. "# see location /api/runs/ for details" above
+# an unrelated block) and del_block deletes the wrong block while reporting
+# success. The nginx config this runs against in production is hand-
+# maintained and known to carry comments like that above location blocks.
 del_block() {
   local file="$1" token="$2" line
-  line="$(grep -n -F -- "location $token " "$file" | head -1 | cut -d: -f1 || true)"
-  [ -n "$line" ] || line="$(grep -n -F -- "location $token{" "$file" | head -1 | cut -d: -f1 || true)"
+  line="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$file" \
+            | grep -F -- "location $token " | head -1 | cut -d: -f1 || true)"
+  [ -n "$line" ] || line="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$file" \
+            | grep -F -- "location $token{" | head -1 | cut -d: -f1 || true)"
   [ -n "$line" ] || return 1
 
   if sed -n "${line}p" "$file" | grep -q '}'; then

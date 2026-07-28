@@ -53,5 +53,34 @@ before="$(md5sum < "$f")"
 check "absent block returns 1" "$rc" "1"
 check "absent block changed nothing" "$(md5sum < "$f")" "$before"
 
+echo "== del_block: a comment naming the token must not hijack the match =="
+
+# A comment mentioning the real /api/runs/ block, planted directly above the
+# UNRELATED /live block (the earliest location in the file). An unanchored
+# substring match finds the comment first (it comes first in the file) and
+# deletes /live instead of the real /api/runs/ block, while still reporting
+# success — exactly the defect reported against production's hand-maintained
+# nginx config.
+f="$(work nginx-with-next.conf)"
+sed -i '\|location /live {|i\    # docs: see location /api/runs/ for the polling endpoint' "$f"
+before="$(wc -l < "$f")"
+( . "$SCRIPT" --source-only; del_block "$f" "/api/runs/" )
+after="$(wc -l < "$f")"
+check "commented /api/runs/ ref: real block removed" "$(grep -c 'location /api/runs/ {' "$f")" "0"
+check "commented /api/runs/ ref: /live untouched" "$(grep -c 'proxy_set_header Connection "upgrade"' "$f")" "1"
+check "commented /api/runs/ ref: exactly 8 lines removed" "$((before - after))" "8"
+
+# Same shape of attack against the one-liner form: a comment naming @login,
+# planted directly above the UNRELATED /assets block.
+f="$(work nginx-with-next.conf)"
+sed -i '\|location /assets {|i\    # legacy: location @login used to redirect here' "$f"
+before="$(wc -l < "$f")"
+( . "$SCRIPT" --source-only; del_block "$f" "@login" )
+after="$(wc -l < "$f")"
+check "commented @login ref: real one-liner removed" "$(grep -c 'return 302 /auth/log-in' "$f")" "0"
+check "commented @login ref: /assets untouched" "$(grep -c 'location /assets {' "$f")" "1"
+check "commented @login ref: comment itself untouched" "$(grep -c 'legacy: location @login used to redirect here' "$f")" "1"
+check "commented @login ref: exactly 1 line removed" "$((before - after))" "1"
+
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"
