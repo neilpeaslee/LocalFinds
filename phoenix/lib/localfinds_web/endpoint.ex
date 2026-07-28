@@ -21,7 +21,15 @@ defmodule LocalfindsWeb.Endpoint do
   # conn.scheme itself correct generally).
   plug Plug.RewriteOn, [:x_forwarded_proto]
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+  # longpoll is defence in depth for visitors behind websocket-hostile
+  # proxies — it does not replace keeping the websocket healthy in the first
+  # place (see HomeLive.Index for the mount-payload fix that does that).
+  # Without this, Phoenix's socket/3 defaults :longpoll to false and
+  # /live/longpoll 404s, so a genuine fallback attempt was as dead as a
+  # spurious one.
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [session: @session_options]],
+    longpoll: [connect_info: [session: @session_options]]
 
   # Serve LiveView/HTML assets at /assets (nginx routes /assets to Phoenix).
   plug Plug.Static,
