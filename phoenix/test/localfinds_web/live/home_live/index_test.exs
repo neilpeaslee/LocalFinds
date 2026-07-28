@@ -88,13 +88,24 @@ defmodule LocalfindsWeb.HomeLive.IndexTest do
       refute html =~ "data-pins"
     end
 
-    test "the connected render mounts the hook with pins", %{conn: conn} do
+    test "the connected render mounts the hook but carries no pin data", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/")
 
       assert html =~ ~s(phx-hook="RegionMap")
       assert html =~ ~s(id="region-map")
-      assert html =~ "Farnsworth Art Museum"
       refute html =~ "Loading map…"
+      # The mount diff must stay small so the client's first ping round-trips
+      # before Phoenix's websocket-fallback timer fires — that's the whole
+      # fix. A ~3.7MB pin set in the join reply was the bug.
+      refute html =~ "data-pins"
+      refute html =~ "Farnsworth Art Museum"
+    end
+
+    test "pins arrive as a pushed event after mount, not in the mount diff", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/")
+
+      assert_push_event(lv, "pins", %{pins: pins})
+      assert Enum.any?(pins, &(&1.nm == "Farnsworth Art Museum"))
     end
 
     test "the hook element is marked phx-update=ignore", %{conn: conn} do
@@ -103,10 +114,14 @@ defmodule LocalfindsWeb.HomeLive.IndexTest do
       assert html =~ ~s(phx-update="ignore")
     end
 
-    test "excluded places are absent from the pin payload", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/")
-      refute html =~ "Hannaford"
-      refute html =~ "Rock City Coffee"
+    test "excluded places are absent from the pushed pin payload", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/")
+
+      assert_push_event(lv, "pins", %{pins: pins})
+      names = Enum.map(pins, & &1.nm)
+
+      refute "Hannaford" in names
+      refute "Rock City Coffee" in names
     end
 
     test "the legend lists every theme plus Other and the coverage swatch", %{conn: conn} do
