@@ -151,5 +151,66 @@ RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 &
 [ "$rc" != 0 ] && pass "--check aborts when there is more than one catch-all" \
                 || fail "--check accepted a config with two catch-alls"
 
+echo "== brace-depth-aware block extraction (nested multi-line blocks) =="
+
+# The catch-all with its `if` guard written across multiple lines, `}` alone
+# on its own line, instead of the fixture's one-liner
+# `if ($request_method !~ ^(GET|HEAD)$) { return 418; }`. A naive "first
+# line matching ^[[:space:]]*}" search stops at the INNER brace and
+# check_catch_all_backend reports "no proxy_pass in the block" against a
+# config that is perfectly fine — nginx formatting is a matter of whoever
+# last hand-edited the file, and this shape is realistic. --check must
+# still exit 0. index() below is a literal substring match, not a regex, so
+# none of the nginx-special characters ($, ^, (, ), |) need escaping.
+f="$(work nginx-with-next.conf)"
+awk '
+  {
+    if (index($0, "if ($request_method !~ ^(GET|HEAD)$) { return 418; }") > 0) {
+      match($0, /^[[:space:]]*/)
+      indent = substr($0, RSTART, RLENGTH)
+      print indent "if ($request_method !~ ^(GET|HEAD)$) {"
+      print indent "    return 418;"
+      print indent "}"
+    } else {
+      print
+    }
+  }
+' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check 2>&1)" && rc=0 || rc=$?
+check "--check handles a multi-line nested if in the catch-all" "$rc" "0"
+[ "$(printf '%s' "$out" | grep -c 'does not proxy_pass')" = "0" ] \
+  && pass "--check did not falsely report the catch-all's backend as wrong" \
+  || fail "--check falsely reported the catch-all's backend as wrong"
+
+# /api/runs/ with a nested multi-line `if` inside it (not present in the
+# base fixture — injected here). del_block must remove the WHOLE block
+# (through its own depth-matched closing brace, not the inner one), leaving
+# the following block (@login) intact and total brace count balanced. The
+# old first-line-that-looks-like-a-close search would stop at the inner
+# `if`'s `}`, deleting only 5 of the block's 11 lines and orphaning the
+# remaining proxy_pass/proxy_buffering/... directives plus a stray `}`.
+f="$(work nginx-with-next.conf)"
+start="$(grep -n '^    location /api/runs/ {$' "$f" | cut -d: -f1)"
+awk -v n="$start" '
+  { print }
+  NR==n+1 {
+    print "        if ($request_method = OPTIONS) {"
+    print "            return 204;"
+    print "        }"
+  }
+' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+before="$(wc -l < "$f")"
+before_open="$(grep -o '{' "$f" | wc -l)"
+before_close="$(grep -o '}' "$f" | wc -l)"
+( . "$SCRIPT" --source-only; del_block "$f" "/api/runs/" )
+after="$(wc -l < "$f")"
+after_open="$(grep -o '{' "$f" | wc -l)"
+after_close="$(grep -o '}' "$f" | wc -l)"
+check "/api/runs/ with nested if: removes 11 lines" "$((before - after))" "11"
+check "/api/runs/ with nested if: block gone" "$(grep -c 'location /api/runs/' "$f")" "0"
+check "/api/runs/ with nested if: @login survived" "$(grep -c '@login' "$f")" "1"
+check "/api/runs/ with nested if: braces stay balanced" \
+  "$((before_open - after_open))" "$((before_close - after_close))"
+
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"

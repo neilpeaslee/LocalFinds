@@ -30,11 +30,36 @@ say()   { printf '%s\n' "$*"; }
 phase() { printf '\n=== %s ===\n' "$*"; }
 abort() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 
+# block_end_line <file> <start-line>
+# Prints the line number where the `{ ... }` opened by <start-line> closes,
+# tracking brace depth per line rather than looking for the first line that
+# merely LOOKS like a closing brace. A block that contains its own nested
+# brace — e.g. a multi-line `if ($request_method !~ ^(GET|HEAD)$) { ... }`
+# guard inside a location block, written with the `}` alone on its own
+# line — would fool a "first ^[[:space:]]*} after the start" search into
+# stopping at the INNER brace, truncating the block. Depth tracking handles
+# any nesting and any formatting. A one-liner block (its own `{` and `}` on
+# the <start-line> itself, e.g. `location @login { return 302 ...; }`)
+# naturally returns <start-line> unchanged, since depth reaches zero before
+# the line is done.
+block_end_line() {
+  local file="$1" start="$2"
+  awk -v s="$start" '
+    NR < s { next }
+    {
+      depth += gsub(/{/, "{")
+      depth -= gsub(/}/, "}")
+      if (depth <= 0) { print NR; exit }
+    }
+  ' "$file"
+}
+
 # del_block <file> <location-token>
-# Deletes one `location <token> { ... }` block. Handles the one-liner form
-# (`location @login { return 302 /auth/log-in; }`) separately: a range delete
-# from a self-closing line runs on to the NEXT block's closing brace and eats
-# a neighbour. Returns 1 (and changes nothing) when the block is absent.
+# Deletes one `location <token> { ... }` block, from its start line through
+# its depth-matched closing brace (see block_end_line above — this is what
+# makes a one-liner block and a block with nested multi-line braces both
+# come out right without separate cases). Returns 1 (and changes nothing)
+# when the block is absent.
 #
 # The match is anchored to an actual `location` directive: the line must
 # begin (after optional leading whitespace) with the `location` keyword.
@@ -44,18 +69,15 @@ abort() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 # success. The nginx config this runs against in production is hand-
 # maintained and known to carry comments like that above location blocks.
 del_block() {
-  local file="$1" token="$2" line
+  local file="$1" token="$2" line end
   line="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$file" \
             | grep -F -- "location $token " | head -1 | cut -d: -f1 || true)"
   [ -n "$line" ] || line="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$file" \
             | grep -F -- "location $token{" | head -1 | cut -d: -f1 || true)"
   [ -n "$line" ] || return 1
 
-  if sed -n "${line}p" "$file" | grep -q '}'; then
-    sed -i "${line}d" "$file"          # self-closing one-liner
-  else
-    sed -i "${line},/^[[:space:]]*}/d" "$file"
-  fi
+  end="$(block_end_line "$file" "$line")"
+  sed -i "${line},${end}d" "$file"
 }
 
 [ "$SOURCE_ONLY" = 1 ] && return 0 2>/dev/null || true
@@ -108,11 +130,7 @@ check_catch_all_backend() {
   [ "$catch_all_count" = 1 ] || return 0
   local start end body found
   start="$catch_all_lines"
-  if sed -n "${start}p" "$NGX" | grep -q '}'; then
-    end="$start"
-  else
-    end="$(awk -v s="$start" 'NR>=s && /^[[:space:]]*}/ {print NR; exit}' "$NGX")"
-  fi
+  end="$(block_end_line "$NGX" "$start")"
   body="$(sed -n "${start},${end}p" "$NGX")"
   printf '%s\n' "$body" | grep -qF -- "proxy_pass http://127.0.0.1:3001;" && return 0
   found="$(printf '%s\n' "$body" | grep -m1 -oE 'proxy_pass http://[^;]+;' || true)"
