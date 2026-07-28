@@ -1,7 +1,7 @@
 # Next teardown — wave 1 (box)
 
-Every command here runs on the box — Neil executes; Claude never SSHes it. Order matters.
-Rollback at any point: see §8.
+Every command here runs on the box, or from dev against it — Neil executes; Claude
+never SSHes it. Order matters. Rollback at any point: see §8.
 
 Wave 1 changes routing only. Next's code stays on disk, so rollback is nginx plus
 pm2 — seconds, nothing to rebuild. Wave 2 (code deletion) is blocked until the
@@ -9,6 +9,34 @@ T+1 check in §9 passes.
 
 **Do not run the script with sudo.** pm2 keeps per-user daemons; under sudo it
 would address root's, not `ubuntu`'s. The script refuses to start as root.
+
+## 0. Get the script onto the box
+
+**Precondition: this branch must be merged to `main` before running any step here.**
+`npm run deploy` refuses to run on any branch but `main`, and refuses on a dirty
+tree (`gate.sh`, the first of its three stages) — the same precondition
+`home-cutover.md` states for its own cutover.
+
+From dev:
+
+    npm run deploy
+
+This ships the committed tree — `retire-next.sh`'s `--stop-next` mode and this
+runbook included — via `gate → deploy-code → migrate`. `deploy-code` also runs
+`npm run build -w @localfinds/web`, i.e. it rebuilds Next. That's expected and
+harmless here: this branch doesn't touch Next's code, and nginx keeps routing to it
+(pm2 keeps it running) until §4's reload flips the catch-all to Phoenix.
+
+On the box, `cd` into the checkout before running anything below — every later
+section assumes this working directory:
+
+    cd /var/www/localfinds
+
+Confirm the script arrived:
+
+    ls -l scripts/deploy/retire-next.sh
+
+Then continue at §1.
 
 ## 1. Look before touching
 
