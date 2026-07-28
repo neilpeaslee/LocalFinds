@@ -68,7 +68,7 @@ defmodule LocalfindsWeb.HomeLive.Index do
     ~H"""
     <div class="flex flex-col gap-6">
       <HomeComponents.region_map
-        connected?={@map_ready?}
+        connected?={@map_ready? and !@db_unavailable}
         pins={@pins}
         towns={@towns}
         boundaries={@boundaries}

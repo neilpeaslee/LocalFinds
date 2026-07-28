@@ -86,25 +86,29 @@ export default {
 
     for (const b of boundaries) {
       for (const ring of b.rings) {
+        const label = document.createElement("span")
+        label.textContent = b.name
         L.polygon(ring, {
           color: b.primary ? PRIMARY_COLOR : TOWN_COLOR,
           weight: b.primary ? 2.5 : 1.5,
           fill: false,
         })
-          .bindTooltip(b.name, {direction: "center", opacity: 0.9})
+          .bindTooltip(label, {direction: "center", opacity: 0.9})
           .addTo(this.map)
       }
     }
 
     for (const t of fallbackTowns) {
       const [s, w, n, e] = t.bbox
+      const label = document.createElement("span")
+      label.textContent = t.name
       L.rectangle([[s, w], [n, e]], {
         color: t.primary ? PRIMARY_COLOR : TOWN_COLOR,
         weight: t.primary ? 2.5 : 1.5,
         dashArray: "4 3",
         fill: false,
       })
-        .bindTooltip(t.name, {direction: "center", opacity: 0.9})
+        .bindTooltip(label, {direction: "center", opacity: 0.9})
         .addTo(this.map)
     }
 
@@ -144,9 +148,17 @@ export default {
       const props = f.properties
 
       if (!props.cluster) {
-        // Singleton -> a themed individual pin.
+        // Singleton -> a themed individual pin. `props.name`/`props.kind` are
+        // verbatim OSM tag text — world-editable, so this must never reach
+        // Leaflet's innerHTML-based string content path. Build a DOM node and
+        // set textContent instead of interpolating into a template literal.
         const color = this.colorOf.get(props.theme) || CLUSTER_FILL
         const suffix = props.subtype ? ` · ${props.subtype}` : props.kind ? ` · ${props.kind}` : ""
+        const label = document.createElement("span")
+        const strong = document.createElement("span")
+        strong.className = "font-medium"
+        strong.textContent = props.name
+        label.append(strong, document.createTextNode(suffix))
         L.circleMarker([lat, lng], {
           radius: 5,
           color: darken(color), // darker outer border for definition
@@ -155,7 +167,7 @@ export default {
           weight: 2,
           className: "lf-pin",
         })
-          .bindTooltip(`<span class="font-medium">${props.name}</span>${suffix}`)
+          .bindTooltip(label)
           .addTo(this.clusterLayer)
         continue
       }

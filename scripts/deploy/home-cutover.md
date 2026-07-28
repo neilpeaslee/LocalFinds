@@ -69,6 +69,15 @@ The `Loading map` hit is the disconnected render, which is correct: the map only
 mounts once the socket connects. A `0` there means the page rendered without its
 map container at all.
 
+`grep -c 'Loading map'` returning 1 only proves the placeholder shipped — that string is
+the *disconnected* render and is present whether or not the hook actually works. Check the
+box's own `mix assets.deploy` output directly, since nothing else here touches it and it's
+the step this branch's spec flagged as most likely to break a deploy (esbuild's UMD
+interop with the vendored Leaflet/supercluster bundles):
+
+    curl -sS http://127.0.0.1:4000/assets/js/app.js  | grep -c "Leaflet 1.9"      # >= 1
+    curl -sS http://127.0.0.1:4000/assets/css/app.css | grep -c "leaflet-container" # >= 1
+
 ## 3. nginx: add the exact-match location
 
     sudo cp /etc/nginx/sites-available/localfinds.me \
@@ -128,13 +137,28 @@ Then reload:
 ## 4. Verify live
 
 **Test A — THE critical check: the catch-all still reaches Next.** This is the one that
-proves the exact-match location is working as designed and Plan 6's rollback path survived:
+proves the exact-match location is working as designed and Plan 6's rollback path survived.
 
-    curl -sS -o /dev/null -w "%{http_code}\n" https://localfinds.me/_next/static/chunks/app.js
-    # NOT 404 — proves /_next/* still hits the catch-all → Next
+First, confirm which nginx block actually owns `/_next/` on this box — the runbook has
+never checked this, and this branch's own spec lists deleting `location /_next/` as Plan 6
+work, so it may already have its own block rather than falling through to the catch-all:
 
-Any 404 here means the catch-all was clobbered or deleted. The whole point of this
-cutover's location rule was to avoid this. Restore from the backup and try again.
+    grep -n "_next" /etc/nginx/sites-available/localfinds.me
+
+A status code cannot be the discriminator here. Next hashes every chunk filename
+(`apps/web/.next/build-manifest.json` has names like `static/chunks/27q4d2lfe331u.js`), so
+a guessed path like `/_next/static/chunks/app.js` doesn't exist — both Next and Phoenix
+404 it, whether the catch-all is intact, repointed, or deleted. Probe the response body
+instead, on a path neither app recognizes:
+
+    curl -sS https://localfinds.me/__catchall_probe__ | grep -ci "__NEXT_DATA__\|next"
+
+Expect a **non-zero** count. Next's own 404 page still embeds `__NEXT_DATA__` and the
+literal word "next" (Phoenix's error page, by contrast, contains neither, case-insensitive
+— see `error_html.ex`), so a nonzero count proves the body that answered was Next's, i.e.
+the catch-all is intact. A **zero** count means Phoenix answered a path that should have
+fallen through to Next — the catch-all was clobbered or deleted. Restore from the backup
+and try again.
 
 **Test B — the exact-match location works:**
 
@@ -146,8 +170,27 @@ cutover's location rule was to avoid this. Restore from the backup and try again
     curl -sS -o /dev/null -w "%{http_code}\n" https://localfinds.me/places      # 200
     curl -sS -o /dev/null -w "%{http_code}\n" https://localfinds.me/feed        # 200
 
-Then open https://localfinds.me/ in a browser and walk the ten checks from Task 8,
-step 8. The map is the part no curl can verify.
+Then open https://localfinds.me/ in a browser and walk these ten checks. The map is the
+part no curl can verify, so this list — not a pointer to another document — is the
+runbook's real map verification. (`docs/` is its own nested, gitignored repo; it never
+ships to the box, so a step that only says "see Task 8" has nothing to point at here.)
+
+ 1. Tiles load and the map is framed on the coverage area, one zoom level tighter than
+    the bare fit.
+ 2. The world outside the coverage boundary is dimmed; inside is clear.
+ 3. Town outlines are drawn, the primary town in amber and thicker; hovering a town shows
+    its name centred.
+ 4. A town with no polygon shows a dashed rectangle instead.
+ 5. Cluster bubbles show a white bold number with NO white tooltip box behind it (this is
+    the `.leaflet-tooltip.cluster-count` rule; a box means the CSS did not reach the
+    bundle).
+ 6. Clicking a bubble flies in and it breaks apart.
+ 7. Individual pins are themed colours matching the legend, and hovering one names it.
+ 8. The legend sits top-right with a swatch per theme, then Other, then grey
+    "more (zoom in)".
+ 9. Scroll-wheel over the map scrolls the page, not the map's zoom.
+10. Open the browser console and confirm it is free of errors on load — in particular no
+    Leaflet or hook exceptions.
 
 ## 5. Rollback
 

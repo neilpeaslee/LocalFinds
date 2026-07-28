@@ -40,4 +40,19 @@ defmodule LocalfindsWeb.MapStylesTest do
       assert File.exists?(Path.join(@vendor, file)), "missing vendored asset: #{file}"
     end
   end
+
+  test "pin tooltips never interpolate OSM properties into a template literal (stored XSS guard)" do
+    # `props.name`/`props.kind` are verbatim OpenStreetMap tag text —
+    # world-editable by anyone with an OSM account. Leaflet's DivOverlay
+    # assigns string tooltip content straight to `.innerHTML`, so a
+    # `bindTooltip(`...${props.name}...`)` call is stored XSS: a POI renamed to
+    # an `<img onerror=...>` payload executes on localfinds.me for any visitor
+    # who hovers the pin. The fix builds a DOM node and sets `textContent`
+    # instead — this regex catches a regression back to the string form.
+    refute File.read!(@hook) =~ ~r/bindTooltip\(\s*`[^`]*\$\{props\./,
+           "region_map.js passes a template literal interpolating `${props.*}` " <>
+             "into bindTooltip() — that string is assigned to Leaflet's innerHTML " <>
+             "verbatim, which is stored XSS against OSM-sourced pin data. Build a " <>
+             "DOM node and use textContent instead."
+  end
 end
