@@ -5,8 +5,8 @@
 # correct on one more construct and wrong on a new one, the last silently
 # deleting three blocks while reporting success. Neil edits nginx by hand, as
 # in all five prior cutovers (runbook: scripts/deploy/next-teardown.md); this
-# script only asserts whole-file invariants and (once the live probe suite
-# lands) probes the running site — neither needs to understand nginx grammar.
+# script asserts whole-file invariants and probes the running site — neither
+# needs to understand nginx grammar.
 # It mutates nothing and deletes no code: Next's tree stays on disk, so
 # rollback is nginx + pm2 only.
 #
@@ -77,6 +77,45 @@ expect_present_count() {  # expect_present_count <file> <label> <fixed-string>
   say "  ok  $2 present"
 }
 
+# Fetchers and judges are kept separate so the judges are unit-testable
+# without a network: they take already-fetched values (a status code, a
+# response body) and only decide pass/fail, so the selftest can source this
+# file (--source-only) and call them directly with hand-built good and bad
+# inputs. The fetchers are thin curl wrappers that only ever run on the box,
+# reached only from inside `[ "$TEST_MODE" != 1 ]` branches below — never
+# invoked by the selftest, never touching the network under
+# RETIRE_NEXT_TEST=1.
+
+expect_status() {  # expect_status <label> <actual> <expected>
+  [ -n "$2" ] || abort "$1: no status returned (connection failed?)"
+  [ "$2" != "000" ] || abort "$1: curl could not connect"
+  [ "$2" = "$3" ] || abort "$1: got $2, expected $3"
+  say "  ok  $1 -> $2"
+}
+
+expect_no_next() {  # expect_no_next <label> <body>
+  [ -n "$2" ] || abort "$1: empty response body (connection failed?)"
+  printf '%s' "$2" | grep -qi '__NEXT_DATA__\|next' \
+    && abort "$1: response body still looks like Next — the flip did not take"
+  say "  ok  $1 -> no Next markers"
+}
+
+# expect_next is --check's mirror of expect_no_next: before the hand edit,
+# the catch-all must still fall through to Next, so an unknown path's body
+# must contain Next markers. One guard, not a separate empty-body guard plus
+# a marker guard: an empty body already contains no markers, so a bolted-on
+# `[ -n "$2" ] || abort ...` ahead of the grep would never be the thing that
+# actually catches an empty body in practice — the grep already does, making
+# the extra guard unreachable dead code dressed up as a second check.
+expect_next() {  # expect_next <label> <body>
+  printf '%s' "$2" | grep -qi '__NEXT_DATA__\|next' \
+    || abort "$1: response body does not look like Next (or was empty — connection failed?) — the catch-all no longer falls through to Next as this runbook assumes; stop before hand-editing nginx"
+  say "  ok  $1 -> looks like Next (pre-edit assumption holds)"
+}
+
+http_status() { curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$SITE$1"; }
+body_of()     { curl -sS --max-time 10 "$SITE$1"; }
+
 [ "$SOURCE_ONLY" = 1 ] && return 0 2>/dev/null || true
 
 # pm2 keeps per-user daemons. Under sudo we would address root's daemon, not
@@ -146,6 +185,14 @@ if [ "$CHECK" = 1 ]; then
     pm2 describe "$PM2_PROC" >/dev/null 2>&1 \
       && say "pm2 $PM2_PROC: present" \
       || say "WARNING: pm2 $PM2_PROC not found — Next may already be stopped"
+
+    # Every assertion above is a whole-file count; none of them can tell
+    # whether the catch-all's OWN proxy_pass is what an unknown path is
+    # actually served by. This confirms the runbook's premise — unknown
+    # paths fall through to Next — before the operator trusts it enough to
+    # hand-edit nginx. If this doesn't hold, the assumption behind the whole
+    # cutover is wrong and nothing below should proceed.
+    expect_next "catch-all (pre-edit)" "$(body_of /__teardown_probe__)"
   fi
 
   say ""
@@ -175,6 +222,32 @@ if [ "$VERIFY" = 1 ]; then
   done
 
   phase "verify: live"
-  # ...probe suite from Task 4 lands here...
+  if [ "$TEST_MODE" = 1 ]; then
+    say "test mode: skipping live probes"
+  else
+    expect_status "/"              "$(http_status /)"              200
+    expect_status "/feed"          "$(http_status /feed)"          200
+    expect_status "/places"        "$(http_status /places)"        200
+    expect_status "/sources"       "$(http_status /sources)"       200
+    expect_status "/auth/log-in"   "$(http_status /auth/log-in)"   200
+    # Steward-gated by live_session :steward's on_mount, so a redirect is correct.
+    expect_status "/agents (gated)" "$(http_status /agents)"       302
+
+    # Status cannot discriminate — both backends 404 an unknown path. The body can.
+    expect_no_next "catch-all" "$(body_of /__teardown_probe__)"
+
+    # App-code gating survived the removal of nginx's write gate.
+    expect_status "token-less POST /feed/settings" \
+      "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$SITE/feed/settings")" 403
+
+    # A shell client cannot complete a LiveView handshake; this bounds the claim
+    # to "nginx routes it to a socket handler at all".
+    ws="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+          -H 'Connection: Upgrade' -H 'Upgrade: websocket' "$SITE/live/websocket")"
+    case "$ws" in
+      404|502) abort "/live/websocket returned $ws — the socket is not routed" ;;
+      *) say "  ok  /live/websocket -> $ws (not 404/502)" ;;
+    esac
+  fi
   exit 0
 fi

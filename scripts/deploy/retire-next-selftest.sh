@@ -244,5 +244,50 @@ for loc in "location /live {" "location /assets {" "location /auth/ {" \
                  || fail "--verify MISSED a missing '$loc'"
 done
 
+echo "== probe judges =="
+
+( . "$SCRIPT" --source-only; expect_status "x" "200" "200" ) >/dev/null 2>&1 \
+  && pass "expect_status accepts a match" || fail "expect_status rejected a match"
+( . "$SCRIPT" --source-only; expect_status "x" "404" "200" ) >/dev/null 2>&1 \
+  && fail "expect_status accepted a mismatch" || pass "expect_status rejects a mismatch"
+( . "$SCRIPT" --source-only; expect_status "x" "" "200" ) >/dev/null 2>&1 \
+  && fail "expect_status accepted an empty status" || pass "expect_status rejects an empty status"
+( . "$SCRIPT" --source-only; expect_status "x" "000" "200" ) >/dev/null 2>&1 \
+  && fail "expect_status accepted curl's connection-failure 000" \
+  || pass "expect_status rejects curl's 000"
+
+# The two cases above both compare against expected="200", so the final
+# mismatch guard (`[ "$2" = "$3" ]`) would independently catch "" and "000"
+# too — they'd still abort even with the empty-status guard or the 000 guard
+# deleted, proving nothing about those two guards specifically. These two use
+# a matching expected value instead, so the mismatch guard can't fire and
+# only the guard under test can be what catches them.
+( . "$SCRIPT" --source-only; expect_status "x" "" "" ) >/dev/null 2>&1 \
+  && fail "expect_status accepted an empty status matching an empty expected" \
+  || pass "expect_status rejects an empty status even against an empty expected"
+( . "$SCRIPT" --source-only; expect_status "x" "000" "000" ) >/dev/null 2>&1 \
+  && fail "expect_status accepted 000 matching an expected 000" \
+  || pass "expect_status rejects 000 even against an expected 000"
+
+( . "$SCRIPT" --source-only; expect_no_next "x" "<h1>Not Found</h1>" ) >/dev/null 2>&1 \
+  && pass "expect_no_next accepts a Phoenix body" || fail "expect_no_next rejected a Phoenix body"
+( . "$SCRIPT" --source-only; expect_no_next "x" '<script id="__NEXT_DATA__">' ) >/dev/null 2>&1 \
+  && fail "expect_no_next accepted __NEXT_DATA__" || pass "expect_no_next rejects __NEXT_DATA__"
+( . "$SCRIPT" --source-only; expect_no_next "x" 'powered by Next.js' ) >/dev/null 2>&1 \
+  && fail "expect_no_next accepted the word next" || pass "expect_no_next rejects the word next"
+( . "$SCRIPT" --source-only; expect_no_next "x" "" ) >/dev/null 2>&1 \
+  && fail "expect_no_next accepted an empty body" || pass "expect_no_next rejects an empty body"
+
+# expect_next is --check's mirror of expect_no_next: before the edit, the
+# catch-all must still look like Next, so an unknown path's body must
+# contain Next markers.
+( . "$SCRIPT" --source-only; expect_next "x" '<script id="__NEXT_DATA__">' ) >/dev/null 2>&1 \
+  && pass "expect_next accepts a Next body" || fail "expect_next rejected a Next body"
+( . "$SCRIPT" --source-only; expect_next "x" "<h1>Not Found</h1>" ) >/dev/null 2>&1 \
+  && fail "expect_next accepted a body with no Next markers" \
+  || pass "expect_next rejects a body with no Next markers"
+( . "$SCRIPT" --source-only; expect_next "x" "" ) >/dev/null 2>&1 \
+  && fail "expect_next accepted an empty body" || pass "expect_next rejects an empty body"
+
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"
