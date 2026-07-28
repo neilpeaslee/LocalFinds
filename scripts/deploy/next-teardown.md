@@ -107,6 +107,15 @@ roll back (§8).
 
 `pm2 stop`, not delete — the process definition is the rollback path for the whole soak.
 
+**A deploy between now and the T+1 check (§9) brings Next back.** `npm run deploy`'s
+migrate stage ends with `pm2 reload localfinds` unconditionally — not gated on
+whether the process is running — so shipping anything during the soak (a Phoenix
+change, a doc fix, anything that touches `main`) silently un-stops Next. This is
+harmless to visitors: nginx no longer routes to `:3001` after §4, so nothing is
+newly reachable. But it invalidates §9's "pm2 shows stopped" expectation. If you
+deployed during the soak, re-run this section's `--stop-next` command before doing
+§9's check, and treat a running `localfinds` there as explained, not alarming.
+
 ## 7. Browser walk
 
 curl cannot verify a map. Open https://localfinds.me/ and confirm:
@@ -141,4 +150,7 @@ cron have both run:
       "SELECT agent, status, started_at FROM localfinds.runs ORDER BY started_at DESC LIMIT 5;"
 
 Expect: `--verify` green, pm2 showing `localfinds` stopped, a clean replication log,
-and a run row from this morning's cron. All green unblocks wave 2.
+and a run row from this morning's cron. All green unblocks wave 2. If `pm2 list`
+shows `localfinds` running instead, see §6 before treating it as a failure — a
+deploy during the soak restarts it via `migrate.sh`'s unconditional `pm2 reload`,
+harmlessly; re-run `--stop-next` and re-check.
