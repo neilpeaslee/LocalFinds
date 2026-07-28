@@ -107,14 +107,20 @@ roll back (§8).
 
 `pm2 stop`, not delete — the process definition is the rollback path for the whole soak.
 
-**A deploy between now and the T+1 check (§9) brings Next back.** `npm run deploy`'s
-migrate stage ends with `pm2 reload localfinds` unconditionally — not gated on
-whether the process is running — so shipping anything during the soak (a Phoenix
-change, a doc fix, anything that touches `main`) silently un-stops Next. This is
-harmless to visitors: nginx no longer routes to `:3001` after §4, so nothing is
-newly reachable. But it invalidates §9's "pm2 shows stopped" expectation. If you
-deployed during the soak, re-run this section's `--stop-next` command before doing
-§9's check, and treat a running `localfinds` there as explained, not alarming.
+**A deploy between now and the T+1 check (§9) touches the pm2 process.**
+`migrate.sh` runs `pm2 reload localfinds` unconditionally on every `npm run
+deploy` — confirmed from source, not gated on whether the process is running. So
+a deploy during the soak (a Phoenix change, a doc fix, anything that touches
+`main`) reloads the same pm2 process this step just stopped, and Next may come
+back up as a result. It is not an incident either way: nginx stopped routing to
+`:3001` at §4, so nothing is newly reachable regardless of what pm2 does with it.
+The action is the same whichever way pm2 behaves: if §9's `pm2 list` shows
+`localfinds` running and a deploy happened during the soak, that is the
+explanation — re-run `bash scripts/deploy/retire-next.sh --stop-next` and
+continue.
+
+Optional, not required: settle the mechanism for yourself in seconds —
+`pm2 stop localfinds && pm2 reload localfinds && pm2 list`.
 
 ## 7. Browser walk
 
@@ -149,8 +155,9 @@ cron have both run:
     sudo -u postgres psql -d localfinds -c \
       "SELECT agent, status, started_at FROM localfinds.runs ORDER BY started_at DESC LIMIT 5;"
 
-Expect: `--verify` green, pm2 showing `localfinds` stopped, a clean replication log,
-and a run row from this morning's cron. All green unblocks wave 2. If `pm2 list`
-shows `localfinds` running instead, see §6 before treating it as a failure — a
-deploy during the soak restarts it via `migrate.sh`'s unconditional `pm2 reload`,
-harmlessly; re-run `--stop-next` and re-check.
+Expect: `--verify` green — its probes prove Next isn't serving anything, independent
+of pm2's state. `pm2 list` showing `localfinds` stopped is the clean case; if it
+shows running instead, see §6 before treating it as a failure — pm2's state alone
+doesn't mean something is wrong. A clean replication log and a run row from this
+morning's cron complete the picture. `--verify` green, a clean log, and a fresh run
+row unblock wave 2 regardless of what `pm2 list` shows.
