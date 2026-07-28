@@ -84,7 +84,8 @@ defmodule LocalfindsWeb.PlacesLive.Index do
     }
 
     {:noreply,
-     assign(socket,
+     socket
+     |> assign(
        state: state,
        town: town,
        status: status,
@@ -110,7 +111,12 @@ defmodule LocalfindsWeb.PlacesLive.Index do
        # life of the connection. LiveDB.load re-assigns it fresh on every
        # handle_params, so nil-ing it here is not a cache, just cleanup.
        annotated: nil
-     )}
+     )
+     # Any filter combination is a distinct URL in an unbounded space; only the
+     # bare directory is worth indexing. Set on the index LiveViews only —
+     # PlacesLive.Show receives path params, so a params-non-empty rule there
+     # would noindex every place page, which is the content we want indexed.
+     |> assign(:noindex?, params != %{})}
   end
 
   # Search submit → fold the term into the URL so the state stays shareable.

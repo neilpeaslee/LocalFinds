@@ -98,4 +98,9 @@ defmodule LocalfindsWeb.PlacesLive.ShowTest do
     refute html =~ "tag=name"
     refute html =~ "tag=brand"
   end
+
+  test "a place detail page is indexable", %{conn: conn} do
+    {:ok, _lv, html} = live(conn, "/places/node/1")
+    refute html =~ "noindex"
+  end
 end

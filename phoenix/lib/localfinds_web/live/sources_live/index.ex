@@ -25,7 +25,8 @@ defmodule LocalfindsWeb.SourcesLive.Index do
     rows = all |> Filters.filter(%{q: q, status: status}) |> Filters.sort(sort, dir)
 
     {:noreply,
-     assign(socket,
+     socket
+     |> assign(
        page_title: "Sources",
        q: q,
        status: status,
@@ -35,7 +36,8 @@ defmodule LocalfindsWeb.SourcesLive.Index do
        state: %{q: q, status: status, sort: sort, dir: dir},
        rows: rows,
        summary: Filters.summarize(all)
-     )}
+     )
+     |> assign(:noindex?, params != %{})}
   end
 
   # Search form submit → fold the query into the URL so state stays shareable.

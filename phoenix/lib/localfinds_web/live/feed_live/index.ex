@@ -40,7 +40,12 @@ defmodule LocalfindsWeb.FeedLive.Index do
   @impl true
   def handle_params(params, _uri, socket) do
     resolved = FeedURL.resolve(params, socket.assigns.defaults)
-    {:noreply, socket |> assign(:resolved, resolved) |> load_feed()}
+
+    {:noreply,
+     socket
+     |> assign(:resolved, resolved)
+     |> assign(:noindex?, params != %{})
+     |> load_feed()}
   end
 
   # The single read. Called on every patch and, in Task 8, after every write —

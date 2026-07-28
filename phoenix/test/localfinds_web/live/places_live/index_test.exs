@@ -119,4 +119,16 @@ defmodule LocalfindsWeb.PlacesLive.IndexTest do
     {:ok, _lv, html} = live(conn, ~p"/places")
     assert html =~ "Showing 1–6 of 6 places"
   end
+
+  describe "noindex" do
+    test "a filtered view is noindex", %{conn: conn} do
+      {:ok, _live, html} = live(conn, ~p"/places?town=Rockland")
+      assert html =~ ~s(<meta name="robots" content="noindex,follow")
+    end
+
+    test "the bare directory is indexable", %{conn: conn} do
+      {:ok, _live, html} = live(conn, ~p"/places")
+      refute html =~ "noindex"
+    end
+  end
 end
