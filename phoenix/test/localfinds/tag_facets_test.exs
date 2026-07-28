@@ -41,5 +41,11 @@ defmodule Localfinds.TagFacetsTest do
       refute TagFacets.linkable?("amenity_type=cafe")
       refute TagFacets.linkable?("disused:amenity=cafe")
     end
+
+    test "non-binary input types do not crash and are not linkable" do
+      refute TagFacets.linkable?(nil)
+      refute TagFacets.linkable?(:amenity)
+      refute TagFacets.linkable?(42)
+    end
   end
 end
