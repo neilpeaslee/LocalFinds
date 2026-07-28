@@ -119,5 +119,37 @@ RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 &
 [ "$rc" != 0 ] && pass "--check aborts when the Next backend (127.0.0.1:3001) is missing" \
                 || fail "--check accepted a config with no Next backend"
 
+# The catch-all's OWN backend, repointed to a third port. 127.0.0.1:3001
+# still appears elsewhere in the file (@write_gate, /api/runs/), so a
+# whole-file substring check is satisfied while the catch-all itself is
+# wrong — exactly the "plan is wrong about this box" case --check exists to
+# catch. sed's range is scoped to the catch-all block only (4-space-indent
+# "location / {" through the matching 4-space-indent "}"), so the OTHER
+# 127.0.0.1:3001 occurrences are left untouched on purpose.
+f="$(work nginx-with-next.conf)"
+sed -i '/^    location \/ {$/,/^    }$/ s/127\.0\.0\.1:3001/127.0.0.1:5000/' "$f"
+RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check aborts when the catch-all proxy_passes to the wrong port" \
+                || fail "--check accepted a catch-all pointing at the wrong port"
+
+# More than one `location / {`. Realistic, not hypothetical: the production
+# site file may well carry a second `server { listen 80; ... }` for the
+# HTTP->HTTPS redirect, which can legitimately contain its own bare
+# `location /`. del_block's head -1 would only ever act on the first one.
+f="$(work nginx-with-next.conf)"
+cat >> "$f" <<'EOF'
+
+server {
+    listen 80;
+    server_name localfinds.me;
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+EOF
+RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check aborts when there is more than one catch-all" \
+                || fail "--check accepted a config with two catch-alls"
+
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"

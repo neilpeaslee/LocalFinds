@@ -85,6 +85,43 @@ expect_present "$NGX" "the Next catch-all (location / {)" "location / {"
 expect_present "$NGX" "the write gate (@write_gate)" "@write_gate"
 expect_present "$NGX" "a Next backend (127.0.0.1:3001)" "127.0.0.1:3001"
 
+# expect_present only proves a string exists SOMEWHERE in the file. That is
+# satisfied for 127.0.0.1:3001 by @write_gate and /api/runs/ even when the
+# catch-all itself proxy_passes elsewhere, and satisfied for "location / {"
+# by the first of several catch-alls even when there's more than one (a
+# second server{} for the HTTP->HTTPS redirect can legitimately carry its
+# own bare `location /`, and del_block's head -1 would silently act on
+# whichever one comes first). Check the relationship, not just presence:
+# locate the catch-all's own block and look inside it, after confirming
+# there is exactly one to look at.
+catch_all_lines="$(grep -n -E -- '^[[:space:]]*location[[:space:]]' "$NGX" \
+                      | grep -F -- 'location / {' | cut -d: -f1 || true)"
+catch_all_count=0
+[ -z "$catch_all_lines" ] || catch_all_count="$(printf '%s\n' "$catch_all_lines" | grep -c .)"
+
+check_single_catch_all() {
+  [ "$catch_all_count" -le 1 ] \
+    || abort "found $catch_all_count catch-all blocks (location / {) in $NGX — this script assumes a single catch-all; stop and disambiguate by hand"
+}
+
+check_catch_all_backend() {
+  [ "$catch_all_count" = 1 ] || return 0
+  local start end body found
+  start="$catch_all_lines"
+  if sed -n "${start}p" "$NGX" | grep -q '}'; then
+    end="$start"
+  else
+    end="$(awk -v s="$start" 'NR>=s && /^[[:space:]]*}/ {print NR; exit}' "$NGX")"
+  fi
+  body="$(sed -n "${start},${end}p" "$NGX")"
+  printf '%s\n' "$body" | grep -qF -- "proxy_pass http://127.0.0.1:3001;" && return 0
+  found="$(printf '%s\n' "$body" | grep -m1 -oE 'proxy_pass http://[^;]+;' || true)"
+  abort "the catch-all (location / {) does not proxy_pass to 127.0.0.1:3001 — found: ${found:-no proxy_pass in the block} — this box does not match the spec; stop and re-read the config"
+}
+
+check_single_catch_all
+check_catch_all_backend
+
 if grep -qF "location /_next/" "$NGX"; then
   say "note: /_next/ HAS its own block — it will be deleted"
 else
