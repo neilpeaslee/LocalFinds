@@ -168,4 +168,69 @@ defmodule LocalfindsWeb.DegradedRenderTest do
     html = degraded(LocalfindsWeb.AgentsLive.Run, assigns)
     assert html =~ "Temporarily unavailable"
   end
+
+  test "home renders the degraded state" do
+    # Both the stats section and the finds section are guarded by
+    # :if={!@db_unavailable} — the stats section because @place_count and
+    # @feed.total are DB-backed with zero fallbacks, and "0 places catalogued"
+    # during a bounce would read as real data rather than unknown, same as
+    # every sibling ported page. Prove "Current finds" and "places catalogued"
+    # are genuinely guarded body content first — otherwise the refutes below
+    # would pass for the wrong reason.
+    assigns = %{
+      region_name: "Testland, Maine",
+      coverage: nil,
+      towns: [],
+      place_count: 0,
+      feed: %{rows: [], total: 0, page: 1, page_count: 1},
+      pins: [],
+      boundaries: [],
+      themes: [],
+      map_ready?: false
+    }
+
+    healthy_html = healthy(LocalfindsWeb.HomeLive.Index, assigns)
+    assert healthy_html =~ "places catalogued"
+    assert healthy_html =~ "Current finds"
+    assert healthy_html =~ "Testland, Maine"
+
+    html = degraded(LocalfindsWeb.HomeLive.Index, assigns)
+    assert html =~ "Temporarily unavailable"
+    refute html =~ "places catalogued"
+    refute html =~ "Current finds"
+    # The region heading does NOT survive a bounce: the whole stats section
+    # (heading included) is guarded as one unit, matching /sources — a
+    # partial page (banner + orphaned heading) is not the intended fallback.
+    refute html =~ "Testland, Maine"
+  end
+
+  test "home does not draw a fully-rendered empty map during a connected bounce" do
+    # `load_map/2` fetches pins via `LiveDB.load/4`, so a Postgres bounce during
+    # a *connected* mount yields `map_ready?: true, pins: [], db_unavailable:
+    # true` — unlike the dead-render case above, which pins `map_ready?:
+    # false` and therefore exercises the placeholder path regardless of this
+    # guard. Before the fix, `region_map`'s `connected?` attr was driven by
+    # `@map_ready?` alone, so this combination drew a fully-formed empty map
+    # (tiles, mask, town outlines, full legend, zero pins) above the
+    # "Temporarily unavailable" banner — reading as "this region has no
+    # businesses" rather than "data unavailable", the same fabricated-fact bug
+    # already ruled against for the stats.
+    assigns = %{
+      region_name: "Testland, Maine",
+      coverage: nil,
+      towns: [],
+      place_count: 0,
+      feed: %{rows: [], total: 0, page: 1, page_count: 1},
+      pins: [],
+      boundaries: [],
+      themes: [],
+      map_ready?: true
+    }
+
+    html = degraded(LocalfindsWeb.HomeLive.Index, assigns)
+
+    assert html =~ "Temporarily unavailable"
+    refute html =~ ~s(phx-hook="RegionMap")
+    assert html =~ "Loading map"
+  end
 end

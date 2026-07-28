@@ -9,14 +9,16 @@ defmodule Localfinds.Places do
       connection or a server shutdown to `{:error, :database_unavailable}`.
 
     * The web directory (`list_directory_places/1`, `get_directory_place/1`,
-      `list_towns/0`) reads the `localfinds.places` view and deliberately
-      includes custom rows — the provenance exclusion is an API-only rule.
-      These functions raise on failure; the caller guards (LiveViews via
-      `LocalfindsWeb.LiveDB`).
+      `list_towns/0`, `map_pins/0`, `count_places/0`) reads the
+      `localfinds.places` view and deliberately includes custom rows — the
+      provenance exclusion is an API-only rule. These functions raise on
+      failure; the caller guards (LiveViews via `LocalfindsWeb.LiveDB`).
   """
   import Ecto.Query
 
+  alias Localfinds.Categories
   alias Localfinds.DB
+  alias Localfinds.MapCategories
   alias Localfinds.Places.{DirectoryPlace, Params, Place}
   alias Localfinds.Repo
 
@@ -92,9 +94,9 @@ defmodule Localfinds.Places do
 
   # =========================================================================
   # Directory reads (localfinds.places view) — what the web UI renders. Port of
-  # listPlaces / getPlaceByOsmId / listPlaceTowns in packages/db/src/queries.ts.
-  # These raise on failure; LiveViews call them through LocalfindsWeb.LiveDB,
-  # which applies Localfinds.DB.guard/1.
+  # listPlaces / getPlaceByOsmId / listPlaceTowns / listMapPins / countPlaces in
+  # packages/db/src/queries.ts. These raise on failure; LiveViews call them
+  # through LocalfindsWeb.LiveDB, which applies Localfinds.DB.guard/1.
   # =========================================================================
 
   @directory_limit 5000
@@ -126,6 +128,81 @@ defmodule Localfinds.Places do
         order_by: pl.town,
         select: %{town: pl.town, n: count(pl.osm_id)}
     )
+  end
+
+  @doc """
+  Every pinnable place, annotated for the region map — port of `listMapPins()`
+  **plus the dashboard's fixed filter**, which the Next reference applies in the
+  browser (`selectVisible` in `lib/map-selection.ts`).
+
+  Moving that filter here is deliberate. The dashboard map has no filter UI, so
+  the predicate is a constant: business tiers only (tier 4 is "not a business"),
+  nothing closed, no chains. Applying it in SQL keeps the testable logic in
+  ExUnit and leaves the JS hook as viewport tracking plus library calls. The
+  rendered result is identical — a conjunction reordered.
+
+  The returned map's keys are a wire contract: the LiveView JSON-encodes them
+  onto the hook element and `assets/js/hooks/region_map.js` reads them by name.
+
+  `status`, `brand` and `tags` are deliberately absent from the result. The
+  reference carried them so the client could filter; nothing downstream of this
+  function needs them now, and a smaller payload crosses the socket.
+  """
+  @spec map_pins() :: [map()]
+  def map_pins do
+    tiers = Categories.load()
+    themes = MapCategories.load()
+
+    DirectoryPlace
+    |> where([pl], is_nil(pl.duplicate_of))
+    # Deliberately untested: no row in the current fixture data is
+    # coordinate-less, so this guard isn't exercised, by choice, not because
+    # such a row can't exist. custom_places.lat/lng are NOT NULL, but that only
+    # covers the custom-place branch — planet_osm_point.way has no NOT NULL
+    # constraint, so an OSM node with a null geometry is schema-legal and would
+    # surface here with null lat/lng. The guard stays because a null
+    # coordinate would throw inside Leaflet, not degrade; exercising it would
+    # need a REFRESH MATERIALIZED VIEW inside the suite, which mutates shared
+    # state the async tests depend on — not worth it for a defensive guard.
+    |> where([pl], not is_nil(pl.lat) and not is_nil(pl.lng))
+    |> where([pl], pl.status != "closed")
+    # A chain means a non-empty brand tag. `LocalfindsWeb.PlaceRanking` and
+    # `PlacesLive.Show` both define chain?/1 as `is_binary(brand) and brand !=
+    # ""`, citing the TS reference's `Boolean(brand)` (where "" is falsy) — the
+    # map must not carry a second, different definition of "chain" than /places
+    # uses, even though no empty-brand row exists in this data today.
+    |> where([pl], is_nil(pl.brand) or pl.brand == "")
+    |> select([pl], %{
+      osm_id: pl.osm_id,
+      name: pl.name,
+      kind: pl.kind,
+      lat: pl.lat,
+      lng: pl.lng,
+      town: pl.town
+    })
+    |> Repo.all()
+    |> Enum.map(&annotate(&1, tiers, themes))
+    |> Enum.reject(&(&1.tier == 4))
+  end
+
+  @doc """
+  Total catalogued places — port of `countPlaces()`. Counts non-duplicate rows
+  **including coordinate-less ones**, so it legitimately exceeds
+  `length(map_pins())`. That gap is the difference between "places catalogued"
+  and "places the map can draw", and it is not a bug.
+  """
+  @spec count_places() :: integer()
+  def count_places do
+    Repo.aggregate(where(DirectoryPlace, [pl], is_nil(pl.duplicate_of)), :count, :osm_id)
+  end
+
+  defp annotate(pin, tiers, themes) do
+    match = MapCategories.theme_of(themes, pin.kind)
+
+    pin
+    |> Map.put(:tier, Categories.tier_of(tiers, pin.kind))
+    |> Map.put(:theme, match.key)
+    |> Map.put(:subtype, match.subtype)
   end
 
   defp town_filter(q, nil), do: q
