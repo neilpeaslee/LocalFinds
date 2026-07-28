@@ -116,6 +116,14 @@ RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 &
 echo "== --verify: each invariant is load-bearing =="
 
 # Reintroduce one forbidden construct at a time; --verify must reject each.
+# Each row is chosen to trip EXACTLY ONE expect_absent assertion — the
+# original write-gate row ("error_page 418 = @write_gate;") tripped BOTH
+# "the write gate" (@write_gate) and "the 418 method split" (418) at once,
+# so deleting either assertion alone left the other one still catching the
+# row and the test proved nothing about which guard was doing the work. It
+# is split below into a block-only row and a 418-only row. A row for
+# "location = /auth/check" is added too: no row exercised that assertion at
+# all before this fix, so deleting it would have broken zero cases, not one.
 while read -r label line; do
   f="$(work nginx-after-teardown.conf)"
   printf '%s\n' "$line" >> "$f"
@@ -123,16 +131,44 @@ while read -r label line; do
   [ "$rc" != 0 ] && pass "--verify catches reintroduced $label" \
                  || fail "--verify MISSED reintroduced $label"
 done <<'ROWS'
-next-backend     proxy_pass http://127.0.0.1:3001;
-auth_request     auth_request /auth/check;
-write-gate       error_page 418 = @write_gate;
-login-redirect   location @login { return 302 /auth/log-in; }
-runs-sse         location /api/runs/ { proxy_pass http://127.0.0.1:4000; }
-next-assets      location /_next/ { proxy_pass http://127.0.0.1:4000; }
+next-backend        proxy_pass http://127.0.0.1:3001;
+auth_request        auth_request /auth/check;
+write-gate          location @write_gate { proxy_pass http://127.0.0.1:4000; }
+method-split-418    if ($request_method !~ ^(GET|HEAD)$) { return 418; }
+login-redirect      location @login { return 302 /auth/log-in; }
+auth-check-target   location = /auth/check { proxy_pass http://127.0.0.1:4000; }
+runs-sse            location /api/runs/ { proxy_pass http://127.0.0.1:4000; }
+next-assets         location /_next/ { proxy_pass http://127.0.0.1:4000; }
 ROWS
 
+# A second catch-all reintroduced into an otherwise-correct config must also
+# fail. This is the one --verify invariant (expect_count == 1, not a fixed
+# string) the reintroduction loop above cannot exercise and the removal loop
+# below cannot exercise either (it only removes) — so it needs its own case,
+# or "the catch-all still exists" would have no isolating test at all.
+f="$(work nginx-after-teardown.conf)"
+cat >> "$f" <<'EOF'
+
+server {
+    listen 80;
+    server_name localfinds.me;
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+EOF
+RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --verify >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--verify catches a second catch-all" \
+               || fail "--verify MISSED a second catch-all"
+
 # Removing a Phoenix location must also fail — the invariants cut both ways.
-for loc in "location /live {" "location = /feed {" "location ^~ /agents/ {"; do
+# All twelve locations are exercised, not a sample: each expect_present_count
+# needs its own isolating case the same way each expect_absent above does.
+for loc in "location /live {" "location /assets {" "location /auth/ {" \
+           "location = / {" "location = /feed {" "location ^~ /feed/ {" \
+           "location = /places {" "location ^~ /places/ {" \
+           "location = /sources {" "location ^~ /sources/ {" \
+           "location = /agents {" "location ^~ /agents/ {"; do
   f="$(work nginx-after-teardown.conf)"
   grep -vF "$loc" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --verify >/dev/null 2>&1 && rc=0 || rc=$?
