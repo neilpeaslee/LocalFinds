@@ -72,15 +72,23 @@ to:
     error_page 418 = @write_gate;
     if ($request_method !~ ^(GET|HEAD)$) { return 418; }
 
-**c. Delete these three blocks entirely:**
+**c. Delete these three blocks entirely, and any comment line sitting directly
+above each one:**
 
     location @write_gate { … }
     location /api/runs/ { … }
     location @login { return 302 /auth/log-in; }
 
-**d. Delete the internal auth_request target:**
+**d. Delete the internal auth_request target, and the comment directly above
+it** (something like `# Session check for auth_request — internal only, never
+client-reachable`):
 
     location = /auth/check { … }
+
+A leftover comment mentioning a deleted construct is now harmless to
+`--verify` — it strips comment lines before checking, so it won't abort over
+one you forgot. Delete them anyway; a comment describing a block that no
+longer exists is stale documentation for whoever edits this file next.
 
 **e. If `location /_next/ { … }` exists, delete it.** §1's `--check` output says
 whether it does — look for the `note: /_next/ …` line.
@@ -150,14 +158,24 @@ Next morning, after the 04:17 UTC replication + matview refresh and the 07:00 ag
 cron have both run:
 
     bash scripts/deploy/retire-next.sh --verify
+    bash scripts/deploy/retire-next.sh --stop-next
     pm2 list
     tail -20 /var/log/localfinds/replication.log
     sudo -u postgres psql -d localfinds -c \
       "SELECT agent, status, started_at FROM localfinds.runs ORDER BY started_at DESC LIMIT 5;"
 
-Expect: `--verify` green — its probes prove Next isn't serving anything, independent
-of pm2's state. `pm2 list` showing `localfinds` stopped is the clean case; if it
-shows running instead, see §6 before treating it as a failure — pm2's state alone
-doesn't mean something is wrong. A clean replication log and a run row from this
-morning's cron complete the picture. `--verify` green, a clean log, and a fresh run
-row unblock wave 2 regardless of what `pm2 list` shows.
+Expect: `--verify` green — its probes prove Phoenix is serving every route this
+runbook touched, including `/robots.txt`, which only 200s if the catch-all's
+`proxy_pass` actually reaches Phoenix (nginx's own 404/502 for a dead or
+misrouted catch-all both fail it, where a body-only check would not). Re-running
+`--stop-next` is safe here whether or not it has anything left to stop (§6) — it
+re-asks Next directly on `127.0.0.1:3001`, bypassing nginx and pm2 both, so it
+re-establishes that nothing answers there regardless of what `pm2 list` reports.
+That is the actual, mechanism-independent claim this gate needs; pm2's own state
+is not it — a `pm2 reload` from an unrelated deploy during the soak (see §6) can
+show `localfinds` running without anything being reachable. `pm2 list` showing
+`localfinds` stopped is the clean case; if it shows running instead, see §6
+before treating it as a failure. A clean replication log and a run row from this
+morning's cron complete the picture. `--verify` green, `--stop-next` green, a
+clean log, and a fresh run row unblock wave 2 regardless of what `pm2 list`
+shows.
