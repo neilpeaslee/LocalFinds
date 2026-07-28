@@ -141,8 +141,20 @@ defmodule Localfinds.Places do
   ExUnit and leaves the JS hook as viewport tracking plus library calls. The
   rendered result is identical — a conjunction reordered.
 
-  The returned map's keys are a wire contract: the LiveView JSON-encodes them
-  onto the hook element and `assets/js/hooks/region_map.js` reads them by name.
+  The returned map's keys ARE the wire contract: `LocalfindsWeb.HomeLive.Index`
+  pushes this list verbatim via `push_event/3` and
+  `assets/js/hooks/region_map.js` reads it by name. At ~20k pins, every byte in
+  each map is paid ~20k times, so the shape is deliberately lean:
+
+    * short keys (`id`, `nm`, `kd`, `lat`, `lng`, `th`, `sub`) instead of
+      `osm_id`/`name`/`kind`/`theme`/`subtype` — the repeated key text was
+      measured at ~1.7MB of the ~3.7MB payload that used to ship on mount.
+    * `town` is dropped — the hook never reads it.
+    * `tier` is dropped — it exists only to drive the reject below; nothing
+      downstream needs the value itself.
+    * `lat`/`lng` are rounded to 5 decimal places (~1m precision), because
+      `ST_Transform`'s float round-trip otherwise leaves ~14 significant
+      digits on a value a pin never needs more than 6 of.
 
   `status`, `brand` and `tags` are deliberately absent from the result. The
   reference carried them so the client could filter; nothing downstream of this
@@ -177,12 +189,26 @@ defmodule Localfinds.Places do
       name: pl.name,
       kind: pl.kind,
       lat: pl.lat,
-      lng: pl.lng,
-      town: pl.town
+      lng: pl.lng
     })
     |> Repo.all()
     |> Enum.map(&annotate(&1, tiers, themes))
     |> Enum.reject(&(&1.tier == 4))
+    |> Enum.map(&to_wire_pin/1)
+  end
+
+  # The reject above is the only reason `tier` exists at all — it never
+  # reaches the wire. See the map_pins/0 moduledoc for the rest of the shape.
+  defp to_wire_pin(pin) do
+    %{
+      id: pin.osm_id,
+      nm: pin.name,
+      kd: pin.kind,
+      lat: Float.round(pin.lat, 5),
+      lng: Float.round(pin.lng, 5),
+      th: pin.theme,
+      sub: pin.subtype
+    }
   end
 
   @doc """
