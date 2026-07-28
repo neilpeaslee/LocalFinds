@@ -59,3 +59,49 @@ del_block() {
 }
 
 [ "$SOURCE_ONLY" = 1 ] && return 0 2>/dev/null || true
+
+[ "$TEST_MODE" = 1 ] || [ "$(id -u)" -eq 0 ] || abort "must run as root"
+[ -f "$NGX" ] || abort "no nginx config at $NGX"
+
+expect_present() {  # expect_present <file> <label> <fixed-string>
+  grep -qF -- "$3" "$1" || abort "$2 not found in $1 — this box does not match the spec; stop and re-read the config"
+}
+
+inventory() {
+  grep -nE '^[[:space:]]*(location|proxy_pass|auth_request|error_page)' "$1" \
+    || say "(nothing matched — wrong file?)"
+}
+
+phase "P0 preflight"
+say "nginx config : $NGX"
+say "pm2 process  : $PM2_PROC"
+say "site         : $SITE"
+say ""
+say "--- current routing ---"
+inventory "$NGX"
+say "--- end ---"
+
+expect_present "$NGX" "the Next catch-all (location / {)" "location / {"
+expect_present "$NGX" "the write gate (@write_gate)" "@write_gate"
+expect_present "$NGX" "a Next backend (127.0.0.1:3001)" "127.0.0.1:3001"
+
+if grep -qF "location /_next/" "$NGX"; then
+  say "note: /_next/ HAS its own block — it will be deleted"
+else
+  say "note: /_next/ has no block — it falls through the catch-all; nothing to delete"
+fi
+
+if [ "$TEST_MODE" != 1 ]; then
+  curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:4000/ \
+    || abort "Phoenix is not answering on :4000 — do not flip anything"
+  say "phoenix on :4000: OK"
+  pm2 describe "$PM2_PROC" >/dev/null 2>&1 \
+    && say "pm2 $PM2_PROC: present" \
+    || say "WARNING: pm2 $PM2_PROC not found — P3 will skip"
+fi
+
+if [ "$CHECK" = 1 ]; then
+  say ""
+  say "--check: read-only, nothing changed. Re-run without --check to apply."
+  exit 0
+fi

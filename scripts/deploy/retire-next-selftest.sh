@@ -82,5 +82,24 @@ check "commented @login ref: /assets untouched" "$(grep -c 'location /assets {' 
 check "commented @login ref: comment itself untouched" "$(grep -c 'legacy: location @login used to redirect here' "$f")" "1"
 check "commented @login ref: exactly 1 line removed" "$((before - after))" "1"
 
+echo "== preflight / --check =="
+
+f="$(work nginx-with-next.conf)"
+before="$(md5sum < "$f")"
+out="$(RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check 2>&1)" && rc=0 || rc=$?
+check "--check exits 0 on a healthy config" "$rc" "0"
+check "--check changed nothing" "$(md5sum < "$f")" "$before"
+check "--check reports the catch-all" \
+  "$(printf '%s' "$out" | grep -c 'location / {')" "1"
+[ "$(printf '%s' "$out" | grep -c '@write_gate')" -ge 1 ] \
+  && pass "--check saw @write_gate" || fail "--check missed @write_gate"
+
+# A config already missing the catch-all must abort, not proceed.
+f="$(work nginx-with-next.conf)"
+( . "$SCRIPT" --source-only; del_block "$f" "/" ) || true
+RETIRE_NEXT_TEST=1 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --check >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "--check aborts when the catch-all is missing" \
+                || fail "--check accepted a config with no catch-all"
+
 [ "$FAIL" = 0 ] && echo "SELFTEST PASS" || echo "SELFTEST FAIL"
 exit "$FAIL"
