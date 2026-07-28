@@ -471,6 +471,67 @@ printf '%s' "$out" | grep -qF 'ok  Next backend (127.0.0.1:3001) -> no connectio
 rm -f "$PM2_ARGV_LOG"
 rm -rf "$LIVE_STUBS"
 
+# --stop-next used to run its four probes only inside the branch where it had
+# something to stop (`elif pm2 describe ...; then ... probes`); the "already
+# done" branch printed a line and returned, probing nothing. That shape is
+# precisely the one next-teardown.md §9 hits: at T+1, Next is normally
+# already stopped, and §9 is the gate on the irreversible wave-2 deletion —
+# re-running --stop-next there needs to re-establish the fact, not skip the
+# check because there was nothing left to stop. The restructure fixed this,
+# but nothing above proves it: every case up to here either uses TEST_MODE=1
+# (skips pm2 and the probes entirely) or a pm2 stub whose `describe` always
+# succeeds (takes the "stop" branch). This is the "already done" branch,
+# stubbed the same way, with `describe` failing instead.
+PM2_ARGV_LOG="$(mktemp)"
+LIVE_STUBS="$(mktemp -d)"
+cat > "$LIVE_STUBS/pm2" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$PM2_ARGV_LOG"
+case "\$1" in
+  describe) exit 1 ;;  # no such process — the "already done" branch
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "$LIVE_STUBS/pm2"
+
+cat > "$LIVE_STUBS/curl" <<'CURLEOF'
+#!/usr/bin/env bash
+url="${!#}"
+case "$url" in
+  *127.0.0.1:3001*) printf '000' ;;
+  *__teardown_probe__*) printf '<h1>Not Found</h1>' ;;
+  *) printf '200' ;;
+esac
+CURLEOF
+chmod +x "$LIVE_STUBS/curl"
+
+f="$(work nginx-with-next.conf)"
+out="$(PATH="$LIVE_STUBS:$PATH" RETIRE_NEXT_TEST=0 RETIRE_NEXT_NGX="$f" bash "$SCRIPT" --stop-next 2>&1)" && rc=0 || rc=$?
+check "--stop-next (already stopped, live path) exits 0" "$rc" "0"
+printf '%s' "$out" | grep -qF 'already done (no pm2 localfinds)' \
+  && pass "--stop-next reports already done when pm2 has no such process" \
+  || fail "--stop-next did not report 'already done'"
+grep -qF "stop" "$PM2_ARGV_LOG" \
+  && fail "--stop-next invoked 'pm2 stop' with no process to stop (log: $(cat "$PM2_ARGV_LOG" | tr '\n' ';'))" \
+  || pass "--stop-next did not invoke 'pm2 stop' with no process to stop"
+# The point of the restructure: all four probes still ran, even though there
+# was nothing to stop. Before the fix, none of these lines would appear.
+printf '%s' "$out" | grep -qF 'ok  / after pm2 stop -> 200' \
+  && pass "--stop-next's / probe ran with no process to stop" \
+  || fail "--stop-next's / probe did NOT run with no process to stop"
+printf '%s' "$out" | grep -qF 'ok  /robots.txt after pm2 stop (via the catch-all) -> 200' \
+  && pass "--stop-next's /robots.txt probe ran with no process to stop" \
+  || fail "--stop-next's /robots.txt probe did NOT run with no process to stop"
+printf '%s' "$out" | grep -qF 'ok  catch-all after pm2 stop -> no Next markers' \
+  && pass "--stop-next's catch-all body probe ran with no process to stop" \
+  || fail "--stop-next's catch-all body probe did NOT run with no process to stop"
+printf '%s' "$out" | grep -qF 'ok  Next backend (127.0.0.1:3001) -> no connection (not serving)' \
+  && pass "--stop-next's direct Next-port probe ran with no process to stop" \
+  || fail "--stop-next's direct Next-port probe did NOT run with no process to stop"
+
+rm -f "$PM2_ARGV_LOG"
+rm -rf "$LIVE_STUBS"
+
 echo "== probe judges =="
 
 ( . "$SCRIPT" --source-only; expect_status "x" "200" "200" ) >/dev/null 2>&1 \

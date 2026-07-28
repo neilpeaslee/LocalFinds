@@ -135,7 +135,10 @@ expect_next() {  # expect_next <label> <body>
 # under test — the only way to confirm Next itself (not nginx, not pm2, not
 # the catch-all) is not serving on its own port. Mechanism-independent: it
 # doesn't care whether pm2 reports stopped, deleted, crashed, or
-# never-started — only whether something is listening on 127.0.0.1:3001.
+# never-started — only whether anything answered within the timeout. curl's
+# 000 covers both "nothing is listening" and "something is listening but
+# never responded" (a hung or wedged process) — either way, nothing capable
+# of actually serving a request answered on 127.0.0.1:3001.
 expect_no_connection() {  # expect_no_connection <label> <status>
   [ -n "$2" ] || abort "$1: no status returned"
   [ "$2" = "000" ] || abort "$1: answered with status $2 — it is still serving"
@@ -144,7 +147,14 @@ expect_no_connection() {  # expect_no_connection <label> <status>
 
 http_status() { curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$SITE$1"; }
 body_of()     { curl -sS --max-time 10 "$SITE$1"; }
-next_status() { curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:3001/"; }
+# 2>/dev/null here only: on the expected happy path (Next stopped) this curl
+# fails to connect, and -sS prints "curl: (7) Failed to connect ..." to
+# stderr right before the script's own "ok ... no connection" line — noise
+# that reads as an error during a cutover watched live. The pass/fail
+# decision is expect_no_connection's, driven entirely by the captured status
+# code (including curl's own 000 on failure), never by this stderr text, so
+# suppressing it costs no information the check relies on.
+next_status() { curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:3001/" 2>/dev/null; }
 
 [ "$SOURCE_ONLY" = 1 ] && return 0 2>/dev/null || true
 
