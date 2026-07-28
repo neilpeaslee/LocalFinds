@@ -17,4 +17,39 @@ defmodule LocalfindsWeb.EndpointTest do
     refute conn.status == 404
     assert Enum.any?(get_resp_header(conn, "content-type"), &(&1 =~ "application/json"))
   end
+
+  describe "robots.txt" do
+    setup do
+      %{body: File.read!(Path.join(:code.priv_dir(:localfinds), "static/robots.txt"))}
+    end
+
+    test "is served over HTTP", %{conn: conn} do
+      conn = get(conn, "/robots.txt")
+      assert response(conn, 200) =~ "User-agent"
+    end
+
+    test "is not the stock all-commented file", %{body: body} do
+      assert body =~ ~r/^Disallow:/m
+    end
+
+    test "disallows the faceted query-string space", %{body: body} do
+      assert body =~ "Disallow: /*?"
+      assert body =~ "Disallow: /places?"
+      assert body =~ "Disallow: /feed?"
+      assert body =~ "Disallow: /sources?"
+    end
+
+    test "blocks the AI crawlers seen in the access log", %{body: body} do
+      for agent <- ~w(GPTBot Google-Extended meta-externalagent Amazonbot CCBot ClaudeBot) do
+        assert body =~ "User-agent: #{agent}", "expected #{agent} to be blocked"
+      end
+    end
+
+    # The whole point of blocking Google-Extended rather than Googlebot: AI
+    # training is opted out of, search indexing is not. A future edit that adds
+    # Googlebot to the block list would silently de-index the site.
+    test "does NOT block Googlebot", %{body: body} do
+      refute body =~ ~r/^User-agent: Googlebot\s*$/m
+    end
+  end
 end

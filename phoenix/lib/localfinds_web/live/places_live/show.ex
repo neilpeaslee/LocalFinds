@@ -9,6 +9,7 @@ defmodule LocalfindsWeb.PlacesLive.Show do
   alias Localfinds.Markdown
   alias Localfinds.Places
   alias Localfinds.Places.DirectoryPlace
+  alias Localfinds.TagFacets
   alias LocalfindsWeb.Badges
   alias LocalfindsWeb.LiveDB
   alias LocalfindsWeb.Realtime
@@ -117,13 +118,21 @@ defmodule LocalfindsWeb.PlacesLive.Show do
         </div>
 
         <div :if={@tags != []} class="flex flex-wrap gap-1">
-          <.link
-            :for={tag <- @tags}
-            navigate={~p"/places?tag=#{tag}"}
-            class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
-          >
-            {tag}
-          </.link>
+          <%= for tag <- @tags do %>
+            <.link
+              :if={TagFacets.linkable?(tag)}
+              navigate={~p"/places?tag=#{tag}"}
+              class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
+            >
+              {tag}
+            </.link>
+            <span
+              :if={not TagFacets.linkable?(tag)}
+              class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600"
+            >
+              {tag}
+            </span>
+          <% end %>
         </div>
       </div>
 

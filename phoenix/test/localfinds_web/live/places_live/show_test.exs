@@ -72,4 +72,35 @@ defmodule LocalfindsWeb.PlacesLive.ShowTest do
     {:ok, _lv, html} = live(conn, "/places/way/12")
     assert html =~ "← Back to places"
   end
+
+  test "categorical tags are filter links", %{conn: conn} do
+    {:ok, _lv, html} = live(conn, "/places/node/1")
+
+    # Assert the specific URL, not the absence of any href: HEEx drops a nil
+    # attribute but keeps the tag, so `refute html =~ "href="` passes even when
+    # the link is still rendered (the Plan 5 handoff records exactly that miss).
+    assert html =~ "/places?tag=amenity%3Dcafe"
+    assert html =~ "/places?tag=cuisine%3Dcoffee_shop"
+  end
+
+  test "per-place and contact tags are shown but are not links", %{conn: conn} do
+    {:ok, _lv, html} = live(conn, "/places/node/1")
+
+    # Still visible to a human reader.
+    assert html =~ "phone=+1-207-555-0100"
+    assert html =~ "website=https://rockcity.example"
+    assert html =~ "addr:street=Main Street"
+
+    # But not reachable by following a link.
+    refute html =~ "tag=phone"
+    refute html =~ "tag=website"
+    refute html =~ "tag=addr"
+    refute html =~ "tag=name"
+    refute html =~ "tag=brand"
+  end
+
+  test "a place detail page is indexable", %{conn: conn} do
+    {:ok, _lv, html} = live(conn, "/places/node/1")
+    refute html =~ "noindex"
+  end
 end
