@@ -72,7 +72,6 @@ defmodule LocalfindsWeb.HomeComponents do
   end
 
   attr :connected?, :boolean, required: true
-  attr :pins, :list, default: []
   attr :towns, :list, default: []
   attr :boundaries, :list, default: []
   attr :themes, :list, default: []
@@ -82,9 +81,16 @@ defmodule LocalfindsWeb.HomeComponents do
 
   Renders the placeholder until the socket connects, which mirrors the
   reference's `next/dynamic(..., {ssr: false, loading: …})`: Leaflet touches the
-  DOM at import time and cannot server-render either way. The payload therefore
-  crosses the wire once, in the mount diff, instead of appearing in the initial
-  HTML *and* the diff.
+  DOM at import time and cannot server-render either way.
+
+  Pins are deliberately NOT a `data-*` attribute here — at ~20k rows they were
+  the ~3.7MB payload that delayed the connected mount's first ping past
+  Phoenix's websocket-fallback timeout (see `HomeLive.Index`). `towns`,
+  `boundaries` and `themes` stay attributes because they're small (a handful
+  of rows each) and `RegionMap`'s `mounted()` needs them immediately to draw
+  tiles/outlines/legend; pins arrive afterward via `push_event/3`, and the
+  hook picks them up in a `handleEvent("pins", ...)` callback instead of
+  `mounted()`.
 
   `phx-update="ignore"` is load-bearing: everything inside this div belongs to
   Leaflet, and a LiveView patch would destroy it.
@@ -104,7 +110,6 @@ defmodule LocalfindsWeb.HomeComponents do
         phx-hook="RegionMap"
         phx-update="ignore"
         class="h-full w-full overflow-hidden rounded-lg border border-stone-200"
-        data-pins={Jason.encode!(@pins)}
         data-towns={Jason.encode!(@towns)}
         data-boundaries={Jason.encode!(@boundaries)}
         data-themes={Jason.encode!(@themes)}

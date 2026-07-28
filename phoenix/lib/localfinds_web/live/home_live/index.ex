@@ -7,6 +7,7 @@ defmodule LocalfindsWeb.HomeLive.Index do
   """
   use LocalfindsWeb, :live_view
 
+  alias Localfinds.DB
   alias Localfinds.Finds
   alias Localfinds.MapCategories
   alias Localfinds.Markdown
@@ -35,7 +36,15 @@ defmodule LocalfindsWeb.HomeLive.Index do
       |> LiveDB.load(:place_count, &Places.count_places/0, 0)
       |> LiveDB.load(:feed, fn -> Finds.feed_page(%{view: "default"}) end, @empty_feed)
 
-    {:ok, load_map(socket, connected?(socket))}
+    socket = load_map(socket, connected?(socket))
+
+    # Pins are NOT loaded here, even for the connected mount. This send lands
+    # in the mailbox during mount and is handled the moment the join reply
+    # goes out, so the pin set reaches the client as a *second* frame — see
+    # handle_info(:load_pins, ...) below for why that ordering is the fix.
+    if connected?(socket), do: send(self(), :load_pins)
+
+    {:ok, socket}
   end
 
   # Map data is fetched only on the connected mount: the dead render shows the
@@ -48,15 +57,36 @@ defmodule LocalfindsWeb.HomeLive.Index do
   # from "are there pins" would show the placeholder forever on a region whose
   # config and database are both legitimately empty.
   defp load_map(socket, false) do
-    assign(socket, map_ready?: false, pins: [], boundaries: [], themes: [])
+    assign(socket, map_ready?: false, boundaries: [], themes: [])
   end
 
   defp load_map(socket, true) do
     socket
     |> assign(:map_ready?, true)
-    |> LiveDB.load(:pins, &Places.map_pins/0, [])
     |> assign(:boundaries, TownBoundaries.load())
     |> assign(:themes, MapCategories.legend_themes(MapCategories.load()))
+  end
+
+  # The pin set is ~20k rows (~3.7MB pre-shrink, still the single largest
+  # thing this LiveView ever sends). Shipping it inside the connected mount's
+  # join reply used to delay the client's first ping past the 2500ms fallback
+  # timer `deps/phoenix/assets/js/phoenix/socket.js` re-arms once the
+  # websocket opens — the client then "fell back" to /live/longpoll, which
+  # endpoint.ex didn't mount, so every load 404'd until the socket caught up
+  # on its own. Loading pins here, one message after mount instead of inside
+  # it, keeps the join reply small; `push_event/3` ships the pins in their own
+  # frame once the ping has already round-tripped.
+  #
+  # `Localfinds.DB.guard/1` (not `LiveDB.load/4`) because this path pushes an
+  # event rather than assigning a key — on a DB bounce there is nothing to
+  # push, so the page is flagged degraded instead, same failure mode `LiveDB`
+  # gives every other read on this page.
+  @impl true
+  def handle_info(:load_pins, socket) do
+    case DB.guard(&Places.map_pins/0) do
+      {:ok, pins} -> {:noreply, push_event(socket, "pins", %{pins: pins})}
+      {:error, :database_unavailable} -> {:noreply, assign(socket, :db_unavailable, true)}
+    end
   end
 
   # Dormant realtime seam (rung 4 lights this up).
@@ -69,7 +99,6 @@ defmodule LocalfindsWeb.HomeLive.Index do
     <div class="flex flex-col gap-6">
       <HomeComponents.region_map
         connected?={@map_ready? and !@db_unavailable}
-        pins={@pins}
         towns={@towns}
         boundaries={@boundaries}
         themes={@themes}

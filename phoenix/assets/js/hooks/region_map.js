@@ -29,18 +29,20 @@ function bboxRing([s, w, n, e]) {
   return [[s, w], [s, e], [n, e], [n, w]]
 }
 
-function computeBounds(rings, pins) {
+// Fits to the coverage rings alone. Pins used to be part of this fit too, but
+// they no longer exist yet at mount time — they arrive afterward via the
+// "pins" event (see mounted() below) — and refitting when they land would
+// pan/zoom the map out from under whoever is already looking at it, which is
+// a jump the page never used to make. Coverage rings contain every pin in
+// practice, so this reproduces the old fit almost exactly; a region with no
+// boundaries AND no towns configured is a startup/config gap, not a case
+// worth chasing pins for.
+function computeBounds(rings) {
   let south = Infinity, west = Infinity, north = -Infinity, east = -Infinity
   for (const ring of rings) {
     for (const [lat, lng] of ring) {
       south = Math.min(south, lat); west = Math.min(west, lng)
       north = Math.max(north, lat); east = Math.max(east, lng)
-    }
-  }
-  if (!rings.length) {
-    for (const p of pins) {
-      south = Math.min(south, p.lat); west = Math.min(west, p.lng)
-      north = Math.max(north, p.lat); east = Math.max(east, p.lng)
     }
   }
   if (!Number.isFinite(south)) return null
@@ -50,7 +52,6 @@ function computeBounds(rings, pins) {
 export default {
   mounted() {
     const read = (name) => JSON.parse(this.el.dataset[name] || "[]")
-    const pins = read("pins")
     const towns = read("towns")
     const boundaries = read("boundaries")
     this.colorOf = new Map(read("themes").map((t) => [t.key, t.color]))
@@ -69,7 +70,7 @@ export default {
       ...fallbackTowns.map((t) => bboxRing(t.bbox)),
     ]
 
-    const bounds = computeBounds(coverageRings, pins)
+    const bounds = computeBounds(coverageRings)
     if (bounds) {
       this.map.fitBounds(bounds, {padding: [16, 16]})
       this.map.setZoom(this.map.getZoom() + 1) // ZoomInOne
@@ -115,23 +116,41 @@ export default {
     // Built ONCE, not per viewport (a deliberate deviation from the reference —
     // see the spec). Querying it per pan is what getClusters is for, and it
     // keeps a bubble's count stable as you pan past it.
+    //
+    // Loaded empty here: pins aren't sent with the mount anymore (a ~20k-row,
+    // ~3.7MB payload in the connected mount's join reply was delaying the
+    // client's first ping past Phoenix's websocket-fallback timeout — see
+    // HomeLive.Index). The "pins" handleEvent below loads it for real once
+    // that payload arrives as its own frame, after the ping has already
+    // succeeded.
     this.index = new Supercluster({radius: 60, maxZoom: 20, minPoints: 4})
-    this.index.load(
-      pins.map((p) => ({
-        type: "Feature",
-        properties: {
-          osmId: p.osm_id, name: p.name, theme: p.theme,
-          subtype: p.subtype, kind: p.kind,
-        },
-        geometry: {type: "Point", coordinates: [p.lng, p.lat]},
-      })),
-    )
+    this.index.load([])
 
     this.clusterLayer = L.layerGroup().addTo(this.map)
     this.redraw = () => this.drawClusters()
     this.map.on("moveend", this.redraw)
     this.map.on("zoomend", this.redraw)
     this.drawClusters()
+
+    // Pin keys are short on the wire (id/nm/kd/lat/lng/th/sub, not
+    // osm_id/name/kind/lat/lng/theme/subtype) — see the moduledoc on
+    // `Localfinds.Places.map_pins/0` for why. Re-expand them to the
+    // full property names Supercluster features carry internally so
+    // drawClusters() below reads the same `props.name`/`props.kind`/etc it
+    // always has.
+    this.handleEvent("pins", ({pins}) => {
+      this.index.load(
+        pins.map((p) => ({
+          type: "Feature",
+          properties: {
+            osmId: p.id, name: p.nm, theme: p.th,
+            subtype: p.sub, kind: p.kd,
+          },
+          geometry: {type: "Point", coordinates: [p.lng, p.lat]},
+        })),
+      )
+      this.drawClusters()
+    })
   },
 
   drawClusters() {
